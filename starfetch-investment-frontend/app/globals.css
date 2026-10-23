@@ -1,0 +1,141 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { @apply border-star-200; }
+
+  html { scroll-behavior: smooth; }
+
+  body { @apply min-w-0 overflow-x-hidden bg-[#fffef9] font-body text-base text-star-ink antialiased; }
+
+  ::selection { @apply bg-star-lime text-star-900; }
+
+  section[id], footer[id] { scroll-margin-top: 60px; }
+
+  a, button { -webkit-tap-highlight-color: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Mirrors the live Starfetch gallery: a 0.7s opacity crossfade paired with
+   a subtle 7s ease-out image settle on the active slide. */
+.hero-slide-image-active {
+  animation: hero-kenburns 7s ease-out forwards;
+}
+
+@keyframes hero-kenburns {
+  from { transform: scale(1.07); }
+  to { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-slide-image-active { animation: none; }
+}
+
+/* Small viewport reveals keep the page calm while giving sections a polished arrival. */
+.scroll-reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 560ms ease, transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+.scroll-reveal-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Slow, circular ornament for the homepage feature icons. The center stays still. */
+.feature-orbit-badge {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  width: 3.75rem;
+  height: 3.75rem;
+  flex-shrink: 0;
+  place-items: center;
+}
+
+.feature-orbit-decoration {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border: 1.5px solid #B9ED1D;
+  border-radius: 9999px;
+  transform-origin: center;
+  animation: feature-orbit-rotate 10s linear infinite;
+  will-change: transform;
+}
+
+.feature-orbit-decoration::before,
+.feature-orbit-decoration::after {
+  position: absolute;
+  display: block;
+  width: 0.44rem;
+  height: 0.44rem;
+  border-radius: 9999px;
+  background: #B9ED1D;
+  content: "";
+}
+
+.feature-orbit-decoration::before {
+  top: -0.22rem;
+  left: 22%;
+}
+
+.feature-orbit-decoration::after {
+  right: 22%;
+  bottom: -0.22rem;
+}
+
+.feature-orbit-center {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 76%;
+  aspect-ratio: 1;
+  place-items: center;
+  border-radius: 9999px;
+  background: #EDF6DE;
+  color: #003B2A;
+}
+
+@keyframes feature-orbit-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feature-orbit-decoration { animation: none; }
+}
+
+@media (min-width: 640px) {
+  .feature-orbit-badge {
+    width: 4.125rem;
+    height: 4.125rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .feature-orbit-badge {
+    width: 4.5rem;
+    height: 4.5rem;
+  }
+}
