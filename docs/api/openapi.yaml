@@ -1,0 +1,203 @@
+openapi: 3.0.3
+
+info:
+  title: Starfetch Investment Limited — Platform API
+  version: 0.1.0
+  description: |
+    Canonical API contract for the Starfetch platform (one API serving the public
+    website, investor web portal, staff/admin portal, and the future Android/iOS
+    React Native clients).
+
+    **Current scope: PHASE 2A — BACKEND FOUNDATION ONLY.**
+    This file currently contains only contracts that are safe to establish now:
+    API metadata, the health endpoint, the common success/error envelope and the
+    request-ID convention.
+
+    The Phase-1 contract draft (`STARFETCH-API-CONTRACT-DRAFT.md`) remains the
+    design source for business endpoints (auth, profiles, applications,
+    documents, products, portfolio, transactions, statements, staff). Those are
+    incorporated here **one feature at a time, only after contract approval in
+    their implementation phases** — never silently, and unresolved items
+    (D-08 state map, D-09 application semantics, document vocabulary,
+    business/compliance fields) are never frozen into this document early.
+
+    Change control: no unilateral breaking changes; breaking changes require a
+    coordinated version/change decision by David and Emmanuel.
+  x-status: PHASE-2A-FOUNDATION
+  contact:
+    name: Starfetch Engineering (David — backend; Emmanuel — frontend/mobile)
+
+servers:
+  - url: /api/v1
+    description: Version 1 of the Starfetch API (global prefix)
+
+tags:
+  - name: System
+    description: Service availability and operational endpoints
+
+paths:
+  /health:
+    get:
+      tags:
+        - System
+      operationId: getHealth
+      summary: Service health check
+      description: |
+        Public availability/integrity check used for the Day-3 integration gate
+        and operations probing. Requires no authentication.
+        The response deliberately excludes environment values, database details,
+        credentials, and server internals.
+      responses:
+        "200":
+          description: Service is up.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                data:
+                  status: ok
+                  version: "0.0.1"
+                meta:
+                  requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  headers:
+    X-Request-Id:
+      description: |
+        Correlation identifier for the request. A client may supply a safe value
+        (`x-request-id` request header, 8–100 chars of `[A-Za-z0-9._-]`); it is
+        echoed back. Otherwise the server generates one (UUID). Present on every
+        response, including errors.
+      schema:
+        type: string
+        example: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+
+  schemas:
+    Meta:
+      type: object
+      properties:
+        requestId:
+          type: string
+          description: Server-set correlation ID (matches the x-request-id header).
+      required:
+        - requestId
+
+    HealthData:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        version:
+          type: string
+          description: Informational API version string.
+      required:
+        - status
+        - version
+
+    HealthResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/HealthData"
+        meta:
+          $ref: "#/components/schemas/Meta"
+      required:
+        - data
+        - meta
+
+    Error:
+      type: object
+      description: |
+        Stable error envelope (PROPOSED contract convention). `message` is always
+        safe for clients; internals are never exposed.
+      properties:
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        message:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+          description: Per-field validation details (present for VALIDATION_FAILED).
+        requestId:
+          type: string
+      required:
+        - code
+        - message
+        - requestId
+
+    ErrorEnvelope:
+      type: object
+      properties:
+        error:
+          $ref: "#/components/schemas/Error"
+      required:
+        - error
+
+    ErrorCode:
+      type: string
+      description: |
+        Foundation error-code vocabulary. The complete business catalogue is
+        added with later approved endpoints.
+      enum:
+        - VALIDATION_FAILED # 400/422 — request data failed validation; `fields` populated
+        - UNAUTHENTICATED   # 401 — credentials missing/invalid/expired (later phases)
+        - FORBIDDEN         # 403 — role/ownership check failed (later phases)
+        - NOT_FOUND         # 404 — resource absent or not visible to this principal
+        - CONFLICT          # 409 — illegal state for the operation (later phases)
+        - FILE_TOO_LARGE    # 413 — upload exceeds size cap (later document phases)
+        - UNSUPPORTED_FILE_TYPE # 415 — upload MIME rejected (later document phases)
+        - RATE_LIMITED      # 429 — throttled (later phases)
+        - INTERNAL_ERROR    # 500 — unexpected; never leaks internals
+
+  responses:
+    InternalError:
+      description: Unexpected server error (safe envelope).
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/X-Request-Id"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: An unexpected error occurred.
+              requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+
+x-conventions:
+  success-envelope:
+    description: |
+      Successful responses use `{ "data": ..., "meta": { "requestId": ... } }`.
+      Additional `meta` members (e.g., pagination: page/pageSize/total; demo
+      source markers such as `source: "staging_seed"`) are introduced by the
+      relevant endpoint contracts in later phases.
+  request-id:
+    description: |
+      Every request has a correlation ID: client-supplied safe `x-request-id`
+      values are honoured, otherwise one is generated. Returned in the
+      `x-request-id` response header, `meta.requestId`, and `error.requestId`.
+  authentication:
+    description: |
+      NOT IMPLEMENTED in Phase 2A. Approved direction (recorded in Phase-1
+      decisions): short-lived access credential + rotating/revocable refresh
+      credential; web via httpOnly/Secure cookie strategy where appropriate;
+      Android/iOS via bearer credential with refresh material in
+      platform-secure storage. Final expiry times, credential format and
+      CSRF/session mechanics will be specified here before auth implementation.
+  open-decisions:
+    description: |
+      D-08 (application status/state-transition map) — OPEN.
+      D-09 (one-active-application semantics, incl. staff-list selection) — OPEN.
+      Document categories/review outcomes/lifecycle vocabulary — TBD
+      (BUSINESS / COMPLIANCE + CONTRACT APPROVAL REQUIRED).
+      No contract here may presume those outcomes.
