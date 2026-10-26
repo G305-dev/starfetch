@@ -8,8 +8,6 @@ type BasicInfoErrors = {
   firstName?: string;
   lastName?: string;
   email?: string;
-  dateOfBirth?: string;
-  countryOfResidence?: string;
   password?: string;
   confirmPassword?: string;
 };
@@ -21,8 +19,6 @@ export function IndividualRegistrationForm() {
   const firstNameId = useId();
   const lastNameId = useId();
   const emailId = useId();
-  const dateOfBirthId = useId();
-  const countryOfResidenceId = useId();
   const passwordId = useId();
   const confirmPasswordId = useId();
   const [showPassword, setShowPassword] = useState(false);
@@ -35,8 +31,6 @@ export function IndividualRegistrationForm() {
     const firstName = String(formData.get("firstName") || "").trim();
     const lastName = String(formData.get("lastName") || "").trim();
     const email = String(formData.get("email") || "").trim();
-    const dateOfBirth = String(formData.get("dateOfBirth") || "");
-    const countryOfResidence = String(formData.get("countryOfResidence") || "").trim();
     const password = String(formData.get("password") || "");
     const confirmPassword = String(formData.get("confirmPassword") || "");
     const nextErrors: BasicInfoErrors = {};
@@ -48,8 +42,6 @@ export function IndividualRegistrationForm() {
     } else if (!emailPattern.test(email)) {
       nextErrors.email = "Enter a valid email address.";
     }
-    if (!dateOfBirth) nextErrors.dateOfBirth = "Enter your date of birth.";
-    if (!countryOfResidence) nextErrors.countryOfResidence = "Enter your country of residence.";
     if (!password) nextErrors.password = "Enter a password.";
     if (!confirmPassword) {
       nextErrors.confirmPassword = "Confirm your password.";
@@ -126,35 +118,6 @@ export function IndividualRegistrationForm() {
               aria-invalid={Boolean(errors.email)}
               aria-describedby={errors.email ? `${emailId}-error` : undefined}
               className={inputClassName(Boolean(errors.email))}
-            />
-          </FieldError>
-        </div>
-
-        <div className="mt-5 grid gap-5 sm:grid-cols-2">
-          <FieldError error={errors.dateOfBirth} id={`${dateOfBirthId}-error`}>
-            <label htmlFor={dateOfBirthId} className="mb-2 block text-sm font-bold text-star-900">Date of birth</label>
-            <input
-              id={dateOfBirthId}
-              name="dateOfBirth"
-              type="date"
-              autoComplete="bday"
-              aria-invalid={Boolean(errors.dateOfBirth)}
-              aria-describedby={errors.dateOfBirth ? `${dateOfBirthId}-error` : undefined}
-              className={inputClassName(Boolean(errors.dateOfBirth))}
-            />
-          </FieldError>
-
-          <FieldError error={errors.countryOfResidence} id={`${countryOfResidenceId}-error`}>
-            <label htmlFor={countryOfResidenceId} className="mb-2 block text-sm font-bold text-star-900">Country of residence</label>
-            <input
-              id={countryOfResidenceId}
-              name="countryOfResidence"
-              type="text"
-              autoComplete="country-name"
-              placeholder="Your country of residence"
-              aria-invalid={Boolean(errors.countryOfResidence)}
-              aria-describedby={errors.countryOfResidence ? `${countryOfResidenceId}-error` : undefined}
-              className={inputClassName(Boolean(errors.countryOfResidence))}
             />
           </FieldError>
         </div>
