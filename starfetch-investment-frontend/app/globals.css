@@ -122,6 +122,12 @@
   to { transform: rotate(360deg); }
 }
 
+/* One-time confirmation entrance for authentication success feedback. */
+@keyframes success-pop {
+  from { opacity: 0; transform: scale(0.86); }
+  to { opacity: 1; transform: scale(1); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .feature-orbit-decoration { animation: none; }
 }

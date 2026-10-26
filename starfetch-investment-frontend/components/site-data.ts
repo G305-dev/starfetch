@@ -96,7 +96,7 @@ export const faqs = [
     answers: [
       "You can open an account directly through the Starfetch platform and choose the investment category that best suits your goals.",
     ],
-    action: { label: "Open an Account", href: "#contact" },
+    action: { label: "Open an Account", href: "/open-account" },
   },
   {
     question: "How is risk managed?",

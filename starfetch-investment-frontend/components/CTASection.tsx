@@ -13,7 +13,7 @@ export function CTASection() {
           <h2 className="mt-2 font-display text-[clamp(1.6rem,3vw,2.4rem)] font-bold leading-[1.06] tracking-[-0.035em] text-white">Let&apos;s plan your investment goals</h2>
           <p className="mt-2 text-[0.72rem] text-white/90">Speak with our team about the right solution for you, your family or your organisation.</p>
         </div>
-        <Button href="#contact" variant="lime" className="shrink-0 self-start rounded-[4px] px-4 py-3 text-[0.68rem] sm:self-auto">Open an Account <ArrowRight size={14} aria-hidden="true" /></Button>
+        <Button href="/open-account" variant="lime" className="shrink-0 self-start rounded-[4px] px-4 py-3 text-[0.68rem] sm:self-auto">Open an Account <ArrowRight size={14} aria-hidden="true" /></Button>
       </div>
     </section>
   );

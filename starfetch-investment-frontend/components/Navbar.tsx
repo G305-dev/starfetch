@@ -285,8 +285,8 @@ export function Navbar() {
           })}
         </nav>
         <div className="hidden items-center gap-2 lg:flex">
-          <Button href="#contact" variant="outline" className="rounded-[4px] bg-white px-3.5 py-2 text-[0.66rem]">Open an Account</Button>
-          <Button href="#contact" variant="lime" className="rounded-[4px] px-4 py-2 text-[0.66rem]">Sign Up</Button>
+          <Button href="/open-account" variant="outline" className="rounded-[4px] bg-white px-3.5 py-2 text-[0.66rem]">Open an Account</Button>
+          <Button href="/login" variant="lime" className="rounded-[4px] px-4 py-2 text-[0.66rem]">Sign In</Button>
         </div>
         <button
           type="button"
@@ -393,8 +393,8 @@ export function Navbar() {
           })}
         </nav>
         <div className="mt-4 grid grid-cols-2 gap-2.5">
-          <Button href="#contact" onClick={closeAllMenus} variant="outline" className="rounded-[4px] bg-white px-2 py-2.5 text-xs">Open Account</Button>
-          <Button href="#contact" onClick={closeAllMenus} variant="lime" className="rounded-[4px] px-2 py-2.5 text-xs">Sign Up</Button>
+          <Button href="/open-account" onClick={closeAllMenus} variant="outline" className="rounded-[4px] bg-white px-2 py-2.5 text-xs">Open Account</Button>
+          <Button href="/login" onClick={closeAllMenus} variant="lime" className="rounded-[4px] px-2 py-2.5 text-xs">Sign In</Button>
         </div>
       </div>
     </header>

@@ -1,9 +1,9 @@
 import Image from "next/image";
 import type { AnchorHTMLAttributes, ReactNode } from "react";
 
-export function Logo({ light = false }: { light?: boolean }) {
+export function Logo({ light = false, href = "#home" }: { light?: boolean; href?: string }) {
   return (
-    <a href="#home" className="group inline-flex shrink-0 items-center gap-2" aria-label="Starfetch Investment Limited home">
+    <a href={href} className="group inline-flex shrink-0 items-center gap-2" aria-label="Starfetch Investment Limited home">
       <Image
         src="/images/logo-icon.svg"
         alt=""
