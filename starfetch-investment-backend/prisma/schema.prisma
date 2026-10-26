@@ -1,0 +1,27 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Starfetch Investment Limited — Prisma schema
+// Phase 2A: TOOLING FOUNDATION ONLY.
+//
+// This schema deliberately contains NO business models. Per the approved
+// Phase-1 architecture and review corrections, business tables/enums are
+// introduced in later approved phases only, because open decisions still
+// govern their vocabulary and semantics:
+//
+//   - D-08: application status / state-transition map .................. OPEN
+//   - D-09: one-active-application semantics (+ staff-list selection) .. OPEN
+//   - Document categories / review outcomes / lifecycle vocabulary ..... TBD
+//     (BUSINESS / COMPLIANCE + CONTRACT APPROVAL REQUIRED)
+//   - Remaining business/compliance fields (D-06 v1 unapproved list) ... TBD
+//
+// Do NOT add Prisma models here before those approvals land.
+// Do NOT run or claim a production migration from this scaffold.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
