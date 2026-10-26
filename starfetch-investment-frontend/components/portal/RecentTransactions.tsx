@@ -6,7 +6,7 @@ export function RecentTransactions() {
     <section id="recent-transactions" className="scroll-mt-24 rounded-xl border border-star-200 bg-white p-5 sm:p-6" aria-labelledby="recent-transactions-heading">
       <div className="flex items-center justify-between gap-4">
         <h2 id="recent-transactions-heading" className="text-lg font-extrabold text-star-900">Recent Transactions</h2>
-        <a href="/dashboard#recent-transactions" className="inline-flex items-center gap-1 text-sm font-bold text-star-700 no-underline transition hover:text-star-limeDark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">
+        <a href="/transactions" className="inline-flex items-center gap-1 text-sm font-bold text-star-700 no-underline transition hover:text-star-limeDark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">
           View All <ArrowRight size={16} aria-hidden="true" />
         </a>
       </div>

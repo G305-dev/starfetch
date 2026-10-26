@@ -10,7 +10,7 @@ export function InvestmentTable() {
     <section id="my-investments" className="scroll-mt-24 rounded-xl border border-star-200 bg-white p-5 sm:p-6" aria-labelledby="my-investments-heading">
       <div className="flex items-center justify-between gap-4">
         <h2 id="my-investments-heading" className="text-lg font-extrabold text-star-900">My Investments</h2>
-        <a href="/dashboard#my-investments" className="inline-flex items-center gap-1 text-sm font-bold text-star-700 no-underline transition hover:text-star-limeDark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">
+        <a href="/investments" className="inline-flex items-center gap-1 text-sm font-bold text-star-700 no-underline transition hover:text-star-limeDark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">
           View All <ArrowRight size={16} aria-hidden="true" />
         </a>
       </div>

@@ -1,25 +1,35 @@
+"use client";
+
 import { ArrowRight, Menu, X } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { Logo } from "@/components/ui";
 import { portalNavigation } from "./dashboard-data";
 
 function NavigationLinks({ mobile = false }: { mobile?: boolean }) {
+  const pathname = usePathname();
+
   return (
     <nav className="grid gap-1.5" aria-label={mobile ? "Mobile investor portal navigation" : "Investor portal navigation"}>
-      {portalNavigation.map(({ label, href, icon: Icon, active }) => (
-        <a
-          key={label}
-          href={href}
-          className={`group relative flex min-h-12 items-center gap-3 rounded-lg px-3.5 text-sm font-bold no-underline transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2 ${
-            active
-              ? "bg-star-100 text-star-900"
-              : "text-star-700 hover:bg-star-50 hover:text-star-900"
-          }`}
-        >
-          {active ? <span className="absolute -left-3 h-8 w-1 rounded-r-full bg-star-lime" aria-hidden="true" /> : null}
-          <Icon size={20} strokeWidth={2} className="shrink-0 text-star-700" aria-hidden="true" />
-          {label}
-        </a>
-      ))}
+      {portalNavigation.map(({ label, href, icon: Icon }) => {
+        const active = href === pathname;
+
+        return (
+          <a
+            key={label}
+            href={href}
+            aria-current={active ? "page" : undefined}
+            className={`group relative flex min-h-12 items-center gap-3 rounded-lg px-3.5 text-sm font-bold no-underline transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2 ${
+              active
+                ? "bg-star-100 text-star-900"
+                : "text-star-700 hover:bg-star-50 hover:text-star-900"
+            }`}
+          >
+            {active ? <span className="absolute -left-3 h-8 w-1 rounded-r-full bg-star-lime" aria-hidden="true" /> : null}
+            <Icon size={20} strokeWidth={2} className="shrink-0 text-star-700" aria-hidden="true" />
+            {label}
+          </a>
+        );
+      })}
     </nav>
   );
 }

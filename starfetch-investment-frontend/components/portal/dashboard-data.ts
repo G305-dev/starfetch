@@ -39,9 +39,9 @@ export type PortalNavigationItem = {
 };
 
 export const portalNavigation: PortalNavigationItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, active: true },
-  { label: "My Investments", href: "/dashboard#my-investments", icon: LineChart },
-  { label: "Transactions", href: "/dashboard#recent-transactions", icon: ArrowUpRight },
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "My Investments", href: "/investments", icon: LineChart },
+  { label: "Transactions", href: "/transactions", icon: ArrowUpRight },
   { label: "Statements", href: "/dashboard#statements", icon: FileText },
   { label: "Documents", href: "/dashboard#documents", icon: FolderOpen },
   { label: "Profile & Settings", href: "/dashboard#profile", icon: Settings },
