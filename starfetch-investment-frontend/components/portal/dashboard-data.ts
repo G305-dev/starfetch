@@ -5,10 +5,9 @@ import {
   Bell,
   BriefcaseBusiness,
   CircleDollarSign,
-  CircleHelp,
   Clock3,
+  UserRound,
   FileText,
-  FolderOpen,
   HandCoins,
   LayoutDashboard,
   LineChart,
@@ -25,8 +24,8 @@ import {
  */
 export const dashboardUser = {
   firstName: "Emmanuel",
-  fullName: "Emmanuel Olawale",
-  initials: "EO",
+  fullName: "Emmanuel A.",
+  initials: "EA",
   accountType: "Individual Investor",
   lastUpdated: "20 Oct 2026, 10:24 AM",
 };
@@ -40,12 +39,11 @@ export type PortalNavigationItem = {
 
 export const portalNavigation: PortalNavigationItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "My Investments", href: "/investments", icon: LineChart },
+  { label: "Investments", href: "/investments", icon: LineChart },
   { label: "Transactions", href: "/transactions", icon: ArrowUpRight },
-  { label: "Statements", href: "/dashboard#statements", icon: FileText },
-  { label: "Documents", href: "/dashboard#documents", icon: FolderOpen },
-  { label: "Profile & Settings", href: "/dashboard#profile", icon: Settings },
-  { label: "Support", href: "/#contact", icon: CircleHelp },
+  { label: "Notifications", href: "/dashboard#notifications", icon: Bell },
+  { label: "Profile", href: "/profile", icon: UserRound },
+  { label: "Settings", href: "/dashboard#settings", icon: Settings },
 ];
 
 export type SummaryMetric = {

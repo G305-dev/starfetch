@@ -12,7 +12,7 @@ export function OnboardingHeader() {
             href="/login"
             className="inline-flex min-h-10 items-center justify-center rounded-md bg-star-700 px-4 text-sm font-bold text-white no-underline transition hover:-translate-y-px hover:bg-star-900 hover:shadow-[0_5px_14px_rgba(0,59,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2 active:translate-y-0"
           >
-            Sign In
+            Log In
           </Link>
         </div>
       </div>

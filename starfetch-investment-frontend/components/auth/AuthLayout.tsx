@@ -32,7 +32,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
               Welcome back
             </h1>
             <h2 className="mt-4 text-[clamp(1rem,1.7vw,1.35rem)] font-bold leading-tight text-star-700">
-              Sign in to continue
+              Log in to continue
             </h2>
             <p className="mt-5 max-w-[30rem] text-sm leading-7 text-star-muted sm:text-[0.96rem]">
               Access your investments, portfolio updates, transactions and account information securely from your Starfetch Investor Portal.

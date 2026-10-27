@@ -1,0 +1,13 @@
+import { Building2, FileText, Landmark, ShieldCheck, SlidersHorizontal, UserRound, type LucideIcon } from "lucide-react";
+export type ProfileTabId="personal"|"identification"|"bank"|"preferences"|"documents";
+export const profileTabs:{id:ProfileTabId;label:string;icon:LucideIcon}[]=[{id:"personal",label:"Personal Information",icon:UserRound},{id:"identification",label:"Identification",icon:ShieldCheck},{id:"bank",label:"Bank Details",icon:Landmark},{id:"preferences",label:"Investment Preferences",icon:SlidersHorizontal},{id:"documents",label:"Documents",icon:FileText}];
+export type PersonalInfo={fullName:string;email:string;phone:string;dateOfBirth:string;gender:string;maritalStatus:string;address:string;city:string;state:string;country:string;occupation:string;sourceOfFunds:string};
+export const personalInfo:PersonalInfo={fullName:"Profile Holder",email:"user@example.com",phone:"+234 *** *** 0000",dateOfBirth:"DD MMM YYYY",gender:"Not specified",maritalStatus:"Not specified",address:"Residential address on file",city:"Lagos",state:"Lagos State",country:"Nigeria",occupation:"Professional",sourceOfFunds:"Employment income"};
+export type IdentityInfo={type:string;number:string;document:string;issueDate:string;expiryDate:string};
+export const identityInfo:IdentityInfo={type:"Government-issued ID",number:"******8901",document:"Identification document on file",issueDate:"DD MMM YYYY",expiryDate:"DD MMM YYYY"};
+export type BankDetails={bankName:string;accountNumber:string;accountName:string;accountType:string;bvn:string};
+export const bankDetails:BankDetails={bankName:"Bank details on file",accountNumber:"******4321",accountName:"Profile Holder",accountType:"Savings",bvn:"*******109"};
+export type InvestmentPreferences={objective:string;risk:string;products:string;horizon:string};
+export const investmentPreferences:InvestmentPreferences={objective:"Long-term wealth creation",risk:"Moderate",products:"Starfetch Fixed Note, Discretionary Portfolio",horizon:"3–5 years"};
+export const personalDocuments=[{name:"ID Document",status:"Verified"},{name:"Proof of Address",status:"Verified"},{name:"Passport Photograph",status:"Verified"},{name:"Other compliance documents",status:"Not Uploaded"}] as const;
+export const profileCompletion=["Personal information","Identification","Bank details","Investment preferences","Documents"] as const;

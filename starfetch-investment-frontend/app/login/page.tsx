@@ -3,8 +3,8 @@ import { AuthLayout } from "@/components/auth/AuthLayout";
 import { SignInForm } from "@/components/auth/SignInForm";
 
 export const metadata: Metadata = {
-  title: "Sign In | Starfetch Investor Portal",
-  description: "Sign in to the Starfetch Investor Portal.",
+  title: "Log In | Starfetch Investor Portal",
+  description: "Log in to the Starfetch Investor Portal.",
 };
 
 export default function LoginPage() {

@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight, Menu, X } from "lucide-react";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/ui";
 import { portalNavigation } from "./dashboard-data";
@@ -62,15 +63,15 @@ export function PortalSidebar() {
 
 function PromoCard({ mobile = false }: { mobile?: boolean }) {
   return (
-    <section className={`${mobile ? "mt-8 max-w-sm" : "mt-auto"} relative overflow-hidden rounded-xl border border-star-200 bg-[linear-gradient(145deg,#f7faed_0%,#e8f5d4_100%)] p-4`} aria-labelledby={mobile ? "mobile-sidebar-promo" : "sidebar-promo"}>
-      <div className="pointer-events-none absolute -bottom-9 -right-5 h-24 w-16 rotate-[28deg] rounded-t-full bg-star-lime/80" aria-hidden="true" />
-      <div className="pointer-events-none absolute -bottom-12 right-8 h-28 w-11 -rotate-[22deg] rounded-t-full bg-star-500/30" aria-hidden="true" />
-      <div className="relative max-w-[11rem]">
-        <h2 id={mobile ? "mobile-sidebar-promo" : "sidebar-promo"} className="text-base font-extrabold leading-6 text-star-900">Grow your wealth with Starfetch</h2>
-        <p className="mt-3 text-xs leading-5 text-star-700">Explore our investment solutions tailored for your goals.</p>
+    <section className={`${mobile ? "mt-8 max-w-sm" : "mt-auto"} relative min-h-[250px] overflow-hidden rounded-xl border border-star-200 bg-star-900 p-5 text-white`} aria-labelledby={mobile ? "mobile-sidebar-promo" : "sidebar-promo"}>
+      <Image src="/images/hero-bridge.webp" alt="Lagos bridge at sunset" fill sizes={mobile ? "384px" : "238px"} className="object-cover object-[55%_65%] opacity-65" />
+      <div className="absolute inset-0 bg-[linear-gradient(155deg,rgba(0,59,42,0.94)_5%,rgba(0,59,42,0.78)_60%,rgba(0,59,42,0.55)_100%)]" />
+      <div className="relative z-10 flex min-h-[210px] max-w-[12rem] flex-col">
+        <h2 id={mobile ? "mobile-sidebar-promo" : "sidebar-promo"} className="text-xl font-extrabold leading-6">Build your financial future with confidence</h2>
+        <p className="mt-4 text-xs leading-5 text-white/90">Professional investment solutions for a brighter tomorrow.</p>
         <a
           href="/services"
-          className="mt-4 inline-flex min-h-9 items-center gap-1.5 rounded-md bg-star-900 px-3 text-xs font-bold text-white no-underline transition hover:-translate-y-px hover:bg-star-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2"
+          className="mt-auto inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md border border-white/80 bg-white/10 px-3 text-xs font-bold text-white no-underline transition hover:bg-white hover:text-star-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-lime focus-visible:ring-offset-2 focus-visible:ring-offset-star-900"
         >
           Explore Products <ArrowRight size={14} aria-hidden="true" />
         </a>
