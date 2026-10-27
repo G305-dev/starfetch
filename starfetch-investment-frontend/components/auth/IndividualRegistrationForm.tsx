@@ -79,76 +79,27 @@ export function IndividualRegistrationForm() {
         <div className="grid gap-5 sm:grid-cols-2">
           <FieldError error={errors.firstName} id={`${firstNameId}-error`}>
             <label htmlFor={firstNameId} className="mb-2 block text-sm font-bold text-star-900">First name</label>
-            <input
-              id={firstNameId}
-              name="firstName"
-              type="text"
-              autoComplete="given-name"
-              placeholder="Your first name"
-              aria-invalid={Boolean(errors.firstName)}
-              aria-describedby={errors.firstName ? `${firstNameId}-error` : undefined}
-              className={inputClassName(Boolean(errors.firstName))}
-            />
+            <input id={firstNameId} name="firstName" type="text" autoComplete="given-name" placeholder="Your first name" aria-invalid={Boolean(errors.firstName)} aria-describedby={errors.firstName ? `${firstNameId}-error` : undefined} className={inputClassName(Boolean(errors.firstName))} />
           </FieldError>
-
           <FieldError error={errors.lastName} id={`${lastNameId}-error`}>
             <label htmlFor={lastNameId} className="mb-2 block text-sm font-bold text-star-900">Last name</label>
-            <input
-              id={lastNameId}
-              name="lastName"
-              type="text"
-              autoComplete="family-name"
-              placeholder="Your last name"
-              aria-invalid={Boolean(errors.lastName)}
-              aria-describedby={errors.lastName ? `${lastNameId}-error` : undefined}
-              className={inputClassName(Boolean(errors.lastName))}
-            />
+            <input id={lastNameId} name="lastName" type="text" autoComplete="family-name" placeholder="Your last name" aria-invalid={Boolean(errors.lastName)} aria-describedby={errors.lastName ? `${lastNameId}-error` : undefined} className={inputClassName(Boolean(errors.lastName))} />
           </FieldError>
         </div>
 
         <div className="mt-5">
           <FieldError error={errors.email} id={`${emailId}-error`}>
             <label htmlFor={emailId} className="mb-2 block text-sm font-bold text-star-900">Email address</label>
-            <input
-              id={emailId}
-              name="email"
-              type="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              aria-invalid={Boolean(errors.email)}
-              aria-describedby={errors.email ? `${emailId}-error` : undefined}
-              className={inputClassName(Boolean(errors.email))}
-            />
+            <input id={emailId} name="email" type="email" autoComplete="email" placeholder="you@example.com" aria-invalid={Boolean(errors.email)} aria-describedby={errors.email ? `${emailId}-error` : undefined} className={inputClassName(Boolean(errors.email))} />
           </FieldError>
         </div>
 
         <div className="mt-5 grid gap-5 sm:grid-cols-2">
-          <PasswordField
-            id={passwordId}
-            label="Password"
-            name="password"
-            placeholder="Create a password"
-            error={errors.password}
-            showPassword={showPassword}
-            onToggle={() => setShowPassword((current) => !current)}
-          />
-          <PasswordField
-            id={confirmPasswordId}
-            label="Confirm password"
-            name="confirmPassword"
-            placeholder="Confirm your password"
-            error={errors.confirmPassword}
-            showPassword={showConfirmPassword}
-            onToggle={() => setShowConfirmPassword((current) => !current)}
-          />
+          <PasswordField id={passwordId} label="Password" name="password" placeholder="Create a password" error={errors.password} showPassword={showPassword} onToggle={() => setShowPassword((current) => !current)} />
+          <PasswordField id={confirmPasswordId} label="Confirm password" name="confirmPassword" placeholder="Confirm your password" error={errors.confirmPassword} showPassword={showConfirmPassword} onToggle={() => setShowConfirmPassword((current) => !current)} />
         </div>
 
-        <button
-          type="submit"
-          className="mt-7 inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-star-lime px-5 text-sm font-extrabold text-star-900 transition duration-200 hover:-translate-y-px hover:bg-[#c7f238] hover:shadow-[0_6px_16px_rgba(0,59,42,0.15)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2 active:translate-y-0"
-        >
-          Continue
-        </button>
+        <button type="submit" className="mt-7 inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-star-lime px-5 text-sm font-extrabold text-star-900 transition duration-200 hover:-translate-y-px hover:bg-[#c7f238] hover:shadow-[0_6px_16px_rgba(0,59,42,0.15)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2 active:translate-y-0">Continue</button>
       </form>
     </section>
   );
@@ -159,49 +110,16 @@ function inputClassName(hasError: boolean) {
 }
 
 function FieldError({ children, error, id }: { children: ReactNode; error?: string; id: string }) {
-  return (
-    <div>
-      {children}
-      {error ? <p id={id} className="mt-2 text-xs font-medium text-red-700">{error}</p> : null}
-    </div>
-  );
+  return <div>{children}{error ? <p id={id} className="mt-2 text-xs font-medium text-red-700">{error}</p> : null}</div>;
 }
 
-type PasswordFieldProps = {
-  id: string;
-  label: string;
-  name: string;
-  placeholder: string;
-  error?: string;
-  showPassword: boolean;
-  onToggle: () => void;
-};
+type PasswordFieldProps = { id: string; label: string; name: string; placeholder: string; error?: string; showPassword: boolean; onToggle: () => void; };
 
 function PasswordField({ id, label, name, placeholder, error, showPassword, onToggle }: PasswordFieldProps) {
   return (
     <FieldError error={error} id={`${id}-error`}>
       <label htmlFor={id} className="mb-2 block text-sm font-bold text-star-900">{label}</label>
-      <div className="relative">
-        <input
-          id={id}
-          name={name}
-          type={showPassword ? "text" : "password"}
-          autoComplete="new-password"
-          placeholder={placeholder}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? `${id}-error` : undefined}
-          className={`${inputClassName(Boolean(error))} pr-12`}
-        />
-        <button
-          type="button"
-          onClick={onToggle}
-          className="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-lg text-star-700 transition hover:text-star-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-star-700"
-          aria-label={showPassword ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
-          aria-pressed={showPassword}
-        >
-          {showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
-        </button>
-      </div>
+      <div className="relative"><input id={id} name={name} type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder={placeholder} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} className={`${inputClassName(Boolean(error))} pr-12`} /><button type="button" onClick={onToggle} className="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-lg text-star-700 transition hover:text-star-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-star-700" aria-label={showPassword ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`} aria-pressed={showPassword}>{showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}</button></div>
     </FieldError>
   );
 }

@@ -10,7 +10,8 @@ const aboutMenuItems = [
   { label: "Our Core Values", href: "/about#core-values" },
   { label: "Our Vision", href: "/about#vision" },
   { label: "Our Philosophy", href: "/about#philosophy" },
-  { label: "Group Executive Management", href: "/about#executive-management" },
+  { label: "Starfetch Board", href: "/about#starfetch-board" },
+  { label: "Team", href: "/about#team" },
 ];
 
 const serviceMenuItems = [
@@ -286,7 +287,7 @@ export function Navbar() {
         </nav>
         <div className="hidden items-center gap-2 lg:flex">
           <Button href="/open-account" variant="outline" className="rounded-[4px] bg-white px-3.5 py-2 text-[0.66rem]">Open an Account</Button>
-          <Button href="/login" variant="lime" className="rounded-[4px] px-4 py-2 text-[0.66rem]">Sign In</Button>
+          <Button href="/login" variant="lime" className="rounded-[4px] px-4 py-2 text-[0.66rem]">Log In</Button>
         </div>
         <button
           type="button"
@@ -394,7 +395,7 @@ export function Navbar() {
         </nav>
         <div className="mt-4 grid grid-cols-2 gap-2.5">
           <Button href="/open-account" onClick={closeAllMenus} variant="outline" className="rounded-[4px] bg-white px-2 py-2.5 text-xs">Open Account</Button>
-          <Button href="/login" onClick={closeAllMenus} variant="lime" className="rounded-[4px] px-2 py-2.5 text-xs">Sign In</Button>
+          <Button href="/login" onClick={closeAllMenus} variant="lime" className="rounded-[4px] px-2 py-2.5 text-xs">Log In</Button>
         </div>
       </div>
     </header>

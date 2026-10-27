@@ -11,8 +11,7 @@ const manrope = Manrope({
 
 export const metadata: Metadata = {
   title: "Starfetch Investment Limited | Invest with clarity",
-  description:
-    "A frontend landing page for Starfetch Investment Limited, built with Next.js, TypeScript and Tailwind CSS.",
+  description: "A frontend landing page for Starfetch Investment Limited, built with Next.js, TypeScript and Tailwind CSS.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

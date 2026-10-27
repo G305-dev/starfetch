@@ -40,6 +40,29 @@
   .hero-slide-image-active { animation: none; }
 }
 
+/* On entry, each hero word descends from the navbar area in a measured sequence. */
+.hero-word-drop {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(-76px);
+  animation: hero-word-drop 720ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: var(--hero-word-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+@keyframes hero-word-drop {
+  from { opacity: 0; transform: translateY(-76px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-word-drop {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+}
+
 /* Small viewport reveals keep the page calm while giving sections a polished arrival. */
 .scroll-reveal {
   opacity: 0;

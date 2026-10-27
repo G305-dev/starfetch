@@ -2,26 +2,50 @@
 
 import Image from "next/image";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useState, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
 import { Button, Eyebrow } from "./ui";
 
 const heroSlides = [
   {
-    src: "/images/hero-bridge.webp",
-    alt: "The Lekki–Ikoyi Link Bridge, Lagos — minutes from our Lekki office",
-    position: "object-[59%_center]",
+    src: "/images/hero-lagos-skyline.png",
+    alt: "The National Arts Theatre, Lagos",
+    position: "object-center",
+    textTheme: "light",
   },
   {
-    src: "/images/advisory.webp",
-    alt: "A Starfetch portfolio manager presenting analysis to a client",
+    src: "/images/hero-finance-desk.jpg",
+    alt: "Financial planning desk with investment materials",
     position: "object-center",
+    textTheme: "green",
   },
   {
     src: "/images/couple.webp",
     alt: "Clients reviewing their portfolio together at home",
     position: "object-center",
+    textTheme: "light",
   },
 ];
+
+function HeroWordSequence({ text, delay = 0 }: { text: string; delay?: number }) {
+  const words = text.split(" ");
+
+  return (
+    <>
+      <span className="sr-only">{text}</span>
+      <span aria-hidden="true">
+        {words.map((word, index) => (
+          <span
+            key={`${word}-${index}`}
+            className={`hero-word-drop ${index < words.length - 1 ? "mr-[0.28em]" : ""}`}
+            style={{ "--hero-word-delay": `${delay + index * 68}ms` } as CSSProperties}
+          >
+            {word}
+          </span>
+        ))}
+      </span>
+    </>
+  );
+}
 
 export function HeroSection() {
   const [activeSlide, setActiveSlide] = useState(0);
@@ -89,6 +113,8 @@ export function HeroSection() {
     }
   }
 
+  const usesGreenText = heroSlides[activeSlide].textTheme === "green";
+
   return (
     <section
       id="home"
@@ -122,16 +148,16 @@ export function HeroSection() {
           </div>
         );
       })}
-      <div className="absolute inset-0 z-[2] bg-black/30" />
+      <div className={`absolute inset-0 z-[2] transition-colors duration-500 ${usesGreenText ? "bg-star-900/70" : "bg-black/30"}`} />
 
       <div className="relative z-[3] mx-auto flex h-full max-w-[1170px] items-center justify-center px-5 pb-9 pt-2 text-center lg:px-7">
         <div className="mx-auto max-w-[620px]">
-          <Eyebrow light centered>Invest with purpose</Eyebrow>
-          <h1 className="mt-3 font-display text-[clamp(2.05rem,4.6vw,3.55rem)] font-bold leading-[1.03] tracking-[-0.045em] text-white">Disciplined investing, transparent by design.</h1>
-          <p className="mx-auto mt-3 max-w-[34rem] text-[0.93rem] leading-5 text-white/90 sm:text-[1rem] sm:leading-6">Thoughtful investment management for individuals, families and organisations.</p>
+          <Eyebrow light centered><HeroWordSequence text="Invest with purpose" delay={40} /></Eyebrow>
+          <h1 className={`mt-3 font-display text-[clamp(2.05rem,4.6vw,3.55rem)] font-bold leading-[1.03] tracking-[-0.045em] transition-colors duration-500 ${usesGreenText ? "text-star-lime" : "text-white"}`}><HeroWordSequence text="Disciplined investing, transparent by design." delay={210} /></h1>
+          <p className={`mx-auto mt-3 max-w-[34rem] text-[0.93rem] leading-5 transition-colors duration-500 sm:text-[1rem] sm:leading-6 ${usesGreenText ? "text-star-lime" : "text-white/90"}`}><HeroWordSequence text="Thoughtful investment management for individuals, families and organisations." delay={620} /></p>
           <div className="mt-5 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Button href="#contact" variant="lime" className="rounded-[4px] px-4 py-2.5 text-[0.68rem]">Start Investing <ArrowRight size={14} aria-hidden="true" /></Button>
-            <a href="#services" className="inline-flex items-center gap-1.5 text-[0.7rem] font-bold text-white no-underline transition hover:text-star-lime focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-lime">Explore our services <ArrowRight size={14} aria-hidden="true" /></a>
+            <Button href="#contact" variant="light" className="rounded-[4px] px-4 py-2.5 text-[0.68rem]">Start Investing <ArrowRight size={14} aria-hidden="true" /></Button>
+            <a href="#services" className={`inline-flex items-center gap-1.5 text-[0.7rem] font-bold no-underline transition focus-visible:outline-none focus-visible:ring-2 ${usesGreenText ? "text-star-lime hover:text-white focus-visible:ring-star-lime" : "text-white hover:text-star-lime focus-visible:ring-star-lime"}`}>Explore our services <ArrowRight size={14} aria-hidden="true" /></a>
           </div>
         </div>
       </div>
