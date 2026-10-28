@@ -1,9 +1,10 @@
 /**
- * Stable API error-code vocabulary (foundation set).
- * Mirrors the PROPOSED error contract from the Phase-1 contract draft;
- * the full business catalogue is added with later approved endpoints.
+ * Stable API error-code vocabulary.
+ * Foundation set (Phase 2A) + authentication set (Phase 2B).
+ * Business catalogue codes arrive with later approved endpoints only.
  */
 export const ERROR_CODES = {
+  // Foundation
   VALIDATION_FAILED: 'VALIDATION_FAILED',
   UNAUTHENTICATED: 'UNAUTHENTICATED',
   FORBIDDEN: 'FORBIDDEN',
@@ -13,6 +14,18 @@ export const ERROR_CODES = {
   UNSUPPORTED_FILE_TYPE: 'UNSUPPORTED_FILE_TYPE',
   RATE_LIMITED: 'RATE_LIMITED',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
+  // Authentication / identity (Phase 2B)
+  INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
+  EMAIL_NOT_VERIFIED: 'EMAIL_NOT_VERIFIED',
+  EMAIL_VERIFICATION_INVALID: 'EMAIL_VERIFICATION_INVALID',
+  EMAIL_VERIFICATION_EXPIRED: 'EMAIL_VERIFICATION_EXPIRED',
+  EMAIL_VERIFICATION_CONSUMED: 'EMAIL_VERIFICATION_CONSUMED',
+  EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED: 'EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED',
+  RESEND_COOLDOWN: 'RESEND_COOLDOWN',
+  RESEND_LIMIT_EXCEEDED: 'RESEND_LIMIT_EXCEEDED',
+  CSRF_VALIDATION_FAILED: 'CSRF_VALIDATION_FAILED',
+  SESSION_INVALID: 'SESSION_INVALID',
+  EMAIL_DELIVERY_FAILED: 'EMAIL_DELIVERY_FAILED',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

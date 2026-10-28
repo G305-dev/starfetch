@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { json, urlencoded } from 'express';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { TransformResponseInterceptor } from './common/interceptors/transform-response.interceptor';
@@ -24,11 +25,15 @@ export function configureApp(app: INestApplication): void {
   app.use(json({ limit: '1mb' }));
   app.use(urlencoded({ extended: true, limit: '1mb' }));
 
-  // CORS — browser clients only; driven strictly by configuration.
+  // Cookie parsing (refresh/CSRF cookies are set by the auth transport layer).
+  app.use(cookieParser());
+
+  // CORS — browser clients only; explicit allowlist, credentials enabled only
+  // when an allowlist exists, and NEVER reflected as "*".
   const origins = config.get<string[]>('cors.origins') ?? [];
   app.enableCors({
     origin: origins.length > 0 ? origins : false,
-    credentials: false,
+    credentials: origins.length > 0,
     maxAge: 600,
   });
 

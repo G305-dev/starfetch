@@ -1,20 +1,27 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Starfetch Investment Limited — Prisma schema
-// Phase 2A: TOOLING FOUNDATION ONLY.
+// Phase 2A: tooling foundation. Phase 2B: AUTHENTICATION / IDENTITY ONLY.
 //
-// This schema deliberately contains NO business models. Per the approved
-// Phase-1 architecture and review corrections, business tables/enums are
-// introduced in later approved phases only, because open decisions still
-// govern their vocabulary and semantics:
+// Models in this schema are LIMITED to the Phase 2B-authorized
+// authentication/identity set:
 //
+//   User, InvestorProfile, EmailVerificationChallenge, AuthSession, RefreshToken
+//   (+ supporting enum UserRole)
+//
+// Still explicitly EXCLUDED pending approvals:
 //   - D-08: application status / state-transition map .................. OPEN
 //   - D-09: one-active-application semantics (+ staff-list selection) .. OPEN
 //   - Document categories / review outcomes / lifecycle vocabulary ..... TBD
 //     (BUSINESS / COMPLIANCE + CONTRACT APPROVAL REQUIRED)
-//   - Remaining business/compliance fields (D-06 v1 unapproved list) ... TBD
+//   - Applications / KYC / documents / banking / payments / investments /
+//     portfolios / transactions / statements / NAV / ledger / trades /
+//     settlement / IMS ..................................... NOT AUTHORIZED
 //
-// Do NOT add Prisma models here before those approvals land.
-// Do NOT run or claim a production migration from this scaffold.
+// Security posture (see docs/backend/auth/AUTH-SECURITY-CONTRACT-v1.md):
+//   - passwords: Argon2id hash strings only
+//   - verification codes: keyed HMAC-SHA-256 verifier only (never plaintext)
+//   - refresh credentials: SHA-256 hash only (raw 384-bit opaque value is
+//     never persisted)
 // ─────────────────────────────────────────────────────────────────────────────
 
 generator client {
@@ -24,4 +31,108 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+/// Approved Phase-2B role vocabulary. Public registration may only create INVESTOR.
+enum UserRole {
+  INVESTOR
+  STAFF
+  ADMIN
+}
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  /// Display email exactly as the user typed it (trimmed).
+  email           String
+  /// Trim + lowercase comparison value; unique to prevent casing duplicates.
+  normalizedEmail String    @unique
+  /// Argon2id password hash (PHC string). Never returned by any API.
+  passwordHash    String
+  role            UserRole  @default(INVESTOR)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  investorProfile             InvestorProfile?
+  emailVerificationChallenges EmailVerificationChallenge[]
+  authSessions                AuthSession[]
+
+  @@map("users")
+}
+
+model InvestorProfile {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName String
+  lastName  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("investor_profiles")
+}
+
+/// Email-ownership challenge: 6-digit code, 10-minute lifetime, 5 attempts,
+/// 60s resend cooldown, max 5 resends/hour. Only a keyed HMAC of the code is
+/// stored; resends rotate code/verifier/timestamps; success consumes it.
+model EmailVerificationChallenge {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// HMAC-SHA-256(key=EMAIL_VERIFICATION_HMAC_SECRET, "<challengeId>.<code>")
+  codeHmac  String
+  expiresAt DateTime
+  /// Set on successful verification (code is single-use).
+  consumedAt DateTime?
+  /// Set when attempts are exhausted (code becomes permanently unusable).
+  revokedAt DateTime?
+  attemptCount          Int       @default(0)
+  resendCount           Int       @default(0)
+  resendWindowStartedAt DateTime  @default(now())
+  lastSentAt            DateTime  @default(now())
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("email_verification_challenges")
+}
+
+/// Server-side session: absolute 7-day lifetime, 24-hour sliding idle window,
+/// revocable. Reuse of an old refresh credential revokes the whole session.
+model AuthSession {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @db.Uuid
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now())
+  lastUsedAt    DateTime  @default(now())
+  /// Absolute expiry: createdAt + REFRESH_TOKEN_TTL_SECONDS (7 days).
+  expiresAt     DateTime
+  /// Sliding idle expiry: lastUsedAt + REFRESH_IDLE_TTL_SECONDS (24 hours).
+  idleExpiresAt DateTime
+  revokedAt     DateTime?
+  revokeReason  String?
+
+  refreshTokens RefreshToken[]
+
+  @@index([userId])
+  @@map("auth_sessions")
+}
+
+/// One refresh credential per rotation hop. Raw token never stored —
+/// tokenHash = SHA-256(raw). On success the token is marked used and chained
+/// to its replacement via replacedByTokenId.
+model RefreshToken {
+  id        String      @id @default(uuid()) @db.Uuid
+  sessionId String      @db.Uuid
+  session   AuthSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  /// SHA-256 hex of the raw opaque refresh credential. Never the token itself.
+  tokenHash String      @unique
+  createdAt DateTime    @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+  revokedAt DateTime?
+  replacedByTokenId String? @db.Uuid
+
+  @@index([sessionId])
+  @@map("refresh_tokens")
 }
