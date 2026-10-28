@@ -13,8 +13,8 @@ async function bootstrap(): Promise<void> {
   await app.listen(port, '0.0.0.0');
 
   new Logger('Bootstrap').log(
-    `Starfetch API — Phase 2A foundation listening on port ${port}. ` +
-      `Authentication and business endpoints are intentionally NOT implemented in this phase.`,
+    `Starfetch API — Phase 2B authentication & identity listening on port ${port}. ` +
+      `Business surfaces beyond auth/identity remain intentionally NOT implemented.`,
   );
 }
 

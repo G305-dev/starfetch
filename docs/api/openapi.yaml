@@ -2,28 +2,26 @@ openapi: 3.0.3
 
 info:
   title: Starfetch Investment Limited — Platform API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Canonical API contract for the Starfetch platform (one API serving the public
     website, investor web portal, staff/admin portal, and the future Android/iOS
     React Native clients).
 
-    **Current scope: PHASE 2A — BACKEND FOUNDATION ONLY.**
-    This file currently contains only contracts that are safe to establish now:
-    API metadata, the health endpoint, the common success/error envelope and the
-    request-ID convention.
+    **Current scope: IMPLEMENTED — PHASE 2A foundation + PHASE 2B authentication
+    & identity.** Contracts below match the running implementation exactly:
+    health, registration, email verification, login, refresh rotation, logout,
+    and `/me`. No other business endpoints exist yet.
 
-    The Phase-1 contract draft (`STARFETCH-API-CONTRACT-DRAFT.md`) remains the
-    design source for business endpoints (auth, profiles, applications,
-    documents, products, portfolio, transactions, statements, staff). Those are
-    incorporated here **one feature at a time, only after contract approval in
-    their implementation phases** — never silently, and unresolved items
-    (D-08 state map, D-09 application semantics, document vocabulary,
-    business/compliance fields) are never frozen into this document early.
+    Business surfaces (applications, documents/KYC, products, portfolio,
+    transactions, statements, staff tooling) are incorporated **one feature at
+    a time, only after contract approval in their implementation phases** —
+    never silently. Open decisions D-08 / D-09 and document vocabulary remain
+    OPEN and are not presumed anywhere in this document.
 
     Change control: no unilateral breaking changes; breaking changes require a
     coordinated version/change decision by David and Emmanuel.
-  x-status: PHASE-2A-FOUNDATION
+  x-status: PHASE-2B-AUTH-IDENTITY
   contact:
     name: Starfetch Engineering (David — backend; Emmanuel — frontend/mobile)
 
@@ -34,6 +32,10 @@ servers:
 tags:
   - name: System
     description: Service availability and operational endpoints
+  - name: Auth
+    description: Phase 2B authentication & identity (client-neutral core)
+  - name: Me
+    description: Current authenticated user
 
 paths:
   /health:
@@ -43,9 +45,8 @@ paths:
       operationId: getHealth
       summary: Service health check
       description: |
-        Public availability/integrity check used for the Day-3 integration gate
-        and operations probing. Requires no authentication.
-        The response deliberately excludes environment values, database details,
+        Public availability/integrity check. Requires no authentication. The
+        response deliberately excludes environment values, database details,
         credentials, and server internals.
       responses:
         "200":
@@ -66,14 +67,420 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      operationId: registerInvestor
+      summary: Register an investor account
+      description: |
+        Creates **User + InvestorProfile + EmailVerificationChallenge**
+        atomically (single transaction) with role `INVESTOR`. Registration
+        NEVER issues a session, access token or refresh credential and NEVER
+        marks the email verified — the client proceeds to email verification.
+
+        Field contract (D-06 v1 baseline): exactly `firstName`, `lastName`,
+        `email`, `password`. `confirmPassword` is frontend-only; any additional
+        field (including `confirmPassword` or `phone`) is rejected by the
+        global validation pipeline.
+
+        Duplicate policy: `email` is stored in display form; uniqueness is
+        enforced on `normalizedEmail` (trim + lowercase). Duplicate
+        registrations return the same safe `CONFLICT` error without
+        distinguishing verified vs unverified existing accounts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Account created; verification code sent via email provider.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterResponse"
+              example:
+                data:
+                  userId: "8c1c6f42-6d3e-4a7d-9d4c-1a2b3c4d5e6f"
+                  verificationId: "5a4b3c2d-1e2f-4a5b-9c8d-7e6f5a4b3c2d"
+                  email: "u***@example.com"
+                  emailVerified: false
+                  nextAction: "VERIFY_EMAIL"
+                meta:
+                  requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "429":
+          $ref: "#/components/responses/RateLimitError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /auth/email/verify:
+    post:
+      tags:
+        - Auth
+      operationId: verifyEmail
+      summary: Verify email ownership with the 6-digit code
+      description: |
+        Confirms email ownership. Codes are 6 numeric digits from a CSPRNG,
+        live 10 minutes, allow 5 attempts, and are single-use; successful
+        verification consumes the challenge and sets `users.emailVerifiedAt`
+        atomically. No session is created — the client proceeds to login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyEmailRequest"
+      responses:
+        "200":
+          description: Email verified.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyEmailResponse"
+              example:
+                data:
+                  emailVerified: true
+                  nextAction: "LOGIN"
+                meta:
+                  requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+        "400":
+          description: |
+            `EMAIL_VERIFICATION_INVALID` (wrong code) or
+            `EMAIL_VERIFICATION_EXPIRED` (past 10-minute lifetime).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Unknown `verificationId` (`EMAIL_VERIFICATION_INVALID`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Code already consumed (`EMAIL_VERIFICATION_CONSUMED`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Attempt cap reached (`EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED`) or endpoint throttled (`RATE_LIMITED`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /auth/email/resend:
+    post:
+      tags:
+        - Auth
+      operationId: resendVerificationEmail
+      summary: Request a fresh verification code
+      description: |
+        Keeps the same `verificationId` while rotating code/verifier/expiry —
+        the previous code is immediately invalidated. Enforces a 60-second
+        cooldown (`RESEND_COOLDOWN`, with `error.context.retryAfterSeconds`)
+        and a 5-resends-per-hour window (`RESEND_LIMIT_EXCEEDED`).
+        Never returns the code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResendVerificationRequest"
+      responses:
+        "200":
+          description: New code issued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResendVerificationResponse"
+              example:
+                data:
+                  verificationId: "5a4b3c2d-1e2f-4a5b-9c8d-7e6f5a4b3c2d"
+                  email: "u***@example.com"
+                  expiresInSeconds: 600
+                  resendInSeconds: 60
+        "404":
+          description: Unknown `verificationId` (`EMAIL_VERIFICATION_INVALID`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Email already verified (`CONFLICT`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Cooldown / hourly limit (`RESEND_COOLDOWN`, `RESEND_LIMIT_EXCEEDED`) or throttled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      operationId: login
+      summary: Sign in with email + password
+      description: |
+        Email is normalized (trim + lowercase) for lookup. Unknown email and
+        wrong password produce the IDENTICAL public error (`401
+        INVALID_CREDENTIALS`, equalized verification timing). A verified
+        account is required — otherwise `403 EMAIL_NOT_VERIFIED` with safe
+        context (`verificationId`, masked email) and NO session.
+
+        On success (browser clients): the refresh credential is set as an
+        HttpOnly `Set-Cookie` (`sf_refresh`; `__Host-sf_refresh` where the
+        host-prefixed name is valid) and a readable signed CSRF cookie
+        (`sf_csrf`). The refresh credential NEVER appears in the JSON body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Signed in; session established.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/X-Request-Id"
+            Set-Cookie:
+              description: |
+                `sf_refresh=<credential>; HttpOnly; SameSite=Lax; Path=/` (+`Secure`
+                outside local development) and `sf_csrf=<signed-token>;
+                SameSite=Lax; Path=/` (readable for the double-submit header).
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+              example:
+                data:
+                  accessToken: "eyJhbGciOiJIUzI1NiIs..."
+                  expiresInSeconds: 900
+                  user:
+                    id: "8c1c6f42-6d3e-4a7d-9d4c-1a2b3c4d5e6f"
+                    firstName: "David"
+                    lastName: "Example"
+                    email: "user@example.com"
+                    emailVerified: true
+                    role: "INVESTOR"
+                meta:
+                  requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+        "401":
+          description: Identical error for unknown email and wrong password.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: INVALID_CREDENTIALS
+                  message: We could not sign you in with those details.
+                  requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+        "403":
+          description: Email ownership not yet verified (no session issued).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: EMAIL_NOT_VERIFIED
+                  message: Please verify your email address before signing in.
+                  context:
+                    verificationId: "5a4b3c2d-1e2f-4a5b-9c8d-7e6f5a4b3c2d"
+                    email: "u***@example.com"
+                  requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+        "429":
+          $ref: "#/components/responses/RateLimitError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /auth/refresh:
+    post:
+      tags:
+        - Auth
+      operationId: refreshSession
+      summary: Rotate the refresh credential and obtain a new access token
+      description: |
+        Requires the HttpOnly refresh cookie **and** the readable CSRF cookie
+        echoed in the `X-CSRF-Token` header (signed double-submit, bound to the
+        session), plus Origin/Referer allowlist policy for browser clients.
+
+        On success the refresh credential is ROTATED (previous credential is
+        permanently unusable), the idle window slides forward, and a new CSRF
+        token + access JWT are issued. Presenting an already-rotated/used/
+        revoked credential triggers **reuse detection: the entire session is
+        revoked** and every credential tied to it dies (sign-in required).
+      parameters:
+        - $ref: "#/components/parameters/X-CSRF-Token"
+        - name: Cookie
+          in: header
+          required: true
+          schema:
+            type: string
+          example: "sf_refresh=<opaque>; sf_csrf=<sessionId>.<token>.<hmac>"
+      responses:
+        "200":
+          description: Rotated; new access token issued (new cookies set).
+          headers:
+            Set-Cookie:
+              description: Rotated `sf_refresh` + `sf_csrf` cookies.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshResponse"
+        "401":
+          description: Missing/invalid/expired/reused credential or expired/idle/revoked session (`UNAUTHENTICATED`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: CSRF mismatch (`CSRF_VALIDATION_FAILED`) or untrusted browser origin (`FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          $ref: "#/components/responses/RateLimitError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      operationId: logout
+      summary: Sign out, revoking the server-side session
+      description: |
+        Requires refresh + CSRF pair (same rules as refresh). Revokes the
+        session server-side (`revokeReason = USER_LOGOUT`), revokes the current
+        credential, and clears both cookies. Repeated logout is idempotent and
+        returns the same success without leaking state.
+      parameters:
+        - $ref: "#/components/parameters/X-CSRF-Token"
+        - name: Cookie
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Logged out; cookies cleared.
+          headers:
+            Set-Cookie:
+              description: Expiring `sf_refresh` and `sf_csrf` cookies.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutResponse"
+        "403":
+          description: CSRF mismatch or untrusted origin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          $ref: "#/components/responses/RateLimitError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /me:
+    get:
+      tags:
+        - Me
+      operationId: getCurrentUser
+      summary: Current authenticated user
+      description: |
+        Requires `Authorization: Bearer <access-token>`. Returns the approved
+        safe projection only — never password hashes, `normalizedEmail`,
+        session/token hashes, verification verifiers or internal secrets.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+              example:
+                data:
+                  id: "8c1c6f42-6d3e-4a7d-9d4c-1a2b3c4d5e6f"
+                  firstName: "David"
+                  lastName: "Example"
+                  email: "user@example.com"
+                  emailVerified: true
+                  role: "INVESTOR"
+                meta:
+                  requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+        "401":
+          description: Missing/invalid/expired token or malformed claims.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Short-lived HS256 access JWT (15 minutes). Claims are minimal:
+        `sub` (user id), `role`, `sid` (session id), `iat`, `exp`. Tokens never
+        carry KYC/phone/financial/portfolio/document data.
+
+  parameters:
+    X-CSRF-Token:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      description: |
+        Signed double-submit CSRF token — must equal the readable `sf_csrf`
+        cookie value (`<sessionId>.<token>.<HMAC-SHA-256>`) and is bound to the
+        authenticated session. Rotated on every successful refresh.
+      schema:
+        type: string
+
   headers:
     X-Request-Id:
       description: |
         Correlation identifier for the request. A client may supply a safe value
         (`x-request-id` request header, 8–100 chars of `[A-Za-z0-9._-]`); it is
         echoed back. Otherwise the server generates one (UUID). Present on every
-        response, including errors.
+        response, including errors — also for `/` and unknown paths.
       schema:
         type: string
         example: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
@@ -112,11 +519,170 @@ components:
         - data
         - meta
 
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 60
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 60
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        password:
+          type: string
+          minLength: 15
+          maxLength: 128
+          description: Passphrase-friendly — NO composition rules (no required symbols/case/digits).
+      required:
+        - firstName
+        - lastName
+        - email
+        - password
+
+    RegisterResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            userId: { type: string, format: uuid }
+            verificationId: { type: string, format: uuid }
+            email:
+              type: string
+              description: Masked email (e.g. `u***@example.com`).
+            emailVerified: { type: boolean, enum: [false] }
+            nextAction: { type: string, enum: [VERIFY_EMAIL] }
+          required: [userId, verificationId, email, emailVerified, nextAction]
+        meta:
+          $ref: "#/components/schemas/Meta"
+      required: [data, meta]
+
+    VerifyEmailRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        verificationId: { type: string, format: uuid }
+        code:
+          type: string
+          pattern: "^[0-9]{6}$"
+      required: [verificationId, code]
+
+    VerifyEmailResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            emailVerified: { type: boolean, enum: [true] }
+            nextAction: { type: string, enum: [LOGIN] }
+          required: [emailVerified, nextAction]
+        meta:
+          $ref: "#/components/schemas/Meta"
+      required: [data, meta]
+
+    ResendVerificationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        verificationId: { type: string, format: uuid }
+      required: [verificationId]
+
+    ResendVerificationResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            verificationId: { type: string, format: uuid }
+            email: { type: string, description: Masked email. }
+            expiresInSeconds: { type: integer, example: 600 }
+            resendInSeconds: { type: integer, example: 60 }
+          required: [verificationId, email, expiresInSeconds, resendInSeconds]
+        meta:
+          $ref: "#/components/schemas/Meta"
+      required: [data, meta]
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 320 }
+        password: { type: string, minLength: 1, maxLength: 128 }
+      required: [email, password]
+
+    SafeUser:
+      type: object
+      description: Public projection — never includes hashes or normalizedEmail.
+      properties:
+        id: { type: string, format: uuid }
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: string }
+        emailVerified: { type: boolean }
+        role: { type: string, enum: [INVESTOR, STAFF, ADMIN] }
+      required: [id, firstName, lastName, email, emailVerified, role]
+
+    LoginResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            accessToken: { type: string, description: HS256 JWT, 15-minute TTL. }
+            expiresInSeconds: { type: integer, example: 900 }
+            user:
+              $ref: "#/components/schemas/SafeUser"
+          required: [accessToken, expiresInSeconds, user]
+        meta:
+          $ref: "#/components/schemas/Meta"
+      required: [data, meta]
+
+    RefreshResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            accessToken: { type: string }
+            expiresInSeconds: { type: integer, example: 900 }
+          required: [accessToken, expiresInSeconds]
+        meta:
+          $ref: "#/components/schemas/Meta"
+      required: [data, meta]
+
+    LogoutResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            loggedOut: { type: boolean, enum: [true] }
+          required: [loggedOut]
+        meta:
+          $ref: "#/components/schemas/Meta"
+      required: [data, meta]
+
+    MeResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/SafeUser"
+        meta:
+          $ref: "#/components/schemas/Meta"
+      required: [data, meta]
+
     Error:
       type: object
       description: |
-        Stable error envelope (PROPOSED contract convention). `message` is always
-        safe for clients; internals are never exposed.
+        Stable error envelope. `message` is always safe for clients; internals
+        are never exposed.
       properties:
         code:
           $ref: "#/components/schemas/ErrorCode"
@@ -127,6 +693,12 @@ components:
           additionalProperties:
             type: string
           description: Per-field validation details (present for VALIDATION_FAILED).
+        context:
+          type: object
+          description: |
+            Safe, client-presentable extras (e.g. EMAIL_NOT_VERIFIED carries
+            `{ verificationId, email }` (masked); 429 classes may carry
+            `{ retryAfterSeconds }`). Never internals.
         requestId:
           type: string
       required:
@@ -145,18 +717,31 @@ components:
     ErrorCode:
       type: string
       description: |
-        Foundation error-code vocabulary. The complete business catalogue is
-        added with later approved endpoints.
+        Implemented error-code vocabulary (foundation + Phase 2B
+        authentication). The business catalogue arrives with later endpoints.
       enum:
-        - VALIDATION_FAILED # 400/422 — request data failed validation; `fields` populated
-        - UNAUTHENTICATED   # 401 — credentials missing/invalid/expired (later phases)
-        - FORBIDDEN         # 403 — role/ownership check failed (later phases)
-        - NOT_FOUND         # 404 — resource absent or not visible to this principal
-        - CONFLICT          # 409 — illegal state for the operation (later phases)
-        - FILE_TOO_LARGE    # 413 — upload exceeds size cap (later document phases)
-        - UNSUPPORTED_FILE_TYPE # 415 — upload MIME rejected (later document phases)
-        - RATE_LIMITED      # 429 — throttled (later phases)
-        - INTERNAL_ERROR    # 500 — unexpected; never leaks internals
+        # Foundation
+        - VALIDATION_FAILED                 # 400 — request data failed validation; `fields` populated
+        - UNAUTHENTICATED                   # 401 — missing/invalid/expired access or session credential
+        - FORBIDDEN                         # 403 — policy failure (e.g. untrusted browser origin)
+        - NOT_FOUND                         # 404 — resource absent
+        - CONFLICT                          # 409 — e.g. duplicate account, already verified
+        - FILE_TOO_LARGE                    # 413 — reserved for later document phases
+        - UNSUPPORTED_FILE_TYPE             # 415 — reserved for later document phases
+        - RATE_LIMITED                      # 429 — endpoint throttled
+        - INTERNAL_ERROR                    # 500 — unexpected; never leaks internals
+        # Authentication (Phase 2B)
+        - INVALID_CREDENTIALS               # 401 — identical error for unknown email/wrong password
+        - EMAIL_NOT_VERIFIED                # 403 — verification required before login
+        - EMAIL_VERIFICATION_INVALID        # 400/404 — wrong code or unknown verificationId
+        - EMAIL_VERIFICATION_EXPIRED        # 400 — past the 10-minute lifetime
+        - EMAIL_VERIFICATION_CONSUMED       # 409 — code already used (single-use)
+        - EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED # 429 — 5-attempt cap reached; code killed
+        - RESEND_COOLDOWN                   # 429 — 60-second resend cooldown active
+        - RESEND_LIMIT_EXCEEDED             # 429 — 5 resends per hour limit
+        - CSRF_VALIDATION_FAILED            # 403 — missing/mismatched signed CSRF pair
+        - SESSION_INVALID                   # reserved — session policy failure
+        - EMAIL_DELIVERY_FAILED             # 500 — verification email transport failed
 
   responses:
     InternalError:
@@ -174,13 +759,51 @@ components:
               message: An unexpected error occurred.
               requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
 
+    ValidationError:
+      description: Request failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            error:
+              code: VALIDATION_FAILED
+              message: One or more fields require attention.
+              fields:
+                password: password must be at least 15 characters
+              requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+
+    ConflictError:
+      description: Safe conflict (e.g. duplicate account — no account-state leakage).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            error:
+              code: CONFLICT
+              message: An account with this email address already exists.
+              requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+
+    RateLimitError:
+      description: Throttled (safe envelope with retry hint).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            error:
+              code: RATE_LIMITED
+              message: Too many requests — please try again later.
+              context:
+                retryAfterSeconds: 540
+              requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+
 x-conventions:
   success-envelope:
     description: |
       Successful responses use `{ "data": ..., "meta": { "requestId": ... } }`.
-      Additional `meta` members (e.g., pagination: page/pageSize/total; demo
-      source markers such as `source: "staging_seed"`) are introduced by the
-      relevant endpoint contracts in later phases.
+      Additional `meta` members are introduced by later endpoint contracts.
   request-id:
     description: |
       Every request has a correlation ID: client-supplied safe `x-request-id`
@@ -188,12 +811,21 @@ x-conventions:
       `x-request-id` response header, `meta.requestId`, and `error.requestId`.
   authentication:
     description: |
-      NOT IMPLEMENTED in Phase 2A. Approved direction (recorded in Phase-1
-      decisions): short-lived access credential + rotating/revocable refresh
-      credential; web via httpOnly/Secure cookie strategy where appropriate;
-      Android/iOS via bearer credential with refresh material in
-      platform-secure storage. Final expiry times, credential format and
-      CSRF/session mechanics will be specified here before auth implementation.
+      IMPLEMENTED (Phase 2B) per the approved architectural direction:
+      short-lived (15 min) HS256 JWT access credential (`sub`, `role`, `sid`)
+      + opaque 384-bit refresh credential (7-day absolute / 24-hour idle),
+      server-side sessions with single-use ROTATION and reuse detection
+      (presenting a rotated credential revokes the session).
+      Web transport: HttpOnly refresh cookie + readable signed session-bound
+      CSRF cookie, `X-CSRF-Token` double-submit, Origin/Referer policy, CORS
+      allowlist (credentials enabled only with an explicit allowlist; never "*").
+      Core auth/session services are client-neutral so the future mobile app
+      uses the same model with platform-secure storage instead of cookies.
+  throttling:
+    description: |
+      Server-side fixed-window throttling on authentication-sensitive routes
+      (register/login/verify/resend/refresh/logout) via a replaceable limiter
+      port (in-memory MVP now; distributed store can replace it later).
   open-decisions:
     description: |
       D-08 (application status/state-transition map) — OPEN.

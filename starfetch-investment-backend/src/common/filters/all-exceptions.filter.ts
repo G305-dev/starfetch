@@ -15,6 +15,8 @@ interface ErrorEnvelope {
     code: string;
     message: string;
     fields?: Record<string, string>;
+    /** Safe, client-presentable extra context (e.g. EMAIL_NOT_VERIFIED hint). */
+    context?: Record<string, unknown>;
     requestId: string;
   };
 }
@@ -23,6 +25,8 @@ interface ErrorEnvelope {
  * Centralized safe error handling.
  * Guarantees the stable error envelope, attaches the request ID, and never
  * leaks stack traces, secrets, database errors, filesystem paths or internals.
+ * HttpExceptions may carry an explicit `{ code, message, context? }` body to
+ * use the safe, curated API error codes beyond the status-code defaults.
  */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -38,17 +42,22 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let code: string = ERROR_CODES.INTERNAL_ERROR;
     let message = 'An unexpected error occurred.';
     let fields: Record<string, string> | undefined;
+    let context: Record<string, unknown> | undefined;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       code = errorCodeForStatus(status);
 
-      if (status === HttpStatus.BAD_REQUEST) {
-        code = ERROR_CODES.VALIDATION_FAILED;
+      const explicit = extractExplicitCode(exception);
+      if (explicit.code) code = explicit.code;
+      if (explicit.context) context = explicit.context;
+
+      if (status === HttpStatus.BAD_REQUEST && !explicit.message) {
+        code = explicit.code ?? ERROR_CODES.VALIDATION_FAILED;
         fields = toFieldErrors(exception);
         message = 'One or more fields require attention.';
       } else if (status < HttpStatus.INTERNAL_SERVER_ERROR) {
-        message = safeClientMessage(exception);
+        message = explicit.message ?? safeClientMessage(exception);
       }
       // 5xx responses keep the generic message — internals are logged, never sent.
     }
@@ -61,10 +70,38 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     const body: ErrorEnvelope = {
-      error: { code, message, ...(fields ? { fields } : {}), requestId },
+      error: {
+        code,
+        message,
+        ...(fields ? { fields } : {}),
+        ...(context ? { context } : {}),
+        requestId,
+      },
     };
     response.status(status).json(body);
   }
+}
+
+/**
+ * Pulls an explicitly curated `{ code, message, context }` payload out of an
+ * HttpException body, when the application code provided one. Only object
+ * bodies shaped like our curated contract are honoured.
+ */
+function extractExplicitCode(exception: HttpException): {
+  code?: string;
+  message?: string;
+  context?: Record<string, unknown>;
+} {
+  const response = exception.getResponse();
+  if (!response || typeof response !== 'object') return {};
+  const body = response as { code?: unknown; message?: unknown; context?: unknown };
+  const code = typeof body.code === 'string' ? body.code : undefined;
+  const message = typeof body.message === 'string' ? body.message : undefined;
+  const context =
+    body.context && typeof body.context === 'object'
+      ? (body.context as Record<string, unknown>)
+      : undefined;
+  return { code, message, context };
 }
 
 /** Safe 4xx message without leaking server internals. */
