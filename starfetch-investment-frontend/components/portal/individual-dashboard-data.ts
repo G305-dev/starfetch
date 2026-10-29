@@ -27,7 +27,7 @@ export const individualDashboardUser = {
 };
 
 export const accountVerification = {
-  progress: 60,
+  progress: 10,
   status: "In Progress",
   title: "Complete your account verification",
   description: "Finish your KYC to start investing and unlock all features.",
@@ -63,7 +63,7 @@ export type IndividualQuickAction = {
 };
 
 export const individualQuickActions: IndividualQuickAction[] = [
-  { label: "Explore Investment Products", href: "/services", icon: BriefcaseBusiness, primary: true },
+  { label: "Create an Investment", href: "/products", icon: BriefcaseBusiness, primary: true },
   { label: "Fund Your Account", href: "/open-account", icon: WalletCards },
   { label: "Download Statements", href: "/dashboard#statements", icon: FileDown },
   { label: "Upload Documents", href: "/dashboard#documents", icon: FolderUp },
