@@ -41,7 +41,7 @@ export const portalNavigation: PortalNavigationItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Investments", href: "/investments", icon: LineChart },
   { label: "Transactions", href: "/transactions", icon: ArrowUpRight },
-  { label: "Notifications", href: "/dashboard#notifications", icon: Bell },
+  { label: "Products", href: "/products", icon: BriefcaseBusiness },
   { label: "Profile", href: "/profile", icon: UserRound },
   { label: "Settings", href: "/dashboard#settings", icon: Settings },
 ];
