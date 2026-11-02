@@ -1,11 +1,6 @@
 export type JointPerformanceFilter = "1M" | "3M" | "6M" | "YTD" | "1Y" | "All";
 
 /** Frontend-only mock data for the joint investor dashboard. */
-export const jointAccount = {
-  accountLabel: "Your Starfetch Investment Limited Joint Investment Account",
-  accountNumber: "JIA-2026-0482",
-};
-
 export const jointAccountHolders = [
   { id: "applicant-1", name: "Amara Okeke", firstName: "Amara", initials: "AO", role: "Joint Account Holder" },
   { id: "applicant-2", name: "Daniel Musa", firstName: "Daniel", initials: "DM", role: "Joint Account Holder" },

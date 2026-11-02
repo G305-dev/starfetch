@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, BadgeCheck, Banknote, CalendarDays, CheckCircle2, ChevronRight, CircleAlert, Clock3, FileText, Info, Landmark, LockKeyhole, Mail, Phone, Save, ShieldCheck, UserRound, X, type LucideIcon } from "lucide-react";
 import {
@@ -18,6 +18,8 @@ import {
   type ProfileSectionStatus,
   type ProfileVerificationStatus,
 } from "./profile-data";
+import { getMyProfile, getSafeErrorMessage, isApiError, updateMyProfile } from "@/lib/api/client";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 const sectionStatusClasses: Record<ProfileSectionStatus, string> = {
   Completed: "bg-[#e1f7e7] text-[#16743d]",
@@ -65,7 +67,7 @@ function StepHeading({ step }: { step: IndividualProfileStep }) {
 
 function PersonalInformationStep({ profile, update }: { profile: IndividualProfile; update: (field: keyof IndividualProfile["personalInformation"], value: string) => void }) {
   const data = profile.personalInformation;
-  return <div className="grid gap-4 sm:grid-cols-2"><InputField label="Title" required><select value={data.title} onChange={(event) => update("title", event.target.value)} className={fieldClassName()}>{profileSelectOptions.titles.map((item) => <option key={item}>{item}</option>)}</select></InputField><InputField label="First Name" required><input value={data.firstName} onChange={(event) => update("firstName", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Middle Name"><input value={data.middleName} onChange={(event) => update("middleName", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Surname" required><input value={data.surname} onChange={(event) => update("surname", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Date of Birth" required><input type="date" value={data.dateOfBirth} onChange={(event) => update("dateOfBirth", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Gender" required><select value={data.gender} onChange={(event) => update("gender", event.target.value)} className={fieldClassName()}>{profileSelectOptions.genders.map((item) => <option key={item}>{item}</option>)}</select></InputField><InputField label="Nationality" required><input value={data.nationality} onChange={(event) => update("nationality", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Country of Birth" required><input value={data.countryOfBirth} onChange={(event) => update("countryOfBirth", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Residential Address" required><textarea value={data.residentialAddress} onChange={(event) => update("residentialAddress", event.target.value)} className={fieldClassName("min-h-24 py-3")} /></InputField><InputField label="State of Residence" required><input value={data.stateOfResidence} onChange={(event) => update("stateOfResidence", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Country of Tax Residence" required><input value={data.countryOfTaxResidence} onChange={(event) => update("countryOfTaxResidence", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Email Address" required><input type="email" value={data.emailAddress} onChange={(event) => update("emailAddress", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Mobile Phone" required><input type="tel" value={data.mobilePhone} onChange={(event) => update("mobilePhone", event.target.value)} className={fieldClassName()} /></InputField></div>;
+  return <div className="grid gap-4 sm:grid-cols-2"><InputField label="Title" required><select value={data.title} onChange={(event) => update("title", event.target.value)} className={fieldClassName()}>{profileSelectOptions.titles.map((item) => <option key={item}>{item}</option>)}</select></InputField><InputField label="First Name" required><input value={data.firstName} onChange={(event) => update("firstName", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Middle Name"><input value={data.middleName} onChange={(event) => update("middleName", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Surname" required><input value={data.surname} onChange={(event) => update("surname", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Date of Birth" required><input type="date" value={data.dateOfBirth} onChange={(event) => update("dateOfBirth", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Gender" required><select value={data.gender} onChange={(event) => update("gender", event.target.value)} className={fieldClassName()}>{profileSelectOptions.genders.map((item) => <option key={item}>{item}</option>)}</select></InputField><InputField label="Nationality" required><input value={data.nationality} onChange={(event) => update("nationality", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Country of Birth" required><input value={data.countryOfBirth} onChange={(event) => update("countryOfBirth", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Residential Address" required><textarea value={data.residentialAddress} onChange={(event) => update("residentialAddress", event.target.value)} className={fieldClassName("min-h-24 py-3")} /></InputField><InputField label="State of Residence" required><input value={data.stateOfResidence} onChange={(event) => update("stateOfResidence", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Country of Tax Residence" required><input value={data.countryOfTaxResidence} onChange={(event) => update("countryOfTaxResidence", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Email Address" description="Your verified email address cannot be changed here." required><input type="email" value={data.emailAddress} readOnly aria-readonly="true" className={fieldClassName("cursor-not-allowed bg-star-50 text-star-muted")} /></InputField><InputField label="Mobile Phone" required><input type="tel" value={data.mobilePhone} onChange={(event) => update("mobilePhone", event.target.value)} className={fieldClassName()} /></InputField></div>;
 }
 
 function IdentityVerificationStep({ profile, update, updateDocument }: { profile: IndividualProfile; update: (field: keyof IndividualProfile["identityVerification"], value: string) => void; updateDocument: (id: IndividualProfile["identityVerification"]["documents"][number]["id"], status: MockDocumentStatus) => void }) {
@@ -110,12 +112,43 @@ function CompletionChecklist({ profile }: { profile: IndividualProfile }) {
 
 export function IndividualProfileContent() {
   const router = useRouter();
+  const { status: authStatus, invalidateSession } = useAuth();
   const [profile, setProfile] = useState<IndividualProfile>(initialProfile);
   const [activeStep, setActiveStep] = useState<IndividualProfileStepId>("personal-information");
   const [notice, setNotice] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [accountProfileLoading, setAccountProfileLoading] = useState(false);
+  const [accountProfileSaving, setAccountProfileSaving] = useState(false);
   const [bankSaved, setBankSaved] = useState(false);
   const completion = useMemo(() => getIndividualProfileCompletion(profile), [profile]);
   const currentStep = individualProfileSteps.find((step) => step.id === activeStep) ?? individualProfileSteps[0];
+
+  useEffect(() => {
+    if (authStatus !== "authenticated") return;
+    let active = true;
+    setAccountProfileLoading(true);
+    setProfileError(null);
+    void getMyProfile().then((accountProfile) => {
+      if (!active) return;
+      setProfile((current) => ({
+        ...current,
+        personalInformation: {
+          ...current.personalInformation,
+          firstName: accountProfile.firstName,
+          surname: accountProfile.lastName,
+          emailAddress: accountProfile.email,
+          mobilePhone: accountProfile.phone,
+        },
+      }));
+    }).catch((error: unknown) => {
+      if (!active) return;
+      if (isApiError(error) && error.code === "UNAUTHENTICATED") invalidateSession();
+      setProfileError(getSafeErrorMessage(error));
+    }).finally(() => {
+      if (active) setAccountProfileLoading(false);
+    });
+    return () => { active = false; };
+  }, [authStatus, invalidateSession]);
 
   const updatePersonal = (field: keyof IndividualProfile["personalInformation"], value: string) => setProfile((current) => ({ ...current, personalInformation: { ...current.personalInformation, [field]: value } }));
   const updateIdentity = (field: keyof IndividualProfile["identityVerification"], value: string) => setProfile((current) => ({ ...current, identityVerification: { ...current.identityVerification, [field]: value } }));
@@ -126,18 +159,51 @@ export function IndividualProfileContent() {
   const updateRisk = (field: keyof IndividualProfile["investmentRiskProfile"], value: string) => setProfile((current) => ({ ...current, investmentRiskProfile: { ...current.investmentRiskProfile, [field]: value } }));
   const togglePreferredProduct = (product: string) => setProfile((current) => ({ ...current, investmentRiskProfile: { ...current.investmentRiskProfile, preferredProducts: current.investmentRiskProfile.preferredProducts.includes(product) ? current.investmentRiskProfile.preferredProducts.filter((item) => item !== product) : [...current.investmentRiskProfile.preferredProducts, product] } }));
 
-  const saveChanges = () => {
+  const saveChanges = async () => {
+    setProfileError(null);
+    if (activeStep === "personal-information") {
+      setAccountProfileSaving(true);
+      try {
+        // This is intentionally the only profile payload sent to the backend.
+        const savedProfile = await updateMyProfile({
+          firstName: profile.personalInformation.firstName.trim(),
+          lastName: profile.personalInformation.surname.trim(),
+          phone: profile.personalInformation.mobilePhone.trim(),
+        });
+        setProfile((current) => ({
+          ...current,
+          personalInformation: {
+            ...current.personalInformation,
+            firstName: savedProfile.firstName,
+            surname: savedProfile.lastName,
+            emailAddress: savedProfile.email,
+            mobilePhone: savedProfile.phone,
+          },
+        }));
+        setNotice("Your personal profile details have been saved.");
+        return true;
+      } catch (error) {
+        if (isApiError(error) && error.code === "UNAUTHENTICATED") invalidateSession();
+        setProfileError(getSafeErrorMessage(error));
+        return false;
+      } finally {
+        setAccountProfileSaving(false);
+      }
+    }
+
     if (activeStep === "bank-details") setBankSaved(true);
-    setNotice(`${currentStep.title} was saved locally. No information was sent to a server.`);
+    setNotice(`${currentStep.title} remains frontend-only and was saved only for this visit.`);
+    return true;
   };
 
-  const continueProfile = () => {
+  const continueProfile = async () => {
     const currentStatus = getIndividualProfileSectionStatus(activeStep, profile);
     if (currentStatus !== "Completed") {
       setNotice(`Complete the required fields in ${currentStep.title} before continuing.`);
       return;
     }
-    saveChanges();
+    const saved = await saveChanges();
+    if (!saved) return;
     const currentIndex = individualProfileSteps.findIndex((step) => step.id === activeStep);
     if (currentIndex === individualProfileSteps.length - 1) {
       router.push("/dashboard");
@@ -147,6 +213,8 @@ export function IndividualProfileContent() {
     setActiveStep(nextIncomplete?.id ?? individualProfileSteps[currentIndex + 1].id);
   };
 
+  const accountRequestPending = accountProfileLoading || accountProfileSaving;
+
   let stepContent: React.ReactNode;
   if (activeStep === "personal-information") stepContent = <PersonalInformationStep profile={profile} update={updatePersonal} />;
   else if (activeStep === "identity-verification") stepContent = <IdentityVerificationStep profile={profile} update={updateIdentity} updateDocument={updateDocument} />;
@@ -155,5 +223,5 @@ export function IndividualProfileContent() {
   else if (activeStep === "pep-declaration") stepContent = <PepDeclarationStep profile={profile} update={updatePep} />;
   else stepContent = <InvestmentRiskStep profile={profile} update={updateRisk} toggleProduct={togglePreferredProduct} />;
 
-  return <main className="min-w-0"><div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]"><div className="min-w-0"><section><div className="flex items-start gap-4"><span className="mt-1 grid size-12 shrink-0 place-items-center rounded-lg bg-star-100 text-star-700"><UserRound size={25} aria-hidden="true" /></span><div><p className="text-xs font-extrabold uppercase tracking-[0.16em] text-star-700">SEC / KYC profile</p><h1 className="mt-1 font-display text-[clamp(2rem,3.5vw,3rem)] font-extrabold tracking-[-0.045em] text-star-900">Individual Profile</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-star-muted sm:text-base">Manage your personal information and SEC/KYC verification details.</p></div></div><div className="mt-5 flex gap-3 rounded-xl border border-[#d9eac8] bg-[linear-gradient(115deg,#f5faed_0%,#edf6e3_100%)] p-4"><Info size={22} className="mt-0.5 shrink-0 text-star-700" aria-hidden="true" /><div><h2 className="text-base font-extrabold text-star-900">SEC Profile Completion (6 Steps)</h2><p className="mt-1 text-sm leading-6 text-star-muted">Your regulatory profile information is grouped into six sections. Complete all required sections to keep your account verified and eligible for investment services.</p></div></div></section><StepNavigation activeStep={activeStep} profile={profile} onSelect={setActiveStep} />{notice ? <div role="status" className="mt-4 flex items-start justify-between gap-3 rounded-lg border border-[#cce7d0] bg-[#eff8f0] px-4 py-3 text-sm font-semibold leading-6 text-star-700"><span>{notice}</span><button type="button" onClick={() => setNotice(null)} aria-label="Dismiss message" className="-mr-1 -mt-1 grid size-7 shrink-0 place-items-center rounded hover:bg-white"><X size={16} aria-hidden="true" /></button></div> : null}<section className="mt-5 rounded-xl border border-star-200 bg-white p-5 shadow-[0_2px_12px_rgba(14,62,46,0.04)] sm:p-6" role="tabpanel" aria-labelledby={`profile-step-${activeStep}`}><StepHeading step={currentStep} /><div className="mt-6">{stepContent}</div><div className="mt-7 flex flex-col-reverse gap-3 border-t border-star-100 pt-5 sm:flex-row sm:justify-end"><button type="button" onClick={saveChanges} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-star-700 bg-white px-5 text-sm font-extrabold text-star-700 transition hover:bg-star-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2"><Save size={17} aria-hidden="true" />Save Changes</button><button type="button" onClick={continueProfile} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-star-700 px-5 text-sm font-extrabold text-white transition hover:bg-star-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Continue <ArrowRight size={17} aria-hidden="true" /></button></div></section></div><aside className="space-y-5 xl:pt-5"><ProfileStatusCard profile={profile} completion={completion} /><CompletionChecklist profile={profile} /></aside></div></main>;
+  return <main className="min-w-0"><div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]"><div className="min-w-0"><section><div className="flex items-start gap-4"><span className="mt-1 grid size-12 shrink-0 place-items-center rounded-lg bg-star-100 text-star-700"><UserRound size={25} aria-hidden="true" /></span><div><p className="text-xs font-extrabold uppercase tracking-[0.16em] text-star-700">SEC / KYC profile</p><h1 className="mt-1 font-display text-[clamp(2rem,3.5vw,3rem)] font-extrabold tracking-[-0.045em] text-star-900">Individual Profile</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-star-muted sm:text-base">Manage your personal information and SEC/KYC verification details.</p></div></div><div className="mt-5 flex gap-3 rounded-xl border border-[#d9eac8] bg-[linear-gradient(115deg,#f5faed_0%,#edf6e3_100%)] p-4"><Info size={22} className="mt-0.5 shrink-0 text-star-700" aria-hidden="true" /><div><h2 className="text-base font-extrabold text-star-900">SEC Profile Completion (6 Steps)</h2><p className="mt-1 text-sm leading-6 text-star-muted">Your regulatory profile information is grouped into six sections. Complete all required sections to keep your account verified and eligible for investment services.</p></div></div></section><StepNavigation activeStep={activeStep} profile={profile} onSelect={setActiveStep} />{accountProfileLoading ? <p role="status" className="mt-4 flex items-center gap-2 text-sm font-semibold text-star-muted"><Clock3 size={16} aria-hidden="true" />Loading your account contact details…</p> : null}{profileError ? <div role="alert" className="mt-4 flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold leading-6 text-red-700"><span>{profileError}</span><button type="button" onClick={() => setProfileError(null)} aria-label="Dismiss profile error" className="-mr-1 -mt-1 grid size-7 shrink-0 place-items-center rounded hover:bg-white"><X size={16} aria-hidden="true" /></button></div> : null}{notice ? <div role="status" className="mt-4 flex items-start justify-between gap-3 rounded-lg border border-[#cce7d0] bg-[#eff8f0] px-4 py-3 text-sm font-semibold leading-6 text-star-700"><span>{notice}</span><button type="button" onClick={() => setNotice(null)} aria-label="Dismiss message" className="-mr-1 -mt-1 grid size-7 shrink-0 place-items-center rounded hover:bg-white"><X size={16} aria-hidden="true" /></button></div> : null}<section className="mt-5 rounded-xl border border-star-200 bg-white p-5 shadow-[0_2px_12px_rgba(14,62,46,0.04)] sm:p-6" role="tabpanel" aria-labelledby={`profile-step-${activeStep}`}><StepHeading step={currentStep} /><div className="mt-6">{stepContent}</div><div className="mt-7 flex flex-col-reverse gap-3 border-t border-star-100 pt-5 sm:flex-row sm:justify-end"><button type="button" onClick={() => { void saveChanges(); }} disabled={accountRequestPending} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-star-700 bg-white px-5 text-sm font-extrabold text-star-700 transition hover:bg-star-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"><Save size={17} aria-hidden="true" />{accountProfileSaving ? "Saving…" : "Save Changes"}</button><button type="button" onClick={() => { void continueProfile(); }} disabled={accountRequestPending} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-star-700 px-5 text-sm font-extrabold text-white transition hover:bg-star-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">Continue <ArrowRight size={17} aria-hidden="true" /></button></div></section></div><aside className="space-y-5 xl:pt-5"><ProfileStatusCard profile={profile} completion={completion} /><CompletionChecklist profile={profile} /></aside></div></main>;
 }

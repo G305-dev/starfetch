@@ -1,6 +1,6 @@
 "use client";
 
-import { BriefcaseBusiness, LayoutDashboard, Menu, UsersRound, Waypoints, X } from "lucide-react";
+import { BriefcaseBusiness, LayoutDashboard, Menu, PackageOpen, UsersRound, Waypoints, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Logo } from "@/components/ui";
@@ -8,6 +8,7 @@ import { Logo } from "@/components/ui";
 const jointNavigation = [
   { label: "Dashboard", href: "/joint/dashboard", icon: LayoutDashboard },
   { label: "My Investments", href: "/joint/investments", icon: BriefcaseBusiness },
+  { label: "Products", href: "/joint/products", icon: PackageOpen },
   { label: "Transactions", href: "/joint/transactions", icon: Waypoints },
   { label: "Joint Profile", href: "/joint/profile", icon: UsersRound },
 ] as const;
