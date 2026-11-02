@@ -18,7 +18,7 @@ per the platform contract rules.
 | Algorithm | **Argon2id** (PHC string output) |
 | Implementation | npm package **`argon2@0.45.1`** (native libargon2 binding; Node ≥ 20) |
 | Parameters | `memoryCost = 19456` KiB · `timeCost = 2` · `parallelism = 1` (meets/exceeds approved minimums) |
-| Policy | **15–128 characters**, passphrases allowed; **no** composition rules (no required uppercase/lowercase/digit/symbol) |
+| Policy | **8–128 characters**, passphrases allowed; **no** composition rules (no required uppercase/lowercase/digit/symbol) |
 | Storage | Argon2id hash string only (never plaintext, never reversible encryption) |
 | Exposure | Hashes are never returned by any API and never logged |
 

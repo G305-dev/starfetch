@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
 
-/** Approved Phase 2B password policy (passphrase-friendly, no composition rules). */
-export const PASSWORD_MIN_LENGTH = 15;
+/** Approved password policy (passphrase-friendly, no composition rules). */
+export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 128;
 
 /**

@@ -665,7 +665,7 @@ components:
           maxLength: 320
         password:
           type: string
-          minLength: 15
+          minLength: 8
           maxLength: 128
           description: Passphrase-friendly — NO composition rules (no required symbols/case/digits).
       required:
@@ -947,7 +947,7 @@ components:
               code: VALIDATION_FAILED
               message: One or more fields require attention.
               fields:
-                password: password must be at least 15 characters
+                password: password must be at least 8 characters
               requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
 
     ConflictError:
