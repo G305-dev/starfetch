@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  BriefcaseBusiness,
   Building2,
   CircleDollarSign,
   Coins,
@@ -8,6 +9,7 @@ import {
   LineChart,
   Plus,
   Settings,
+  ShieldCheck,
   type LucideIcon,
   UserRound,
   WalletCards,
@@ -60,6 +62,14 @@ export const corporateQuickActions: CorporateQuickAction[] = [
   { label: "Add Funds", href: "#funds", icon: Plus, primary: true },
   { label: "View Statement", href: "#documents", icon: FileText },
   { label: "Contact Relationship Manager", href: "#contact", icon: UserRound },
+];
+
+/** Shared dashboard layout actions, with business verification uploads in place of statement/document actions. */
+export const corporateDashboardQuickActions: CorporateQuickAction[] = [
+  { label: "Create an Investment", href: "/corporate/products", icon: BriefcaseBusiness, primary: true },
+  { label: "See Investments", href: "/corporate/investments", icon: BriefcaseBusiness },
+  { label: "Upload KYC", href: "/corporate/settings#kyc", icon: ShieldCheck },
+  { label: "Upload KYB", href: "/corporate/settings#kyb", icon: Building2 },
 ];
 
 export type CorporateInvestment = {

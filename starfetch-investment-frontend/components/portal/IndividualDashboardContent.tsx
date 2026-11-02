@@ -15,7 +15,11 @@ import { WelcomeBanner } from "./WelcomeBanner";
 
 type DashboardViewState = "ready" | "loading" | "error";
 
-export function IndividualDashboardContent() {
+type Props = {
+  dashboardVariant?: "individual" | "business";
+};
+
+export function IndividualDashboardContent({ dashboardVariant = "individual" }: Props) {
   const [viewState, setViewState] = useState<DashboardViewState>("ready");
   const [showOnboardingPrompt, setShowOnboardingPrompt] = useState(true);
 
@@ -24,16 +28,16 @@ export function IndividualDashboardContent() {
 
   return (
     <section aria-label="Individual investor dashboard">
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]"><WelcomeBanner /><IndividualQuickActions /></div>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]"><WelcomeBanner /><IndividualQuickActions variant={dashboardVariant} /></div>
       <div className="mt-5"><IndividualDashboardMetrics /></div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_350px]">
-        <div className="grid gap-5"><div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(290px,0.8fr)]"><PortfolioOverviewEmpty /><AssetAllocation /></div><div className="grid gap-5 md:grid-cols-2"><EmptyInvestmentsPanel /><EmptyTransactionsPanel /></div></div>
-        <aside className="grid gap-5 self-start"><VerificationProgressCard /><LatestUpdates /></aside>
+        <div className="grid gap-5"><div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(290px,0.8fr)]"><PortfolioOverviewEmpty /><AssetAllocation /></div><div className="grid gap-5 md:grid-cols-2"><EmptyInvestmentsPanel investmentsHref={dashboardVariant === "business" ? "/corporate/investments" : "/investments"} productsHref={dashboardVariant === "business" ? "/corporate/products" : "/services"} /><EmptyTransactionsPanel transactionsHref={dashboardVariant === "business" ? "/corporate/transactions" : "/transactions"} /></div></div>
+        <aside className="grid gap-5 self-start"><VerificationProgressCard variant={dashboardVariant} /><LatestUpdates /></aside>
       </div>
 
-      <div className="mt-5"><InvestmentSolutions /></div>
-      {showOnboardingPrompt ? <OnboardingPromptModal onDefer={() => setShowOnboardingPrompt(false)} /> : null}
+      <div className="mt-5"><InvestmentSolutions productsHref={dashboardVariant === "business" ? "/corporate/products" : "/products"} /></div>
+      {showOnboardingPrompt ? <OnboardingPromptModal variant={dashboardVariant} onDefer={() => setShowOnboardingPrompt(false)} /> : null}
     </section>
   );
 }

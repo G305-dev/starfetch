@@ -1,5 +1,14 @@
-import { CorporateSidebar } from "@/components/corporate/CorporateSidebar";
-import { CorporateTopbar } from "@/components/corporate/CorporateTopbar";
+import type { Metadata } from "next";
 import { CorporateTransactionsContent } from "@/components/corporate/CorporateTransactionsContent";
-export const metadata={title:"Transactions | Starfetch Investor Portal",description:"Track corporate portfolio transactions."};
-export default function CorporateTransactionsPage(){return <div className="min-h-screen bg-[#f7faf7] lg:flex"><CorporateSidebar/><div className="min-w-0 flex-1"><CorporateTopbar sectionLabel="Transactions"/><div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-7"><CorporateTransactionsContent/></div></div></div>}
+import { corporateCompany } from "@/components/corporate/corporate-dashboard-data";
+import { PortalHeader } from "@/components/portal/PortalHeader";
+import { PortalSidebar } from "@/components/portal/PortalSidebar";
+
+export const metadata: Metadata = {
+  title: "Transactions | Starfetch Business Portal",
+  description: "Track business investment transactions in the Starfetch Investor Portal.",
+};
+
+export default function CorporateTransactionsPage() {
+  return <div className="min-h-screen bg-[#fffef9] text-star-900 lg:flex"><PortalSidebar businessDashboard /><div className="min-w-0 flex-1"><PortalHeader user={{ fullName: corporateCompany.name, initials: corporateCompany.initials, accountType: "Business Investor" }} /><main className="mx-auto max-w-[1600px] px-5 py-7 sm:px-8 sm:py-8 lg:px-8 xl:px-10"><CorporateTransactionsContent /></main></div></div>;
+}

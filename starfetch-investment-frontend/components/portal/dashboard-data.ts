@@ -43,7 +43,6 @@ export const portalNavigation: PortalNavigationItem[] = [
   { label: "Transactions", href: "/transactions", icon: ArrowUpRight },
   { label: "Products", href: "/products", icon: BriefcaseBusiness },
   { label: "Profile", href: "/profile", icon: UserRound },
-  { label: "Settings", href: "/dashboard#settings", icon: Settings },
 ];
 
 export type SummaryMetric = {

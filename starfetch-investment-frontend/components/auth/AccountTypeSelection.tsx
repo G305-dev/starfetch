@@ -31,8 +31,8 @@ const accountTypes: AccountTypeOption[] = [
   },
   {
     id: "corporate",
-    title: "Corporate",
-    description: "For companies, institutions and other eligible organisations opening an investment account.",
+    title: "Business",
+    description: "For businesses, institutions and other eligible organisations opening an investment account.",
     href: "/register/corporate",
     icon: Building2,
   },
