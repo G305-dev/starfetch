@@ -263,7 +263,7 @@ export async function resendVerificationEmail(input: { verificationId: string })
   const data = unwrapPayload(await request("/auth/email/resend", { method: "POST", body: input }));
   return {
     maskedEmail: readString(data, "email"),
-    cooldownSeconds: readNumber(data, "cooldownSeconds") ?? readNumber(data, "retryAfterSeconds"),
+    cooldownSeconds: readNumber(data, "resendInSeconds") ?? readNumber(data, "cooldownSeconds") ?? readNumber(data, "retryAfterSeconds"),
   };
 }
 
