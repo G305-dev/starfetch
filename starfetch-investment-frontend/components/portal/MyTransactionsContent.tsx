@@ -71,6 +71,10 @@ export function MyTransactionsContent() {
     setViewState("ready");
   }
 
+  function refreshTransactions() {
+    setExportNotice("Transaction data is current in this frontend-only preview.");
+  }
+
   const hasFilters = Boolean(searchTerm || transactionType !== "All Transactions" || status !== "All Statuses" || dateRange !== "Last 6 Months");
 
   return (
@@ -81,7 +85,7 @@ export function MyTransactionsContent() {
           <p className="mt-2 text-sm leading-6 text-star-muted sm:text-[0.96rem]">Track all funding, returns, withdrawals and other account activity.</p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between xl:justify-end">
-          <span className="inline-flex items-center gap-2 text-xs text-star-muted">Last updated: {transactionMetadata.lastUpdated}<RefreshCw size={15} aria-hidden="true" /></span>
+          <div className="inline-flex items-center gap-1.5 text-xs text-star-muted"><span>Last updated: {transactionMetadata.lastUpdated}</span><button type="button" onClick={refreshTransactions} aria-label="Refresh transaction activity" title="Refresh transaction activity" className="grid size-8 place-items-center rounded-md text-star-700 transition hover:bg-star-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2"><RefreshCw size={15} aria-hidden="true" /></button></div>
           <button type="button" onClick={exportTransactions} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-star-900 px-4 text-sm font-bold text-white transition hover:-translate-y-px hover:bg-star-700 hover:shadow-[0_5px_14px_rgba(0,59,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2"><Download size={17} aria-hidden="true" />Export Transactions</button>
         </div>
       </div>
