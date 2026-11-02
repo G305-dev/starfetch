@@ -3,8 +3,8 @@ import { CorporateOnboardingFlow } from "@/components/auth/CorporateOnboardingFl
 import { OnboardingHeader } from "@/components/auth/OnboardingHeader";
 
 export const metadata: Metadata = {
-  title: "Corporate Account Opening | Starfetch Investment Limited",
-  description: "Open a corporate investment account with Starfetch.",
+  title: "Business Account Opening | Starfetch Investment Limited",
+  description: "Open a business investment account with Starfetch.",
 };
 
 export default function CorporateRegistrationPage() {

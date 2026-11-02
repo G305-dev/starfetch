@@ -1,7 +1,7 @@
 export const corporateOnboardingSteps = [
-  { number: 1, label: "Applicant Details" },
-  { number: 2, label: "Mandate Selection" },
-  { number: 3, label: "Bank Details" },
+  { number: 1, label: "Business Information" },
+  { number: 2, label: "Personal Information" },
+  { number: 3, label: "Security Information" },
 ] as const;
 
 export const corporateMandates = [
@@ -34,6 +34,12 @@ export type CorporateApplicationData = {
   taxIdentificationNumber: string;
   businessPhoneNumber: string;
   businessEmail: string;
+  fullName: string;
+  personalEmail: string;
+  personalPhoneNumber: string;
+  pin: string;
+  confirmPin: string;
+  authorizationConfirmed: boolean;
   selectedMandate: CorporateMandateId | "";
   bankName: string;
   accountNumber: string;
@@ -51,6 +57,12 @@ export const initialCorporateApplicationData: CorporateApplicationData = {
   taxIdentificationNumber: "",
   businessPhoneNumber: "",
   businessEmail: "",
+  fullName: "",
+  personalEmail: "",
+  personalPhoneNumber: "",
+  pin: "",
+  confirmPin: "",
+  authorizationConfirmed: false,
   selectedMandate: "",
   bankName: "",
   accountNumber: "",

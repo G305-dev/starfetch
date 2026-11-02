@@ -1,18 +1,28 @@
 "use client";
 
-import { ArrowRight, Menu, X } from "lucide-react";
+import { ArrowRight, Menu, Settings, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/ui";
 import { portalNavigation } from "./dashboard-data";
 
-function NavigationLinks({ mobile = false }: { mobile?: boolean }) {
+function NavigationLinks({ mobile = false, dashboardAlias, businessDashboard = false }: { mobile?: boolean; dashboardAlias?: string; businessDashboard?: boolean }) {
   const pathname = usePathname();
+  const navigation = businessDashboard
+    ? portalNavigation.map((item) => {
+      if (item.label === "Dashboard") return { ...item, href: "/corporate/dashboard" };
+      if (item.label === "Profile") return { ...item, label: "Account Settings", href: "/corporate/settings", icon: Settings };
+      if (item.label === "Investments") return { ...item, href: "/corporate/investments" };
+      if (item.label === "Transactions") return { ...item, href: "/corporate/transactions" };
+      if (item.label === "Products") return { ...item, href: "/corporate/products" };
+      return item;
+    })
+    : portalNavigation;
 
   return (
     <nav className="grid gap-1.5" aria-label={mobile ? "Mobile investor portal navigation" : "Investor portal navigation"}>
-      {portalNavigation.map(({ label, href, icon: Icon }) => {
-        const active = href === pathname;
+      {navigation.map(({ label, href, icon: Icon }) => {
+        const active = href === pathname || (href === "/dashboard" && pathname === dashboardAlias);
 
         return (
           <a
@@ -35,13 +45,13 @@ function NavigationLinks({ mobile = false }: { mobile?: boolean }) {
   );
 }
 
-export function PortalSidebar() {
+export function PortalSidebar({ dashboardAlias, businessDashboard = false }: { dashboardAlias?: string; businessDashboard?: boolean }) {
   return (
     <>
       <aside className="sticky top-0 hidden h-screen w-[270px] shrink-0 flex-col border-r border-star-200 bg-white px-4 py-5 lg:flex">
         <Logo href="/" />
         <div className="mt-10">
-          <NavigationLinks />
+          <NavigationLinks dashboardAlias={dashboardAlias} businessDashboard={businessDashboard} />
         </div>
         <PromoCard />
       </aside>
@@ -53,7 +63,7 @@ export function PortalSidebar() {
           <span className="sr-only">Toggle investor portal navigation</span>
         </summary>
         <div className="fixed inset-x-0 bottom-0 top-[76px] overflow-y-auto border-t border-star-200 bg-white px-5 py-7 shadow-[0_16px_40px_rgba(0,59,42,0.13)] sm:px-8">
-          <NavigationLinks mobile />
+          <NavigationLinks mobile dashboardAlias={dashboardAlias} businessDashboard={businessDashboard} />
           <PromoCard mobile />
         </div>
       </details>

@@ -7,7 +7,6 @@ import {
   FileDown,
   FolderUp,
   LayoutDashboard,
-  Landmark,
   Megaphone,
   ShieldCheck,
   Sparkles,
@@ -38,7 +37,6 @@ export const individualDashboardMetrics = [
   { label: "Total Portfolio Value", value: "₦0.00", detail: "0% from last month", icon: WalletCards, emphasis: true },
   { label: "Total Investments", value: "0", detail: "Active investments", icon: Sparkles, emphasis: false },
   { label: "Total Returns", value: "₦0.00", detail: "0% from last month", icon: BarChart3, emphasis: false },
-  { label: "Available Balance", value: "₦0.00", detail: "Add funds to start investing", icon: Landmark, emphasis: false },
 ] as const;
 
 export const portfolioOverview = {
@@ -64,7 +62,7 @@ export type IndividualQuickAction = {
 
 export const individualQuickActions: IndividualQuickAction[] = [
   { label: "Create an Investment", href: "/products", icon: BriefcaseBusiness, primary: true },
-  { label: "Fund Your Account", href: "/open-account", icon: WalletCards },
+  { label: "See Investments", href: "/investments", icon: BriefcaseBusiness },
   { label: "Download Statements", href: "/dashboard#statements", icon: FileDown },
   { label: "Upload Documents", href: "/dashboard#documents", icon: FolderUp },
 ];
