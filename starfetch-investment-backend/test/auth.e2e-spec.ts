@@ -108,14 +108,21 @@ describe('Phase 2B — authentication & identity (e2e, real PostgreSQL)', () => 
       expect(await t.prisma.user.count()).toBe(0);
     });
 
-    it('enforces password length 15–128 and accepts symbol-free passphrases', async () => {
-      const short = await registerUser(t, 'short@example.com', { password: 'too-short' }).expect(400);
+    it('enforces password length 8–128 and accepts symbol-free passwords', async () => {
+      const short = await registerUser(t, 'short@example.com', { password: 'nope123' }).expect(400);
       expect(short.body.error.code).toBe('VALIDATION_FAILED');
 
       const tooLong = await registerUser(t, 'long@example.com', { password: 'x'.repeat(129) }).expect(400);
       expect(tooLong.body.error.code).toBe('VALIDATION_FAILED');
 
-      await registerUser(t, 'pass@example.com', { password: 'fifteenlettersx' }).expect(201);
+      // Boundary: exactly the 8-character minimum is valid.
+      await registerUser(t, 'pass@example.com', { password: 'eightchr' }).expect(201);
+      // Symbol-free passphrases remain valid.
+      const reg = await request(t.server)
+        .post('/api/v1/auth/register')
+        .send({ firstName: 'Ada', lastName: 'Lovelace', email: 'oldstyle@example.com', password: 'fifteenlettersx' })
+        .expect(201);
+      expect(reg.body.data.nextAction).toBe('VERIFY_EMAIL');
     });
   });
 

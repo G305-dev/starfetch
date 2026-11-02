@@ -34,8 +34,8 @@ describe('PasswordService (Argon2id contract)', () => {
     await expect(service.verifyOrEqualize(undefined, sample)).resolves.toBe(false);
   });
 
-  it('exposes the approved password policy constants (15–128, no composition rules)', () => {
-    expect(PASSWORD_MIN_LENGTH).toBe(15);
+  it('exposes the approved password policy constants (8–128, no composition rules)', () => {
+    expect(PASSWORD_MIN_LENGTH).toBe(8);
     expect(PASSWORD_MAX_LENGTH).toBe(128);
   });
 });
