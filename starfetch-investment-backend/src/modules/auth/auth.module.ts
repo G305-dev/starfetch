@@ -5,6 +5,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { InMemoryRateLimiter } from '../../common/rate-limit/in-memory-rate-limiter';
 import { RATE_LIMITER } from '../../common/rate-limit/rate-limiter';
 import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { EMAIL_PROVIDER } from './email/email-provider';
@@ -45,6 +46,7 @@ import { SessionService } from './services/session.service';
     EmailVerificationService,
     AccessTokenGuard,
     CookieOriginGuard,
+    RolesGuard,
     {
       provide: EMAIL_PROVIDER,
       inject: [ConfigService],
@@ -63,6 +65,6 @@ import { SessionService } from './services/session.service';
     // automated tests (config) so suites never flake on throttling.
     { provide: APP_GUARD, useClass: RateLimitGuard },
   ],
-  exports: [AccessTokenService, AccessTokenGuard, AuthService],
+  exports: [AccessTokenService, AccessTokenGuard, RolesGuard, AuthService],
 })
 export class AuthModule {}

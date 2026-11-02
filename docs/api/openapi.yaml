@@ -2,16 +2,19 @@ openapi: 3.0.3
 
 info:
   title: Starfetch Investment Limited — Platform API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Canonical API contract for the Starfetch platform (one API serving the public
     website, investor web portal, staff/admin portal, and the future Android/iOS
     React Native clients).
 
     **Current scope: IMPLEMENTED — PHASE 2A foundation + PHASE 2B authentication
-    & identity.** Contracts below match the running implementation exactly:
-    health, registration, email verification, login, refresh rotation, logout,
-    and `/me`. No other business endpoints exist yet.
+    & identity + PHASE 2C investor profile foundation.** Contracts below match
+    the running implementation exactly: health, registration, email
+    verification, login, refresh rotation, logout, `/me`, and
+    `GET`/`PUT /me/profile` (investor self-service profile — INVESTOR role
+    only, ownership strictly from the authenticated principal, email
+    read-only). No other business endpoints exist yet.
 
     Business surfaces (applications, documents/KYC, products, portfolio,
     transactions, statements, staff tooling) are incorporated **one feature at
@@ -21,7 +24,7 @@ info:
 
     Change control: no unilateral breaking changes; breaking changes require a
     coordinated version/change decision by David and Emmanuel.
-  x-status: PHASE-2B-AUTH-IDENTITY
+  x-status: PHASE-2C-INVESTOR-PROFILE-FOUNDATION
   contact:
     name: Starfetch Engineering (David — backend; Emmanuel — frontend/mobile)
 
@@ -451,6 +454,131 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /me/profile:
+    get:
+      tags:
+        - Me
+      operationId: getOwnInvestorProfile
+      summary: Current investor's profile (INVESTOR role only)
+      description: |
+        Requires `Authorization: Bearer <access-token>` **and** role
+        `INVESTOR` (enforced server-side via RolesGuard — frontend route
+        guards are UX only). Returns ONLY the authenticated principal's own
+        profile — ownership is derived from the validated token, never from
+        request parameters. `email` is read-only, sourced from the User
+        record. The projection NEVER includes password hashes,
+        `normalizedEmail`, session/token data, verification verifiers, or any
+        internal field.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The authenticated investor's profile.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvestorProfileResponse"
+              example:
+                data:
+                  firstName: "David"
+                  lastName: "Example"
+                  email: "user@example.com"
+                  phone: null
+                meta:
+                  requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+        "401":
+          description: Missing/invalid/expired token or malformed claims.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Authenticated principal is not an INVESTOR (`FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: FORBIDDEN
+                  message: You do not have access to this resource.
+                  requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+        "404":
+          description: Profile record absent for the principal (`NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags:
+        - Me
+      operationId: updateOwnInvestorProfile
+      summary: Update the current investor's profile (INVESTOR role only)
+      description: |
+        Requires `Authorization: Bearer <access-token>` **and** role
+        `INVESTOR`. Ownership is ALWAYS the authenticated principal — **no
+        `userId` is accepted from body or query**; one investor can never
+        target another's profile here.
+
+        Updatable fields (all optional, at least one required): `firstName`,
+        `lastName` (trimmed, 1–60 chars) and optional `phone` (pragmatic
+        local/international format; explicit `null` clears it). **`email` is
+        NOT editable through this endpoint** — it is not part of the schema
+        and is rejected as an unknown field. No other profile/KYC fields
+        exist on this surface.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Profile updated; returns the updated projection.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvestorProfileResponse"
+        "400":
+          description: |
+            Validation failure (`VALIDATION_FAILED`): invalid/empty text,
+            bad phone format, empty body, `email`/unknown/unapproved fields,
+            or a `userId` targeting attempt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing/invalid/expired token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Authenticated principal is not an INVESTOR (`FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Profile record absent for the principal (`NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -678,6 +806,55 @@ components:
           $ref: "#/components/schemas/Meta"
       required: [data, meta]
 
+    InvestorProfileData:
+      type: object
+      description: |
+        Approved safe investor-profile projection (Phase 2C). `email` is
+        read-only, owned by the User record. NEVER includes passwordHash,
+        normalizedEmail, session/token data, or any internal field.
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: string, format: email, readOnly: true }
+        phone:
+          type: string
+          nullable: true
+          description: Optional; `null` when unset. Explicit `null` on PUT clears it.
+      required: [firstName, lastName, email, phone]
+
+    UpdateProfileRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        All fields optional; at least one required. Unknown fields —
+        explicitly including `email` and any `userId`/targeting field — are
+        rejected (`VALIDATION_FAILED`).
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Trimmed server-side.
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Trimmed server-side.
+        phone:
+          type: string
+          nullable: true
+          pattern: "^\\+?[0-9][0-9()\\-\\s]{5,18}[0-9]$"
+          description: Pragmatic local/international format; explicit `null` clears the value.
+
+    InvestorProfileResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/InvestorProfileData"
+        meta:
+          $ref: "#/components/schemas/Meta"
+      required: [data, meta]
+
     Error:
       type: object
       description: |
@@ -821,6 +998,13 @@ x-conventions:
       allowlist (credentials enabled only with an explicit allowlist; never "*").
       Core auth/session services are client-neutral so the future mobile app
       uses the same model with platform-secure storage instead of cookies.
+  authorization:
+    description: |
+      Role authorization is enforced server-side (Phase 2C: `@Roles()` +
+      RolesGuard evaluating the `role` claim AFTER bearer-token validation).
+      Frontend route guards remain UX only. Resource ownership is always
+      derived from the authenticated principal — request-supplied user
+      identifiers are never honoured.
   throttling:
     description: |
       Server-side fixed-window throttling on authentication-sensitive routes

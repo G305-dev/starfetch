@@ -7,7 +7,7 @@ registration → email verification → login → session → refresh rotation �
 ```
 
 > ⚠️ **Scope statements (read first)**
-> - **Only these endpoints exist:** `POST /auth/register`, `POST /auth/email/verify`, `POST /auth/email/resend`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /me`, `GET /health` (all under `/api/v1`).
+> - **Only these endpoints exist:** `POST /auth/register`, `POST /auth/email/verify`, `POST /auth/email/resend`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /me`, `GET /me/profile`, `PUT /me/profile`, `GET /health` (all under `/api/v1`).
 > - **No other business APIs** — no applications, documents/KYC, products, portfolio, transactions, statements, staff or admin workflows. No OAuth (Google/Apple), no password reset, no email change.
 > - **Firebase is NOT configured** (private-document storage arrives in a later approved phase).
 > - **No external integrations** beyond the replaceable SMTP email adapter (no BVN/NIN/KYC, banking, payments, market data, SMS, push, custodians, external IMS).
@@ -141,7 +141,7 @@ src/
                           #   password (argon2id), access-token (jwt), session (rotation +
                           #   reuse detection), csrf (signed double-submit), email-verification
                           #   (HMAC-bound 6-digit codes) + EmailProvider port (SMTP + fake)
-    me/                   # GET /api/v1/me (reusable bearer guard)
+    me/                   # GET /api/v1/me + GET/PUT /api/v1/me/profile (bearer + RolesGuard/INVESTOR)
 prisma/                   # schema.prisma + migrations (auth/identity only)
 docs/                     # (repo root) api/openapi.yaml · backend/auth/AUTH-SECURITY-CONTRACT-v1.md
 ```
@@ -151,7 +151,8 @@ docs/                     # (repo root) api/openapi.yaml · backend/auth/AUTH-SE
 | Phase | Scope | Status |
 |---|---|---|
 | 2A | Backend foundation | ✅ Implemented & approved |
-| 2B | Authentication & identity | ✅ Implemented (this state) |
+| 2B | Authentication & identity | ✅ Implemented |
+| 2C | Investor profile foundation (`/me/profile`) | ✅ Implemented (this state) |
 | Later | Business APIs (applications/documents/products/portfolio/…, staff, admin) | ⛔ Not started — pending explicit authorization + D-08/D-09 and vocabulary decisions |
 | Later | React Native mobile client (Android/iOS) consuming these same contracts | ⛔ Not started |
 

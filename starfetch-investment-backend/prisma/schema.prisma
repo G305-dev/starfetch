@@ -66,6 +66,9 @@ model InvestorProfile {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   firstName String
   lastName  String
+  /// Approved OPTIONAL profile field (D-06 v1/contract rows 8–9). Nullable;
+  /// nothing else (BVN/NIN/DOB/address/…) is approved for this model.
+  phone     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

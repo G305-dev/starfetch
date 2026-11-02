@@ -5,10 +5,10 @@
   "private": true,
   "license": "UNLICENSED",
   "engines": {
-    "node": ">=20"
+    "node": "24.x"
   },
   "scripts": {
-    "build": "nest build",
+    "build": "prisma generate && nest build",
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
     "start": "nest start",
     "start:dev": "nest start --watch",
