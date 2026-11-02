@@ -6,11 +6,9 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useId, useState } from "react";
 import { getSafeErrorMessage, isApiError, resendVerificationEmail, verifyEmail } from "@/lib/api/client";
 import { getPendingVerification, markVerificationSucceeded } from "@/lib/auth/verification-flow";
-import { useAuth } from "./AuthProvider";
 
 export function EmailVerificationForm() {
   const router = useRouter();
-  const { refreshSession } = useAuth();
   const verificationCodeId = useId();
   const [verification, setVerification] = useState<ReturnType<typeof getPendingVerification>>(null);
   const [initialising, setInitialising] = useState(true);
@@ -46,8 +44,6 @@ export function EmailVerificationForm() {
     try {
       const result = await verifyEmail({ verificationId: verification.verificationId, code });
       markVerificationSucceeded(result.maskedEmail ?? verification.maskedEmail);
-      // If verification established refresh credentials, hydrate the in-memory session now.
-      await refreshSession();
       router.push("/register/individual/verify-email/success");
     } catch (requestError) {
       setError(getSafeErrorMessage(requestError));
