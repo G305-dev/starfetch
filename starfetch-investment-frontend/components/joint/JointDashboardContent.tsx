@@ -5,13 +5,11 @@ import { ArrowRight, BarChart3, BriefcaseBusiness, CircleDollarSign, FileText, L
 import {
   accountVerification,
   investments,
-  jointAccount,
   jointAccountHolders,
   performanceSummary,
   portfolioPerformance,
   portfolioSummary,
   recentTransactions,
-  signingMandate,
   type JointPerformanceFilter,
 } from "./joint-dashboard-data";
 
@@ -55,7 +53,7 @@ function PortfolioPerformance() {
 }
 
 function JointAccountOverview() {
-  return <aside id="joint-profile" className="scroll-mt-24 rounded-xl border border-star-200 bg-white p-5 shadow-[0_2px_12px_rgba(14,62,46,0.04)]" aria-labelledby="joint-overview-heading"><h2 id="joint-overview-heading" className="text-xl font-extrabold text-star-900">Joint Account Overview</h2><p className="mt-1 text-sm text-star-muted">Account holders and joint account instructions.</p><div className="mt-5 border-y border-star-100 py-4"><h3 className="text-xs font-extrabold uppercase tracking-[0.1em] text-star-700">Account Holders</h3><div className="mt-4 space-y-4">{jointAccountHolders.map((holder) => <div key={holder.id} className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-full bg-star-900 text-xs font-extrabold text-white">{holder.initials}</span><div><p className="text-sm font-extrabold text-star-900">{holder.name}</p><p className="mt-0.5 text-xs text-star-muted">{holder.role}</p></div></div>)}</div></div><div className="mt-5"><h3 className="text-xs font-extrabold uppercase tracking-[0.1em] text-star-700">Account Mandate / Signing Rule</h3><div className="mt-3 rounded-lg border border-[#cce7d0] bg-[#eff8f0] p-4"><p className="text-sm font-extrabold text-star-900">{signingMandate.selected}</p><p className="mt-2 text-xs leading-5 text-star-muted">{signingMandate.description}</p><div className="mt-3 flex flex-wrap gap-1.5">{signingMandate.supportedRules.map((rule) => <span key={rule} className={`rounded-full px-2.5 py-1 text-[0.65rem] font-extrabold ${rule === signingMandate.selected ? "bg-star-700 text-white" : "border border-[#bdddc3] bg-white text-star-700"}`}>{rule.replace(" Holder to Sign", "")}</span>)}</div></div></div><div className="mt-5 border-t border-star-100 pt-5"><h3 className="text-xs font-extrabold uppercase tracking-[0.1em] text-star-700">Account Verification</h3><div className="mt-3 flex items-center gap-3"><span className="grid size-10 place-items-center rounded-full bg-[#e1f7e7] text-[#16743d]"><ShieldCheck size={21} aria-hidden="true" /></span><span><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-extrabold ${verificationStatusClasses[accountVerification.status]}`}>{accountVerification.status}</span><span className="mt-1 block text-xs text-star-muted">Joint account verification is complete.</span></span></div></div></aside>;
+  return <aside id="joint-profile" className="scroll-mt-24 rounded-xl border border-star-200 bg-white p-5 shadow-[0_2px_12px_rgba(14,62,46,0.04)]" aria-labelledby="joint-overview-heading"><h2 id="joint-overview-heading" className="text-xl font-extrabold text-star-900">Joint Account Overview</h2><p className="mt-1 text-sm text-star-muted">Account holders and verification details.</p><div className="mt-5 border-y border-star-100 py-4"><h3 className="text-xs font-extrabold uppercase tracking-[0.1em] text-star-700">Account Holders</h3><div className="mt-4 space-y-4">{jointAccountHolders.map((holder) => <div key={holder.id} className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-full bg-star-900 text-xs font-extrabold text-white">{holder.initials}</span><div><p className="text-sm font-extrabold text-star-900">{holder.name}</p><p className="mt-0.5 text-xs text-star-muted">{holder.role}</p></div></div>)}</div></div><div className="mt-5 border-t border-star-100 pt-5"><h3 className="text-xs font-extrabold uppercase tracking-[0.1em] text-star-700">Account Verification</h3><div className="mt-3 flex items-center gap-3"><span className="grid size-10 place-items-center rounded-full bg-[#e1f7e7] text-[#16743d]"><ShieldCheck size={21} aria-hidden="true" /></span><span><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-extrabold ${verificationStatusClasses[accountVerification.status]}`}>{accountVerification.status}</span><span className="mt-1 block text-xs text-star-muted">Joint account verification is complete.</span></span></div></div></aside>;
 }
 
 function InvestmentsTable() {
@@ -68,5 +66,5 @@ function RecentTransactions() {
 
 export function JointDashboardContent() {
   const greeting = `${jointAccountHolders[0].firstName} & ${jointAccountHolders[1].firstName}`;
-  return <main><section><p className="text-xs font-extrabold uppercase tracking-[0.16em] text-star-700">Joint account overview</p><h1 className="mt-2 font-display text-[clamp(2rem,3.5vw,3rem)] font-extrabold tracking-[-0.045em] text-star-900">Good morning, {greeting}</h1><p className="mt-2 text-sm leading-6 text-star-muted sm:text-base">{jointAccount.accountLabel}</p></section><div className="mt-7"><SummaryCards /></div><div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.65fr)_360px]"><PortfolioPerformance /><JointAccountOverview /></div><div className="mt-5"><InvestmentsTable /></div><div className="mt-5"><RecentTransactions /></div></main>;
+  return <main><section><p className="text-xs font-extrabold uppercase tracking-[0.16em] text-star-700">Joint account overview</p><h1 className="mt-2 font-display text-[clamp(2rem,3.5vw,3rem)] font-extrabold tracking-[-0.045em] text-star-900">Good morning, {greeting}</h1></section><div className="mt-7"><SummaryCards /></div><div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.65fr)_360px]"><PortfolioPerformance /><JointAccountOverview /></div><div className="mt-5"><InvestmentsTable /></div><div className="mt-5"><RecentTransactions /></div></main>;
 }
