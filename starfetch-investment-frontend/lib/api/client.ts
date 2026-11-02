@@ -13,6 +13,7 @@ type JsonRecord = Record<string, unknown>;
 
 type ApiErrorMetadata = {
   verificationId?: string;
+  maskedEmail?: string;
   retryAfterSeconds?: number;
 };
 
@@ -49,6 +50,7 @@ export function hasAccessToken() {
 export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly verificationId?: string;
+  readonly maskedEmail?: string;
   readonly retryAfterSeconds?: number;
 
   constructor(code: ApiErrorCode, metadata: ApiErrorMetadata = {}) {
@@ -56,6 +58,7 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.code = code;
     this.verificationId = metadata.verificationId;
+    this.maskedEmail = metadata.maskedEmail;
     this.retryAfterSeconds = metadata.retryAfterSeconds;
   }
 }
@@ -92,6 +95,7 @@ export type RegisterIndividualResponse = {
 };
 
 export type EmailVerificationResponse = {
+  nextAction: "LOGIN";
   maskedEmail?: string;
 };
 
@@ -135,14 +139,16 @@ function errorFromResponse(response: Response, payload: unknown) {
   const root = isRecord(payload) ? payload : {};
   const rootData = isRecord(root.data) ? root.data : {};
   const errorRecord = extractErrorRecord(payload);
-  const nestedDetails = isRecord(errorRecord.details) ? errorRecord.details : {};
+  // The Starfetch API exposes workflow values in error.context, not details.
+  const context = isRecord(errorRecord.context) ? errorRecord.context : {};
   const retryAfterHeader = Number(response.headers.get("Retry-After"));
   const retryAfterSeconds = Number.isFinite(retryAfterHeader) && retryAfterHeader > 0
     ? retryAfterHeader
-    : readNumber(errorRecord, "retryAfterSeconds") ?? readNumber(errorRecord, "retryAfter") ?? readNumber(nestedDetails, "retryAfterSeconds") ?? readNumber(rootData, "retryAfterSeconds");
+    : readNumber(errorRecord, "retryAfterSeconds") ?? readNumber(errorRecord, "retryAfter") ?? readNumber(context, "retryAfterSeconds") ?? readNumber(rootData, "retryAfterSeconds");
 
   return new ApiError(toKnownErrorCode(readString(errorRecord, "code") ?? readString(root, "code"), response.status), {
-    verificationId: readString(errorRecord, "verificationId") ?? readString(nestedDetails, "verificationId") ?? readString(rootData, "verificationId") ?? readString(root, "verificationId"),
+    verificationId: readString(context, "verificationId") ?? readString(errorRecord, "verificationId") ?? readString(rootData, "verificationId") ?? readString(root, "verificationId"),
+    maskedEmail: readString(context, "email"),
     retryAfterSeconds,
   });
 }
@@ -186,9 +192,13 @@ async function request(path: string, options: RequestOptions = {}) {
 
 function readCsrfToken() {
   if (typeof document === "undefined") return undefined;
-  const csrfCookie = document.cookie.split(";").map((value) => value.trim()).find((value) => value.startsWith("sf_csrf="));
+  const cookies = document.cookie.split(";").map((value) => value.trim());
+  // Production/staging uses the host-only secure name. Local development keeps
+  // the shorter cookie name so a non-HTTPS localhost setup still works.
+  const csrfCookie = cookies.find((value) => value.startsWith("__Host-sf_csrf="))
+    ?? cookies.find((value) => value.startsWith("sf_csrf="));
   if (!csrfCookie) return undefined;
-  return decodeURIComponent(csrfCookie.slice("sf_csrf=".length));
+  return decodeURIComponent(csrfCookie.slice(csrfCookie.indexOf("=") + 1));
 }
 
 function csrfHeaders(): Record<string, string> {
@@ -234,7 +244,8 @@ export async function registerIndividual(input: { firstName: string; lastName: s
   const data = unwrapPayload(await request("/auth/register", { method: "POST", body: input }));
   const userId = readString(data, "userId");
   const verificationId = readString(data, "verificationId");
-  const maskedEmail = readString(data, "maskedEmail");
+  // The canonical backend field is `email`; its value is already masked.
+  const maskedEmail = readString(data, "email");
   const emailVerified = data.emailVerified;
   const nextAction = readString(data, "nextAction");
   if (!userId || !verificationId || !maskedEmail || emailVerified !== false || nextAction !== "VERIFY_EMAIL") throw new ApiError("UNEXPECTED_RESPONSE");
@@ -243,13 +254,15 @@ export async function registerIndividual(input: { firstName: string; lastName: s
 
 export async function verifyEmail(input: { verificationId: string; code: string }): Promise<EmailVerificationResponse> {
   const data = unwrapPayload(await request("/auth/email/verify", { method: "POST", body: input }));
-  return { maskedEmail: readString(data, "maskedEmail") };
+  const nextAction = readString(data, "nextAction");
+  if (nextAction !== "LOGIN") throw new ApiError("UNEXPECTED_RESPONSE");
+  return { nextAction: "LOGIN", maskedEmail: readString(data, "email") };
 }
 
 export async function resendVerificationEmail(input: { verificationId: string }) {
   const data = unwrapPayload(await request("/auth/email/resend", { method: "POST", body: input }));
   return {
-    maskedEmail: readString(data, "maskedEmail"),
+    maskedEmail: readString(data, "email"),
     cooldownSeconds: readNumber(data, "cooldownSeconds") ?? readNumber(data, "retryAfterSeconds"),
   };
 }

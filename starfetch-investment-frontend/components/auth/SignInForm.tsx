@@ -77,7 +77,7 @@ export function SignInForm() {
       router.push("/dashboard");
     } catch (requestError) {
       if (isApiError(requestError) && requestError.code === "EMAIL_NOT_VERIFIED" && requestError.verificationId) {
-        setPendingVerification({ verificationId: requestError.verificationId, maskedEmail: email });
+        setPendingVerification({ verificationId: requestError.verificationId, maskedEmail: requestError.maskedEmail ?? email });
         router.push("/register/individual/verify-email");
         return;
       }
