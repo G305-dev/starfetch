@@ -1,128 +1,159 @@
 "use client";
 
-import { type FormEvent, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowRight, BadgeCheck, Banknote, CalendarDays, CheckCircle2, ChevronRight, CircleAlert, Clock3, FileText, Info, Landmark, LockKeyhole, Mail, Phone, Save, ShieldCheck, UserRound, X, type LucideIcon } from "lucide-react";
 import {
-  BadgeCheck,
-  Building2,
-  Check,
-  ChevronRight,
-  Eye,
-  FileText,
-  KeyRound,
-  Landmark,
-  LockKeyhole,
-  MapPin,
-  Pencil,
-  Save,
-  ShieldCheck,
-  Upload,
-  UserRound,
-} from "lucide-react";
-import {
-  bankDetails as initialBank,
-  identityInfo,
-  investmentPreferences as initialPreferences,
-  personalDocuments,
-  personalInfo as initialPersonal,
-  profileCompletion,
-  type BankDetails,
-  type InvestmentPreferences,
-  type PersonalInfo,
+  getIndividualProfileCompletion,
+  getIndividualProfileSectionStatus,
+  individualProfile as initialProfile,
+  individualProfileSteps,
+  investmentRiskOptions,
+  maskAccountNumber,
+  profileSelectOptions,
+  type IndividualProfile,
+  type IndividualProfileStep,
+  type IndividualProfileStepId,
+  type MockDocumentStatus,
+  type ProfileSectionStatus,
+  type ProfileVerificationStatus,
 } from "./profile-data";
 
-type ProfileSection = "profile" | "verification" | "bank" | "pin" | "password" | "preferences" | "documents";
-type EditableSection = "profile" | "bank" | "preferences" | null;
+const sectionStatusClasses: Record<ProfileSectionStatus, string> = {
+  Completed: "bg-[#e1f7e7] text-[#16743d]",
+  Pending: "bg-[#fff3d9] text-[#9a6200]",
+  "Action Required": "bg-[#fde8e8] text-[#b42318]",
+};
 
-type FieldEntry = { label: string; value: string };
+const sectionStatusIcons: Record<ProfileSectionStatus, LucideIcon> = {
+  Completed: CheckCircle2,
+  Pending: Clock3,
+  "Action Required": CircleAlert,
+};
 
-const profileNavigation: Array<{ id: ProfileSection; label: string; icon: typeof UserRound }> = [
-  { id: "profile", label: "Profile Details", icon: UserRound },
-  { id: "verification", label: "Account Verification", icon: BadgeCheck },
-  { id: "bank", label: "Bank Details", icon: Landmark },
-  { id: "pin", label: "PIN Management", icon: KeyRound },
-  { id: "password", label: "Password Management", icon: LockKeyhole },
-  { id: "preferences", label: "Investment Preferences", icon: Building2 },
-  { id: "documents", label: "Documents", icon: FileText },
-];
+const verificationClasses: Record<ProfileVerificationStatus, string> = {
+  "Profile Incomplete": "bg-[#fff3d9] text-[#9a6200]",
+  "Verification Pending": "bg-[#e4f1fb] text-[#1671b6]",
+  "Action Required": "bg-[#fde8e8] text-[#b42318]",
+  Verified: "bg-[#e1f7e7] text-[#16743d]",
+};
 
-function profileFields(personal: PersonalInfo): FieldEntry[] {
-  const [firstName = "Profile", ...remaining] = personal.fullName.split(" ");
-  return [
-    { label: "First Name", value: firstName },
-    { label: "Last Name", value: remaining.join(" ") || "Holder" },
-    { label: "Phone Number", value: personal.phone },
-    { label: "Email Address", value: personal.email },
-    { label: "Residential Address", value: personal.address },
-    { label: "City", value: personal.city },
-    { label: "State", value: personal.state },
-    { label: "Country", value: personal.country },
-    { label: "Date of Birth", value: personal.dateOfBirth },
-    { label: "Occupation", value: personal.occupation },
-  ];
+function SectionStatusBadge({ status }: { status: ProfileSectionStatus }) {
+  const Icon = sectionStatusIcons[status];
+  return <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-extrabold ${sectionStatusClasses[status]}`}><Icon size={14} aria-hidden="true" />{status}</span>;
 }
 
-function EditButton({ onClick }: { onClick: () => void }) {
-  return <button type="button" onClick={onClick} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-star-200 bg-white px-4 text-sm font-extrabold text-star-900 transition hover:bg-star-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700"><Pencil size={16} aria-hidden="true" />Edit details</button>;
+function InputField({ label, description, required = false, children }: { label: string; description?: string; required?: boolean; children: React.ReactNode }) {
+  return <label className="block"><span className="text-sm font-extrabold text-star-900">{label}{required ? <span className="ml-1 text-[#c62b23]">*</span> : null}</span>{description ? <span className="mt-0.5 block text-xs leading-5 text-star-muted">{description}</span> : null}<span className="mt-2 block">{children}</span></label>;
 }
 
-function Panel({ title, description, action, children }: { title: string; description: string; action?: React.ReactNode; children: React.ReactNode }) {
-  return <section className="rounded-xl border border-star-200 bg-white p-5 shadow-[0_3px_14px_rgba(0,59,42,0.045)] sm:p-6"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h1 className="text-[clamp(1.45rem,2.5vw,2rem)] font-extrabold tracking-[-0.04em] text-star-900">{title}</h1><p className="mt-1.5 text-sm leading-6 text-star-muted">{description}</p></div>{action}</div>{children}</section>;
+function fieldClassName(extra = "") {
+  return `min-h-11 w-full rounded-md border border-star-200 bg-white px-3 text-sm font-semibold text-star-900 outline-none transition placeholder:text-star-muted focus:border-star-700 focus:ring-2 focus:ring-star-100 ${extra}`;
 }
 
-function FieldGrid({ fields }: { fields: FieldEntry[] }) {
-  return <dl className="mt-7 grid grid-cols-1 gap-3 sm:grid-cols-2">{fields.map((field) => <div key={field.label} className="min-h-[94px] rounded-xl bg-[#f8faf8] px-5 py-4"><dt className="text-xs font-extrabold uppercase tracking-[0.07em] text-star-muted">{field.label}</dt><dd className="mt-3 break-words text-base font-extrabold text-star-900">{field.value}</dd></div>)}</dl>;
+function RadioGroup({ id, label, description, options, value, onChange }: { id: string; label: string; description: string; options: readonly string[]; value: string; onChange: (value: string) => void }) {
+  return <fieldset className="border-b border-star-100 py-5 first:pt-0"><legend className="text-sm font-extrabold text-star-900">{label}<span className="ml-1 text-[#c62b23]">*</span></legend><p className="mt-1 text-xs leading-5 text-star-muted">{description}</p><div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{options.map((option) => <label key={option} className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm font-semibold text-star-900 transition hover:bg-star-50"><input type="radio" name={id} value={option} checked={value === option} onChange={() => onChange(option)} className="size-4 accent-[#168348]" />{option}</label>)}</div></fieldset>;
 }
 
-function EditForm({ fields, onSave, onCancel }: { fields: FieldEntry[]; onSave: (entries: FieldEntry[]) => void; onCancel: () => void }) {
-  const [entries, setEntries] = useState(fields);
-  function submit(event: FormEvent) { event.preventDefault(); onSave(entries); }
-  return <form onSubmit={submit} className="mt-7"><div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{entries.map((field, index) => <label key={field.label} className="block"><span className="mb-1.5 block text-xs font-extrabold uppercase tracking-[0.06em] text-star-700">{field.label}</span><input required value={field.value} onChange={(event) => setEntries((all) => all.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item))} className="min-h-11 w-full rounded-md border border-star-200 bg-white px-3 text-sm font-semibold text-star-900 outline-none transition focus:border-star-700 focus:ring-2 focus:ring-star-100" /></label>)}</div><div className="mt-6 flex flex-col-reverse gap-2 border-t border-star-100 pt-5 sm:flex-row sm:justify-end"><button type="button" onClick={onCancel} className="min-h-10 rounded-md border border-star-200 px-4 text-sm font-extrabold text-star-700 hover:bg-star-50">Cancel</button><button type="submit" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-star-700 px-4 text-sm font-extrabold text-white hover:bg-star-800"><Save size={16} aria-hidden="true" />Save changes</button></div></form>;
+function StepNavigation({ activeStep, profile, onSelect }: { activeStep: IndividualProfileStepId; profile: IndividualProfile; onSelect: (step: IndividualProfileStepId) => void }) {
+  return <div className="mt-5 overflow-x-auto pb-1"><div className="flex min-w-max gap-2" role="tablist" aria-label="SEC KYC profile completion steps">{individualProfileSteps.map((step) => { const status = getIndividualProfileSectionStatus(step.id, profile); const active = activeStep === step.id; const Icon = sectionStatusIcons[status]; return <button key={step.id} id={`profile-step-${step.id}`} type="button" role="tab" aria-selected={active} onClick={() => onSelect(step.id)} className={`relative flex min-h-[100px] w-[142px] flex-col rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2 ${active ? "border-star-700 bg-star-900 text-white shadow-card" : "border-star-200 bg-white text-star-900 hover:border-star-300 hover:bg-star-50"}`}><span className={`grid size-7 place-items-center rounded-full text-sm font-extrabold ${active ? "bg-star-lime text-star-900" : "bg-star-100 text-star-700"}`}>{step.number}</span><span className="mt-2 text-sm font-extrabold leading-[1.15]">{step.shortTitle}</span><span className={`absolute right-3 top-3 grid size-5 place-items-center rounded-full ${active ? "bg-white/20 text-star-lime" : sectionStatusClasses[status]}`}><Icon size={13} aria-hidden="true" /></span></button>; })}</div></div>;
 }
 
-function ProfileIdentity({ personal, onPhoto }: { personal: PersonalInfo; onPhoto: (file: File | undefined) => void }) {
-  const initials = personal.fullName.split(" ").map((name) => name[0]).join("").slice(0, 2).toUpperCase();
-  return <section className="rounded-xl border border-star-200 bg-white p-5 shadow-[0_3px_14px_rgba(0,59,42,0.045)]"><div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left"><span className="grid size-[84px] shrink-0 place-items-center rounded-full border border-star-200 bg-star-100 text-xl font-extrabold text-star-700">{initials}</span><div className="min-w-0 flex-1"><p className="truncate text-base font-extrabold uppercase tracking-[0.02em] text-star-900">{personal.fullName}</p><p className="mt-1 truncate text-sm text-star-muted">{personal.email}</p></div></div><label className="mt-5 inline-flex min-h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-star-200 px-3 text-sm font-extrabold text-star-900 transition hover:bg-star-50 focus-within:ring-2 focus-within:ring-star-700"><Upload size={16} aria-hidden="true" />Change Photo<input type="file" accept="image/jpeg,image/png" className="sr-only" onChange={(event) => onPhoto(event.target.files?.[0])} /></label><p className="mt-2 text-center text-xs text-star-muted">JPG, PNG (Max 5MB)</p></section>;
+function StepHeading({ step }: { step: IndividualProfileStep }) {
+  return <div className="flex gap-3 rounded-xl border border-[#d9eac8] bg-[linear-gradient(115deg,#f6faee_0%,#edf6e3_100%)] p-4 sm:p-5"><span className="grid size-11 shrink-0 place-items-center rounded-lg bg-star-100 text-star-700"><BadgeCheck size={23} aria-hidden="true" /></span><div><h2 className="text-xl font-extrabold text-star-900">{step.number}. {step.title}</h2><p className="mt-1 text-sm leading-6 text-star-muted">{step.description}</p></div></div>;
 }
 
-function AccountNavigation({ active, onSelect }: { active: ProfileSection; onSelect: (section: ProfileSection) => void }) {
-  return <section><h2 className="mb-3 text-sm font-extrabold text-star-muted">Account Settings</h2><nav className="overflow-hidden rounded-xl border border-star-200 bg-white shadow-[0_3px_14px_rgba(0,59,42,0.045)]" aria-label="Profile account settings">{profileNavigation.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => onSelect(id)} aria-current={active === id ? "page" : undefined} className={`flex min-h-[64px] w-full items-center gap-3 border-b border-star-100 px-4 text-left transition last:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-star-700 ${active === id ? "bg-star-50 text-star-900" : "text-star-700 hover:bg-star-50"}`}><span className={`grid size-9 place-items-center rounded-full ${active === id ? "bg-[#e4f7e8] text-[#168348]" : "bg-star-50 text-star-700"}`}><Icon size={19} aria-hidden="true" /></span><span className="flex-1 text-sm font-extrabold">{label}</span><ChevronRight size={19} aria-hidden="true" /></button>)}</nav></section>;
+function PersonalInformationStep({ profile, update }: { profile: IndividualProfile; update: (field: keyof IndividualProfile["personalInformation"], value: string) => void }) {
+  const data = profile.personalInformation;
+  return <div className="grid gap-4 sm:grid-cols-2"><InputField label="Title" required><select value={data.title} onChange={(event) => update("title", event.target.value)} className={fieldClassName()}>{profileSelectOptions.titles.map((item) => <option key={item}>{item}</option>)}</select></InputField><InputField label="First Name" required><input value={data.firstName} onChange={(event) => update("firstName", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Middle Name"><input value={data.middleName} onChange={(event) => update("middleName", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Surname" required><input value={data.surname} onChange={(event) => update("surname", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Date of Birth" required><input type="date" value={data.dateOfBirth} onChange={(event) => update("dateOfBirth", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Gender" required><select value={data.gender} onChange={(event) => update("gender", event.target.value)} className={fieldClassName()}>{profileSelectOptions.genders.map((item) => <option key={item}>{item}</option>)}</select></InputField><InputField label="Nationality" required><input value={data.nationality} onChange={(event) => update("nationality", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Country of Birth" required><input value={data.countryOfBirth} onChange={(event) => update("countryOfBirth", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Residential Address" required><textarea value={data.residentialAddress} onChange={(event) => update("residentialAddress", event.target.value)} className={fieldClassName("min-h-24 py-3")} /></InputField><InputField label="State of Residence" required><input value={data.stateOfResidence} onChange={(event) => update("stateOfResidence", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Country of Tax Residence" required><input value={data.countryOfTaxResidence} onChange={(event) => update("countryOfTaxResidence", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Email Address" required><input type="email" value={data.emailAddress} onChange={(event) => update("emailAddress", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Mobile Phone" required><input type="tel" value={data.mobilePhone} onChange={(event) => update("mobilePhone", event.target.value)} className={fieldClassName()} /></InputField></div>;
 }
 
-function VerificationContent() {
-  return <Panel title="Account Verification" description="Review the profile details and documents held for your account."><div className="mt-7 rounded-xl border border-[#cce7d0] bg-[#eff8f0] p-5"><div className="flex gap-3"><span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#168348] text-white"><ShieldCheck size={22} aria-hidden="true" /></span><div><h2 className="text-base font-extrabold text-star-900">Profile verification complete</h2><p className="mt-1 text-sm leading-6 text-star-muted">Your profile has been verified and is up to date. This frontend preview can also support incomplete, pending review and action-required states.</p></div></div></div><h2 className="mt-7 text-base font-extrabold text-star-900">Profile Completion</h2><div className="mt-3 flex items-center gap-3"><div className="h-3 flex-1 overflow-hidden rounded-full bg-star-100"><div className="h-full w-full rounded-full bg-[#118466]" /></div><span className="font-extrabold text-star-900">100%</span></div><ul className="mt-6 space-y-3">{profileCompletion.map((label) => <li key={label} className="flex items-center justify-between gap-3"><span className="flex items-center gap-2.5 text-sm text-star-muted"><span className="grid size-5 place-items-center rounded-full bg-[#e1f7e7] text-[#168348]"><Check size={12} strokeWidth={3} /></span>{label}</span><span className="rounded-full bg-[#e1f7e7] px-2.5 py-1 text-xs font-bold text-[#16743d]">Completed</span></li>)}</ul></Panel>;
+function IdentityVerificationStep({ profile, update, updateDocument }: { profile: IndividualProfile; update: (field: keyof IndividualProfile["identityVerification"], value: string) => void; updateDocument: (id: IndividualProfile["identityVerification"]["documents"][number]["id"], status: MockDocumentStatus) => void }) {
+  const data = profile.identityVerification;
+  const documentStatuses: MockDocumentStatus[] = ["Not Uploaded", "Uploaded", "Pending Review", "Verified"];
+  return <><div className="grid gap-4 sm:grid-cols-2"><InputField label="ID Type" required><select value={data.idType} onChange={(event) => update("idType", event.target.value)} className={fieldClassName()}>{profileSelectOptions.identityTypes.map((item) => <option key={item}>{item}</option>)}</select></InputField><InputField label="ID Number" required><input value={data.idNumber} onChange={(event) => update("idNumber", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Issue Date" required><input type="date" value={data.issueDate} onChange={(event) => update("issueDate", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Expiry Date" required><input type="date" value={data.expiryDate} onChange={(event) => update("expiryDate", event.target.value)} className={fieldClassName()} /></InputField><InputField label="BVN" required><input inputMode="numeric" value={data.bvn} onChange={(event) => update("bvn", event.target.value)} className={fieldClassName()} /></InputField><InputField label="NIN" required><input inputMode="numeric" value={data.nin} onChange={(event) => update("nin", event.target.value)} className={fieldClassName()} /></InputField><InputField label="TIN" description="Optional where applicable"><input value={data.tin} onChange={(event) => update("tin", event.target.value)} className={fieldClassName()} /></InputField></div><section className="mt-6 border-t border-star-100 pt-5" aria-labelledby="identity-documents-heading"><h3 id="identity-documents-heading" className="text-base font-extrabold text-star-900">Identity document placeholders</h3><p className="mt-1 text-sm text-star-muted">These are frontend-only status controls. No document is uploaded or stored.</p><div className="mt-4 grid gap-3 sm:grid-cols-3">{data.documents.map((document) => <div key={document.id} className="rounded-lg border border-star-200 bg-star-50 p-4"><FileText size={20} className="text-star-700" aria-hidden="true" /><p className="mt-3 text-sm font-extrabold text-star-900">{document.label}</p><label className="mt-3 block"><span className="sr-only">Status for {document.label}</span><select value={document.status} onChange={(event) => updateDocument(document.id, event.target.value as MockDocumentStatus)} className={fieldClassName("min-h-9 bg-white text-xs")}>{documentStatuses.map((status) => <option key={status}>{status}</option>)}</select></label></div>)}</div></section></>;
 }
 
-function DocumentsContent() {
-  return <Panel title="Documents" description="Personal documents held for profile and compliance requirements."><div className="mt-7 divide-y divide-star-100 rounded-lg border border-star-200">{personalDocuments.map((document) => <div key={document.name} className="flex flex-col gap-2 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"><span className="flex items-center gap-3 text-sm font-extrabold text-star-900"><FileText size={18} className="text-star-700" />{document.name}</span><span className={`inline-flex w-max items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-extrabold ${document.status === "Verified" ? "bg-[#e1f7e7] text-[#16743d]" : "bg-[#eff2f3] text-[#62717b]"}`}><Check size={12} aria-hidden="true" />{document.status}</span></div>)}</div></Panel>;
+function EmploymentIncomeStep({ profile, update }: { profile: IndividualProfile; update: (field: keyof IndividualProfile["employmentIncomeSourceOfFunds"], value: string) => void }) {
+  const data = profile.employmentIncomeSourceOfFunds;
+  return <div className="grid gap-4 sm:grid-cols-2"><InputField label="Occupation" required><input value={data.occupation} onChange={(event) => update("occupation", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Employer Name" required><input value={data.employerName} onChange={(event) => update("employerName", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Employment Status" required><select value={data.employmentStatus} onChange={(event) => update("employmentStatus", event.target.value)} className={fieldClassName()}>{profileSelectOptions.employmentStatuses.map((item) => <option key={item}>{item}</option>)}</select></InputField><InputField label="Annual Income" required><input inputMode="numeric" value={data.annualIncome} onChange={(event) => update("annualIncome", event.target.value.replace(/[^0-9]/g, ""))} className={fieldClassName()} /></InputField><InputField label="Estimated Net Worth" required><input inputMode="numeric" value={data.estimatedNetWorth} onChange={(event) => update("estimatedNetWorth", event.target.value.replace(/[^0-9]/g, ""))} className={fieldClassName()} /></InputField><InputField label="Source of Funds" required><select value={data.sourceOfFunds} onChange={(event) => update("sourceOfFunds", event.target.value)} className={fieldClassName()}>{profileSelectOptions.sourceOfFunds.map((item) => <option key={item}>{item}</option>)}</select></InputField>{data.sourceOfFunds === "Other" ? <InputField label="Specify Source" required><input value={data.specifySource} onChange={(event) => update("specifySource", event.target.value)} className={fieldClassName()} /></InputField> : null}<InputField label="Expected Annual Inflow" required><input inputMode="numeric" value={data.expectedAnnualInflow} onChange={(event) => update("expectedAnnualInflow", event.target.value.replace(/[^0-9]/g, ""))} className={fieldClassName()} /></InputField><InputField label="Expected Transaction Frequency" required><select value={data.expectedTransactionFrequency} onChange={(event) => update("expectedTransactionFrequency", event.target.value)} className={fieldClassName()}>{profileSelectOptions.transactionFrequencies.map((item) => <option key={item}>{item}</option>)}</select></InputField></div>;
 }
 
-function SecurityContent({ type, onNotice }: { type: "PIN" | "Password"; onNotice: (message: string) => void }) {
-  const isPin = type === "PIN";
-  return <Panel title={`${type} Management`} description={isPin ? "Manage your transaction security PIN." : "Keep your account secure with a strong password."}><div className="mt-7 rounded-xl border border-star-200 bg-star-50 p-5"><div className="flex gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-full bg-white text-star-700">{isPin ? <KeyRound size={20} /> : <LockKeyhole size={20} />}</span><div><h2 className="font-extrabold text-star-900">{isPin ? "Transaction PIN" : "Account password"}</h2><p className="mt-1 text-sm leading-6 text-star-muted">{isPin ? "Your PIN is protected and cannot be viewed." : "Password updates are not connected to a backend in this frontend preview."}</p></div></div><button type="button" onClick={() => onNotice(`${isPin ? "PIN" : "Password"} changes are unavailable in this frontend-only preview.`)} className="mt-5 min-h-10 rounded-md border border-star-200 bg-white px-4 text-sm font-extrabold text-star-900 hover:bg-star-50">Change {type}</button></div></Panel>;
+function BankDetailsStep({ profile, update, saved }: { profile: IndividualProfile; update: (field: keyof IndividualProfile["bankDetails"], value: string) => void; saved: boolean }) {
+  const data = profile.bankDetails;
+  return <><div className="rounded-lg border border-[#cce7d0] bg-[#eff8f0] p-4"><div className="flex gap-3"><Info size={20} className="mt-0.5 shrink-0 text-star-700" aria-hidden="true" /><p className="text-sm leading-6 text-star-muted">Withdrawals will only be paid to an account held in your name. Third-party payments are not permitted.</p></div></div>{saved ? <div className="mt-4 flex items-center gap-2 rounded-lg bg-star-50 px-4 py-3 text-sm font-semibold text-star-700"><LockKeyhole size={17} aria-hidden="true" />Saved account on file: {maskAccountNumber(data.accountNumber)}</div> : null}<div className="mt-5 grid gap-4 sm:grid-cols-2"><InputField label="Bank Name" required><input value={data.bankName} onChange={(event) => update("bankName", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Account Number" required><input inputMode="numeric" value={data.accountNumber} onChange={(event) => update("accountNumber", event.target.value.replace(/[^0-9]/g, ""))} className={fieldClassName()} /></InputField><InputField label="Account Name" required><input value={data.accountName} onChange={(event) => update("accountName", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Account Type" required><select value={data.accountType} onChange={(event) => update("accountType", event.target.value)} className={fieldClassName()}>{profileSelectOptions.bankAccountTypes.map((item) => <option key={item}>{item}</option>)}</select></InputField><InputField label="Branch / Sort Code" required><input value={data.branchSortCode} onChange={(event) => update("branchSortCode", event.target.value)} className={fieldClassName()} /></InputField><InputField label="BVN Linked to Account" required><input inputMode="numeric" value={data.bvnLinkedToAccount} onChange={(event) => update("bvnLinkedToAccount", event.target.value)} className={fieldClassName()} /></InputField></div></>;
+}
+
+function PepDeclarationStep({ profile, update }: { profile: IndividualProfile; update: <T extends keyof IndividualProfile["pepDeclaration"]>(field: T, value: IndividualProfile["pepDeclaration"][T]) => void }) {
+  const data = profile.pepDeclaration;
+  return <><fieldset><legend className="text-sm font-extrabold leading-6 text-star-900">Are you, or have you or any of your close relatives or associates within the last 12 months, occupied a prominent public position?<span className="ml-1 text-[#c62b23]">*</span></legend><div className="mt-4 flex flex-wrap gap-3">{(["Yes", "No"] as const).map((option) => <label key={option} className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-4 text-sm font-extrabold transition ${data.hasPepRelationship === option ? "border-star-700 bg-star-50 text-star-900" : "border-star-200 bg-white text-star-700 hover:bg-star-50"}`}><input type="radio" name="pep-position" value={option} checked={data.hasPepRelationship === option} onChange={() => update("hasPepRelationship", option)} className="size-4 accent-[#168348]" />{option}</label>)}</div></fieldset>{data.hasPepRelationship === "Yes" ? <div className="mt-6 grid gap-4 sm:grid-cols-2"><InputField label="Name" required><input value={data.name} onChange={(event) => update("name", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Position" required><input value={data.position} onChange={(event) => update("position", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Country" required><input value={data.country} onChange={(event) => update("country", event.target.value)} className={fieldClassName()} /></InputField><InputField label="Period Held" required><input value={data.periodHeld} onChange={(event) => update("periodHeld", event.target.value)} className={fieldClassName()} /></InputField></div> : null}<label className="mt-6 flex cursor-pointer items-start gap-3 rounded-lg border border-star-200 bg-star-50 p-4 text-sm font-semibold leading-6 text-star-900"><input type="checkbox" checked={data.declarationAccepted} onChange={(event) => update("declarationAccepted", event.target.checked)} className="mt-1 size-4 shrink-0 accent-[#168348]" />I confirm that the information provided in this section is complete and accurate.</label></>;
+}
+
+function CurrencyInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const formattedValue = value ? new Intl.NumberFormat("en-NG").format(Number(value)) : "";
+  return <span className="relative block"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-extrabold text-star-700">₦</span><input inputMode="numeric" value={formattedValue} onChange={(event) => onChange(event.target.value.replace(/[^0-9]/g, ""))} className={fieldClassName("pl-8")} /></span>;
+}
+
+function InvestmentRiskStep({ profile, update, toggleProduct }: { profile: IndividualProfile; update: (field: keyof IndividualProfile["investmentRiskProfile"], value: string) => void; toggleProduct: (product: string) => void }) {
+  const data = profile.investmentRiskProfile;
+  return <><RadioGroup id="investment-objective" label="Primary Investment Objective" description="What is your main goal for investing with Starfetch?" options={investmentRiskOptions.primaryObjective} value={data.primaryObjective} onChange={(value) => update("primaryObjective", value)} /><RadioGroup id="risk-tolerance" label="Risk Tolerance" description="How much investment risk are you comfortable with?" options={investmentRiskOptions.riskTolerance} value={data.riskTolerance} onChange={(value) => update("riskTolerance", value)} /><RadioGroup id="investment-horizon" label="Investment Horizon" description="For how long do you plan to keep your investments?" options={investmentRiskOptions.investmentHorizon} value={data.investmentHorizon} onChange={(value) => update("investmentHorizon", value)} /><RadioGroup id="investment-knowledge" label="Investment Knowledge and Experience" description="How would you rate your investment knowledge and experience?" options={investmentRiskOptions.investmentKnowledge} value={data.investmentKnowledge} onChange={(value) => update("investmentKnowledge", value)} /><div className="grid gap-4 border-b border-star-100 py-5 sm:grid-cols-2"><InputField label="Expected Withdrawals (₦)" description="How much do you expect to withdraw from your investments when needed?" required><CurrencyInput value={data.expectedWithdrawals} onChange={(value) => update("expectedWithdrawals", value)} /></InputField><InputField label="Frequency" description="How often do you expect to make withdrawals?" required><select value={data.withdrawalFrequency} onChange={(event) => update("withdrawalFrequency", event.target.value)} className={fieldClassName()}>{profileSelectOptions.withdrawalFrequencies.map((item) => <option key={item}>{item}</option>)}</select></InputField></div><div className="border-b border-star-100 py-5"><InputField label="Investment Restrictions or Exclusions" description="Tell us if there are any investments, industries or instruments you do not want included in your portfolio."><textarea value={data.investmentRestrictions} onChange={(event) => update("investmentRestrictions", event.target.value)} placeholder="Optional restrictions or exclusions" className={fieldClassName("min-h-24 py-3")} /></InputField></div><fieldset className="pt-5"><legend className="text-sm font-extrabold text-star-900">Preferred Investment Products<span className="ml-1 text-[#c62b23]">*</span></legend><p className="mt-1 text-xs leading-5 text-star-muted">Select the Starfetch investment solutions you are interested in. This is a Starfetch preference field, not a SEC requirement.</p><div className="mt-4 flex flex-wrap gap-x-6 gap-y-3">{investmentRiskOptions.preferredProducts.map((product) => <label key={product} className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-star-900"><input type="checkbox" checked={data.preferredProducts.includes(product)} onChange={() => toggleProduct(product)} className="size-4 accent-[#168348]" />{product}</label>)}</div></fieldset></>;
+}
+
+function ProfileStatusCard({ profile, completion }: { profile: IndividualProfile; completion: ReturnType<typeof getIndividualProfileCompletion> }) {
+  const message = completion.percentage === 100 ? "All required SEC/KYC information has been provided." : "Complete all required sections to finish your SEC/KYC profile.";
+  return <section className="rounded-xl border border-star-200 bg-white p-5 shadow-[0_2px_12px_rgba(14,62,46,0.04)]" aria-labelledby="profile-status-heading"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-full bg-star-100 text-star-700"><ShieldCheck size={21} aria-hidden="true" /></span><h2 id="profile-status-heading" className="text-lg font-extrabold text-star-900">Profile Status</h2></div><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-extrabold ${verificationClasses[profile.verificationStatus]}`}>{profile.verificationStatus}</span></div><div className="mt-6"><div className="flex items-center justify-between gap-3"><p className="text-sm font-extrabold text-star-900">Profile Completion</p><strong className="text-lg text-star-900">{completion.percentage}%</strong></div><div className="mt-3 h-3 overflow-hidden rounded-full bg-star-100" role="progressbar" aria-label="SEC KYC profile completion" aria-valuemin={0} aria-valuemax={100} aria-valuenow={completion.percentage}><div className="h-full rounded-full bg-[linear-gradient(90deg,#168348,#2c9e45)]" style={{ width: `${completion.percentage}%` }} /></div><p className="mt-4 rounded-lg bg-[#eff8e8] p-4 text-sm font-semibold leading-6 text-star-700">{message}</p><p className="mt-3 text-xs leading-5 text-star-muted">Completion is based on information you provide. Verification remains a separate Starfetch/compliance review status.</p></div></section>;
+}
+
+function CompletionChecklist({ profile }: { profile: IndividualProfile }) {
+  return <section className="rounded-xl border border-star-200 bg-white p-5 shadow-[0_2px_12px_rgba(14,62,46,0.04)]" aria-labelledby="profile-checklist-heading"><div className="flex items-start gap-3"><span className="grid size-10 place-items-center rounded-full bg-star-100 text-star-700"><FileText size={20} aria-hidden="true" /></span><div><h2 id="profile-checklist-heading" className="text-lg font-extrabold text-star-900">Profile Completion Checklist</h2><p className="mt-1 text-xs leading-5 text-star-muted">SEC/KYC information is grouped into six profile-completion steps.</p></div></div><ol className="mt-5 divide-y divide-star-100">{individualProfileSteps.map((step) => { const status = getIndividualProfileSectionStatus(step.id, profile); return <li key={step.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"><span className="grid size-8 shrink-0 place-items-center rounded-full bg-star-100 text-sm font-extrabold text-star-700">{step.number}</span><span className="min-w-0 flex-1 text-sm font-extrabold leading-5 text-star-900">{step.shortTitle}</span><SectionStatusBadge status={status} /></li>; })}</ol></section>;
 }
 
 export function IndividualProfileContent() {
-  const [active, setActive] = useState<ProfileSection>("profile");
-  const [personal, setPersonal] = useState(initialPersonal);
-  const [bank, setBank] = useState(initialBank);
-  const [preferences, setPreferences] = useState(initialPreferences);
-  const [editing, setEditing] = useState<EditableSection>(null);
+  const router = useRouter();
+  const [profile, setProfile] = useState<IndividualProfile>(initialProfile);
+  const [activeStep, setActiveStep] = useState<IndividualProfileStepId>("personal-information");
   const [notice, setNotice] = useState<string | null>(null);
-  const personalFieldValues = useMemo(() => profileFields(personal), [personal]);
-  const bankFieldValues: FieldEntry[] = [{ label: "Bank Name", value: bank.bankName }, { label: "Account Number", value: bank.accountNumber }, { label: "Account Name", value: bank.accountName }, { label: "Account Type", value: bank.accountType }, { label: "BVN", value: bank.bvn }];
-  const preferenceFieldValues: FieldEntry[] = [{ label: "Investment Objective", value: preferences.objective }, { label: "Risk Appetite", value: preferences.risk }, { label: "Preferred Investment Products", value: preferences.products }, { label: "Investment Horizon", value: preferences.horizon }];
+  const [bankSaved, setBankSaved] = useState(false);
+  const completion = useMemo(() => getIndividualProfileCompletion(profile), [profile]);
+  const currentStep = individualProfileSteps.find((step) => step.id === activeStep) ?? individualProfileSteps[0];
 
-  function savePersonal(fields: FieldEntry[]) { setPersonal((current) => ({ ...current, fullName: `${fields[0].value} ${fields[1].value}`.trim(), phone: fields[2].value, email: fields[3].value, address: fields[4].value, city: fields[5].value, state: fields[6].value, country: fields[7].value, dateOfBirth: fields[8].value, occupation: fields[9].value })); setEditing(null); setNotice("Profile details saved locally in this frontend preview."); }
-  function saveBank(fields: FieldEntry[]) { setBank({ bankName: fields[0].value, accountNumber: fields[1].value, accountName: fields[2].value, accountType: fields[3].value, bvn: fields[4].value }); setEditing(null); setNotice("Bank details saved locally in this frontend preview."); }
-  function savePreferences(fields: FieldEntry[]) { setPreferences({ objective: fields[0].value, risk: fields[1].value, products: fields[2].value, horizon: fields[3].value }); setEditing(null); setNotice("Investment preferences saved locally in this frontend preview."); }
+  const updatePersonal = (field: keyof IndividualProfile["personalInformation"], value: string) => setProfile((current) => ({ ...current, personalInformation: { ...current.personalInformation, [field]: value } }));
+  const updateIdentity = (field: keyof IndividualProfile["identityVerification"], value: string) => setProfile((current) => ({ ...current, identityVerification: { ...current.identityVerification, [field]: value } }));
+  const updateDocument = (id: IndividualProfile["identityVerification"]["documents"][number]["id"], status: MockDocumentStatus) => setProfile((current) => ({ ...current, identityVerification: { ...current.identityVerification, documents: current.identityVerification.documents.map((document) => document.id === id ? { ...document, status } : document) } }));
+  const updateEmployment = (field: keyof IndividualProfile["employmentIncomeSourceOfFunds"], value: string) => setProfile((current) => ({ ...current, employmentIncomeSourceOfFunds: { ...current.employmentIncomeSourceOfFunds, [field]: value } }));
+  const updateBank = (field: keyof IndividualProfile["bankDetails"], value: string) => setProfile((current) => ({ ...current, bankDetails: { ...current.bankDetails, [field]: value } }));
+  const updatePep = <T extends keyof IndividualProfile["pepDeclaration"]>(field: T, value: IndividualProfile["pepDeclaration"][T]) => setProfile((current) => ({ ...current, pepDeclaration: { ...current.pepDeclaration, [field]: value } }));
+  const updateRisk = (field: keyof IndividualProfile["investmentRiskProfile"], value: string) => setProfile((current) => ({ ...current, investmentRiskProfile: { ...current.investmentRiskProfile, [field]: value } }));
+  const togglePreferredProduct = (product: string) => setProfile((current) => ({ ...current, investmentRiskProfile: { ...current.investmentRiskProfile, preferredProducts: current.investmentRiskProfile.preferredProducts.includes(product) ? current.investmentRiskProfile.preferredProducts.filter((item) => item !== product) : [...current.investmentRiskProfile.preferredProducts, product] } }));
 
-  let content: React.ReactNode;
-  if (active === "profile") content = <Panel title="Profile Details" description="Manage your personal information and contact details." action={editing !== "profile" ? <EditButton onClick={() => setEditing("profile")} /> : undefined}>{editing === "profile" ? <EditForm fields={personalFieldValues} onSave={savePersonal} onCancel={() => setEditing(null)} /> : <FieldGrid fields={personalFieldValues} />}</Panel>;
-  else if (active === "verification") content = <VerificationContent />;
-  else if (active === "bank") content = <Panel title="Bank Details" description="Manage your linked settlement account details." action={editing !== "bank" ? <EditButton onClick={() => setEditing("bank")} /> : undefined}>{editing === "bank" ? <EditForm fields={bankFieldValues} onSave={saveBank} onCancel={() => setEditing(null)} /> : <FieldGrid fields={bankFieldValues} />}</Panel>;
-  else if (active === "preferences") content = <Panel title="Investment Preferences" description="Manage your investment objectives and risk preference." action={editing !== "preferences" ? <EditButton onClick={() => setEditing("preferences")} /> : undefined}>{editing === "preferences" ? <EditForm fields={preferenceFieldValues} onSave={savePreferences} onCancel={() => setEditing(null)} /> : <FieldGrid fields={preferenceFieldValues} />}</Panel>;
-  else if (active === "documents") content = <DocumentsContent />;
-  else content = <SecurityContent type={active === "pin" ? "PIN" : "Password"} onNotice={setNotice} />;
+  const saveChanges = () => {
+    if (activeStep === "bank-details") setBankSaved(true);
+    setNotice(`${currentStep.title} was saved locally. No information was sent to a server.`);
+  };
 
-  return <main className="min-w-0"><div className="mb-5"><h1 className="font-display text-3xl font-extrabold tracking-[-0.045em] text-star-900 sm:text-[2.15rem]">Profile</h1><p className="mt-1.5 text-sm leading-6 text-star-muted sm:text-base">View and manage your personal information and keep your details up to date.</p></div>{notice && <div role="status" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-[#cce7d0] bg-[#eff8f0] px-4 py-3 text-sm font-semibold text-star-700"><span>{notice}</span><button type="button" onClick={() => setNotice(null)} className="rounded px-1 hover:bg-white" aria-label="Dismiss message">×</button></div>}<div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(300px,340px)_minmax(0,1fr)]"><aside className="min-w-0 space-y-6"><ProfileIdentity personal={personal} onPhoto={(file) => setNotice(file ? `${file.name} was selected locally. No photo is uploaded in this preview.` : "")} /><AccountNavigation active={active} onSelect={(section) => { setActive(section); setEditing(null); }} /></aside><div className="min-w-0">{content}</div></div></main>;
+  const continueProfile = () => {
+    const currentStatus = getIndividualProfileSectionStatus(activeStep, profile);
+    if (currentStatus !== "Completed") {
+      setNotice(`Complete the required fields in ${currentStep.title} before continuing.`);
+      return;
+    }
+    saveChanges();
+    const currentIndex = individualProfileSteps.findIndex((step) => step.id === activeStep);
+    if (currentIndex === individualProfileSteps.length - 1) {
+      router.push("/dashboard");
+      return;
+    }
+    const nextIncomplete = individualProfileSteps.slice(currentIndex + 1).find((step) => getIndividualProfileSectionStatus(step.id, profile) !== "Completed");
+    setActiveStep(nextIncomplete?.id ?? individualProfileSteps[currentIndex + 1].id);
+  };
+
+  let stepContent: React.ReactNode;
+  if (activeStep === "personal-information") stepContent = <PersonalInformationStep profile={profile} update={updatePersonal} />;
+  else if (activeStep === "identity-verification") stepContent = <IdentityVerificationStep profile={profile} update={updateIdentity} updateDocument={updateDocument} />;
+  else if (activeStep === "employment-income") stepContent = <EmploymentIncomeStep profile={profile} update={updateEmployment} />;
+  else if (activeStep === "bank-details") stepContent = <BankDetailsStep profile={profile} update={updateBank} saved={bankSaved} />;
+  else if (activeStep === "pep-declaration") stepContent = <PepDeclarationStep profile={profile} update={updatePep} />;
+  else stepContent = <InvestmentRiskStep profile={profile} update={updateRisk} toggleProduct={togglePreferredProduct} />;
+
+  return <main className="min-w-0"><div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]"><div className="min-w-0"><section><div className="flex items-start gap-4"><span className="mt-1 grid size-12 shrink-0 place-items-center rounded-lg bg-star-100 text-star-700"><UserRound size={25} aria-hidden="true" /></span><div><p className="text-xs font-extrabold uppercase tracking-[0.16em] text-star-700">SEC / KYC profile</p><h1 className="mt-1 font-display text-[clamp(2rem,3.5vw,3rem)] font-extrabold tracking-[-0.045em] text-star-900">Individual Profile</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-star-muted sm:text-base">Manage your personal information and SEC/KYC verification details.</p></div></div><div className="mt-5 flex gap-3 rounded-xl border border-[#d9eac8] bg-[linear-gradient(115deg,#f5faed_0%,#edf6e3_100%)] p-4"><Info size={22} className="mt-0.5 shrink-0 text-star-700" aria-hidden="true" /><div><h2 className="text-base font-extrabold text-star-900">SEC Profile Completion (6 Steps)</h2><p className="mt-1 text-sm leading-6 text-star-muted">Your regulatory profile information is grouped into six sections. Complete all required sections to keep your account verified and eligible for investment services.</p></div></div></section><StepNavigation activeStep={activeStep} profile={profile} onSelect={setActiveStep} />{notice ? <div role="status" className="mt-4 flex items-start justify-between gap-3 rounded-lg border border-[#cce7d0] bg-[#eff8f0] px-4 py-3 text-sm font-semibold leading-6 text-star-700"><span>{notice}</span><button type="button" onClick={() => setNotice(null)} aria-label="Dismiss message" className="-mr-1 -mt-1 grid size-7 shrink-0 place-items-center rounded hover:bg-white"><X size={16} aria-hidden="true" /></button></div> : null}<section className="mt-5 rounded-xl border border-star-200 bg-white p-5 shadow-[0_2px_12px_rgba(14,62,46,0.04)] sm:p-6" role="tabpanel" aria-labelledby={`profile-step-${activeStep}`}><StepHeading step={currentStep} /><div className="mt-6">{stepContent}</div><div className="mt-7 flex flex-col-reverse gap-3 border-t border-star-100 pt-5 sm:flex-row sm:justify-end"><button type="button" onClick={saveChanges} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-star-700 bg-white px-5 text-sm font-extrabold text-star-700 transition hover:bg-star-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2"><Save size={17} aria-hidden="true" />Save Changes</button><button type="button" onClick={continueProfile} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-star-700 px-5 text-sm font-extrabold text-white transition hover:bg-star-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Continue <ArrowRight size={17} aria-hidden="true" /></button></div></section></div><aside className="space-y-5 xl:pt-5"><ProfileStatusCard profile={profile} completion={completion} /><CompletionChecklist profile={profile} /></aside></div></main>;
 }

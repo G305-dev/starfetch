@@ -9,5 +9,5 @@ export const metadata: Metadata = {
 };
 
 export default function JointProfilePage() {
-  return <div className="min-h-screen bg-[#f7f9f8] lg:pl-[270px]"><JointSidebar /><div className="min-w-0"><JointHeader /><div className="px-5 py-8 sm:px-8 lg:px-8 xl:px-10"><JointProfileContent /></div></div></div>;
+  return <div className="min-h-screen bg-[#f7f9f8] lg:pl-[270px]"><JointSidebar /><div className="min-w-0"><JointHeader /><div className="mx-auto w-full max-w-[1600px] px-5 py-8 sm:px-8 lg:px-8 xl:px-10"><JointProfileContent /></div></div></div>;
 }
