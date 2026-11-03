@@ -2,19 +2,22 @@ openapi: 3.0.3
 
 info:
   title: Starfetch Investment Limited — Platform API
-  version: 0.3.0
+  version: 0.4.0
   description: |
     Canonical API contract for the Starfetch platform (one API serving the public
     website, investor web portal, staff/admin portal, and the future Android/iOS
     React Native clients).
 
     **Current scope: IMPLEMENTED — PHASE 2A foundation + PHASE 2B authentication
-    & identity + PHASE 2C investor profile foundation.** Contracts below match
-    the running implementation exactly: health, registration, email
-    verification, login, refresh rotation, logout, `/me`, and
-    `GET`/`PUT /me/profile` (investor self-service profile — INVESTOR role
-    only, ownership strictly from the authenticated principal, email
-    read-only). No other business endpoints exist yet.
+    & identity + PHASE 2C investor profile foundation + PHASE 2D investor
+    dashboard read APIs.** Contracts below match the running implementation
+    exactly: health, registration, email verification, login, refresh rotation,
+    logout, `/me`, `GET`/`PUT /me/profile`, and the dashboard reads
+    `GET /me/portfolio` + `GET /me/transactions` (INVESTOR role only, ownership
+    strictly from the authenticated principal). **A new investor with no
+    portfolio/holding/transaction rows is a NORMAL state** — these reads return
+    a real, successful empty dashboard; the backend NEVER seeds demo or fake
+    financial records. No other business endpoints exist yet.
 
     Business surfaces (applications, documents/KYC, products, portfolio,
     transactions, statements, staff tooling) are incorporated **one feature at
@@ -24,7 +27,7 @@ info:
 
     Change control: no unilateral breaking changes; breaking changes require a
     coordinated version/change decision by David and Emmanuel.
-  x-status: PHASE-2C-INVESTOR-PROFILE-FOUNDATION
+  x-status: PHASE-2D-INVESTOR-DASHBOARD-READ-APIS
   contact:
     name: Starfetch Engineering (David — backend; Emmanuel — frontend/mobile)
 
@@ -579,6 +582,134 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /me/portfolio:
+    get:
+      tags:
+        - Me
+      operationId: getOwnPortfolio
+      summary: Current investor's portfolio (INVESTOR role only)
+      description: |
+        Dashboard read for the authenticated investor's portfolio.
+        `userId` is NEVER accepted from query/body/path — ownership comes
+        exclusively from the validated bearer token.
+
+        **Empty state is normal and successful**: a new investor has no
+        portfolio/holding rows and receives `totalValueMinor: 0`,
+        `holdingCount: 0`, `holdings: []`. The backend NEVER seeds demo or
+        fake records to populate the dashboard.
+
+        Money semantics: all amounts are **minor units** (kobo for NGN).
+        `totalValueMinor` aggregates STORED holding values only — there is NO
+        market valuation logic, and no rates, yields, fees, performance or
+        gains are computed or returned. `totalReturnMinor` is always `null`
+        until an approved return/cost-basis calculation exists.
+
+        `meta` additionally carries `asOf` (ISO timestamp of this snapshot)
+        alongside the standard `requestId`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Portfolio snapshot (empty state for new investors).
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioResponse"
+              example:
+                data:
+                  currency: "NGN"
+                  totalValueMinor: 0
+                  holdingCount: 0
+                  totalReturnMinor: null
+                  holdings: []
+                meta:
+                  asOf: "2026-11-03T14:40:00.000Z"
+                  requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+        "401":
+          description: Missing/invalid/expired token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Authenticated principal is not an INVESTOR (`FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /me/transactions:
+    get:
+      tags:
+        - Me
+      operationId: listOwnTransactions
+      summary: Current investor's transaction list (INVESTOR role only)
+      description: |
+        Paginated ledger read for the authenticated investor. `userId` is
+        NEVER accepted — unknown query fields are rejected
+        (`400 VALIDATION_FAILED`), and ownership comes exclusively from the
+        bearer token. New investors receive an empty `data` array with
+        `total: 0`; rows are real records only (never demo data).
+
+        Ordering: newest first (`occurredAt` descending). Money semantics as
+        per `/me/portfolio`: minor units, currency attributes on each row;
+        `amountMinor` is signed (credit positive / debit negative).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1, example: 1 }
+          description: 1-based page number.
+        - name: pageSize
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20, example: 5 }
+          description: Page size (1–100; dashboard baseline uses 5).
+      responses:
+        "200":
+          description: Page of transactions (may be legitimately empty).
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionPageResponse"
+              example:
+                data: []
+                meta:
+                  page: 1
+                  pageSize: 5
+                  total: 0
+                  requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+        "400":
+          description: Invalid pagination or unknown query field (e.g. a `userId` targeting attempt).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing/invalid/expired token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Authenticated principal is not an INVESTOR (`FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -855,6 +986,93 @@ components:
           $ref: "#/components/schemas/Meta"
       required: [data, meta]
 
+    HoldingItem:
+      type: object
+      description: Stored holding row (minor units; no valuation logic applied).
+      properties:
+        id: { type: string, format: uuid }
+        instrumentLabel: { type: string }
+        quantity:
+          type: string
+          nullable: true
+          description: Decimal quantity serialized as a string; null when not applicable.
+        valueMinor: { type: integer, format: int64 }
+        currency: { type: string, example: "NGN" }
+        asOf: { type: string, format: date-time }
+        isDemo:
+          type: boolean
+          enum: [false]
+          description: Always false — demo/fake records do not exist in the platform.
+      required: [id, instrumentLabel, quantity, valueMinor, currency, asOf, isDemo]
+
+    PortfolioData:
+      type: object
+      properties:
+        currency: { type: string, enum: ["NGN"] }
+        totalValueMinor:
+          type: integer
+          format: int64
+          description: Sum of STORED holding values only (minor units).
+        holdingCount: { type: integer }
+        totalReturnMinor:
+          type: integer
+          format: int64
+          nullable: true
+          description: Always null until an approved return calculation exists.
+        holdings:
+          type: array
+          items:
+            $ref: "#/components/schemas/HoldingItem"
+      required: [currency, totalValueMinor, holdingCount, totalReturnMinor, holdings]
+
+    PortfolioResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/PortfolioData"
+        meta:
+          type: object
+          properties:
+            requestId: { type: string }
+            asOf:
+              type: string
+              format: date-time
+              description: Snapshot timestamp.
+          required: [requestId, asOf]
+      required: [data, meta]
+
+    TransactionItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, description: Business vocabulary pinned by a later approved contract. }
+        status: { type: string }
+        amountMinor:
+          type: integer
+          format: int64
+          description: Signed minor units (credit positive / debit negative).
+        currency: { type: string, example: "NGN" }
+        description: { type: string, nullable: true }
+        occurredAt: { type: string, format: date-time }
+      required: [id, type, status, amountMinor, currency, description, occurredAt]
+
+    TransactionPageResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TransactionItem"
+        meta:
+          type: object
+          properties:
+            requestId: { type: string }
+            page: { type: integer }
+            pageSize: { type: integer }
+            total: { type: integer }
+          required: [requestId, page, pageSize, total]
+      required: [data, meta]
+
     Error:
       type: object
       description: |
@@ -1005,6 +1223,15 @@ x-conventions:
       Frontend route guards remain UX only. Resource ownership is always
       derived from the authenticated principal — request-supplied user
       identifiers are never honoured.
+  money-and-empty-state:
+    description: |
+      Phase 2D dashboard contract: all monetary integers are MINOR units
+      (kobo for NGN). A new investor has no portfolio/holding/transaction
+      rows — that ABSENCE is a normal successful empty dashboard state
+      (`totalValueMinor: 0`, `holdings: []`, `data: []`, `total: 0`), NOT an
+      error, and the backend NEVER fabricates demo records. No market
+      valuation, rates, yields, fees, performance, returns or cost-basis
+      logic exists on this contract; `totalReturnMinor` stays `null`.
   throttling:
     description: |
       Server-side fixed-window throttling on authentication-sensitive routes

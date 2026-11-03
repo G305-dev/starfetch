@@ -34,6 +34,9 @@ export async function createTestApp(): Promise<TestApp> {
 
 /** Removes all identity rows in FK-safe order (test isolation). */
 export async function cleanDatabase(prisma: PrismaService): Promise<void> {
+  await prisma.holding.deleteMany();
+  await prisma.transaction.deleteMany();
+  await prisma.portfolio.deleteMany();
   await prisma.refreshToken.deleteMany();
   await prisma.authSession.deleteMany();
   await prisma.emailVerificationChallenge.deleteMany();
