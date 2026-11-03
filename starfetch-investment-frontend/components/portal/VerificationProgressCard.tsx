@@ -1,29 +1,5 @@
-import { ArrowRight, CheckCircle2 } from "lucide-react";
-import { accountVerification } from "./individual-dashboard-data";
+import { ArrowRight, UserRound } from "lucide-react";
 
-type Props = {
-  variant?: "individual" | "business";
-};
-
-export function VerificationProgressCard({ variant = "individual" }: Props) {
-  const verification = variant === "business"
-    ? { ...accountVerification, description: "Finish your KYC and KYB to start investing and unlock all features.", href: "/corporate/settings" }
-    : accountVerification;
-  const progressStyle = { background: `conic-gradient(#B9ED1D 0 ${verification.progress}%, #075038 ${verification.progress}% 78%, #EDF6DE 78% 100%)` };
-
-  return (
-    <section className="rounded-xl border border-star-200 bg-[linear-gradient(135deg,#fffdf6_0%,#f7faed_100%)] p-5" aria-labelledby="verification-heading">
-      <div className="flex items-start gap-4">
-        <div className="relative grid h-[76px] w-[76px] shrink-0 place-items-center rounded-full" style={progressStyle} aria-label={`${verification.progress} percent verification progress`}>
-          <span className="grid h-[59px] w-[59px] place-items-center rounded-full bg-white text-lg font-extrabold text-star-900">{verification.progress}%</span>
-        </div>
-        <div>
-          <p className="inline-flex items-center gap-1.5 text-xs font-bold text-star-700"><CheckCircle2 size={15} aria-hidden="true" />{verification.status}</p>
-          <h2 id="verification-heading" className="mt-1 text-lg font-extrabold leading-6 text-star-900">{verification.title}</h2>
-          <p className="mt-2 text-sm leading-5 text-star-muted">{verification.description}</p>
-        </div>
-      </div>
-      <a href={verification.href} className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-star-lime px-4 text-sm font-extrabold text-star-900 no-underline transition hover:-translate-y-px hover:bg-[#c7f238] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Complete Your Setup <ArrowRight size={16} aria-hidden="true" /></a>
-    </section>
-  );
+export function VerificationProgressCard({ profileHref = "/profile" }: { profileHref?: string }) {
+  return <section className="rounded-xl border border-star-200 bg-white p-5" aria-labelledby="profile-completion-heading"><div className="flex gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-lg bg-star-50 text-star-700"><UserRound size={20} aria-hidden="true" /></span><div><h2 id="profile-completion-heading" className="text-base font-extrabold text-star-900">Keep your profile up to date</h2><p className="mt-1 text-sm leading-5 text-star-muted">Review your personal details and provide any information requested for your account.</p><a href={profileHref} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-md border border-star-300 px-3 text-sm font-bold text-star-700 no-underline transition hover:border-star-700 hover:bg-star-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Complete your profile <ArrowRight size={16} aria-hidden="true" /></a></div></div></section>;
 }
