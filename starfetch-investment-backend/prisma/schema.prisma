@@ -1,12 +1,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Starfetch Investment Limited — Prisma schema
-// Phase 2A: tooling foundation. Phase 2B: AUTHENTICATION / IDENTITY ONLY.
+// Phase 2A: tooling foundation. Phase 2B: authentication / identity.
+// Phase 2C: investor profile field (phone). Phase 2D: investor dashboard
+// read models (Portfolio / Holding / Transaction — READ-only APIs; records
+// are created only by future real business flows, never seeded as fakes).
 //
-// Models in this schema are LIMITED to the Phase 2B-authorized
-// authentication/identity set:
+// Authorized model set:
 //
-//   User, InvestorProfile, EmailVerificationChallenge, AuthSession, RefreshToken
-//   (+ supporting enum UserRole)
+//   Auth/identity: User, InvestorProfile, EmailVerificationChallenge,
+//                  AuthSession, RefreshToken (+ enum UserRole)
+//   Dashboard:     Portfolio, Holding, Transaction
 //
 // Still explicitly EXCLUDED pending approvals:
 //   - D-08: application status / state-transition map .................. OPEN
@@ -14,7 +17,7 @@
 //   - Document categories / review outcomes / lifecycle vocabulary ..... TBD
 //     (BUSINESS / COMPLIANCE + CONTRACT APPROVAL REQUIRED)
 //   - Applications / KYC / documents / banking / payments / investments /
-//     portfolios / transactions / statements / NAV / ledger / trades /
+//     statements / NAV / ledger / trades /
 //     settlement / IMS ..................................... NOT AUTHORIZED
 //
 // Security posture (see docs/backend/auth/AUTH-SECURITY-CONTRACT-v1.md):
@@ -54,6 +57,7 @@ model User {
   updatedAt       DateTime  @updatedAt
 
   investorProfile             InvestorProfile?
+  portfolio                   Portfolio?
   emailVerificationChallenges EmailVerificationChallenge[]
   authSessions                AuthSession[]
 
@@ -73,6 +77,61 @@ model InvestorProfile {
   updatedAt DateTime @updatedAt
 
   @@map("investor_profiles")
+}
+
+/// Phase 2D — investor dashboard read models. Money is ALWAYS stored in minor
+/// units (kobo for NGN) as BigInt. Type/status vocab is NOT contract-locked
+/// yet, so these stay plain strings until an approved contract pins them.
+/// Records are written only by real business flows (later phases) — the
+/// dashboard NEVER seeds demo/fake rows.
+model Portfolio {
+  id           String        @id @default(uuid()) @db.Uuid
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String        @unique @db.Uuid
+  holdings     Holding[]
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@map("portfolios")
+}
+
+model Holding {
+  id              String   @id @default(uuid()) @db.Uuid
+  portfolio       Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  portfolioId     String   @db.Uuid
+  instrumentLabel String
+  /// Nullable quantity (Decimal serialized as string in API output).
+  quantity        Decimal? @db.Decimal(20, 6)
+  /// Stored holding value in minor units — read-only aggregation source for
+  /// the dashboard; NO market valuation or revaluation exists.
+  valueMinor      BigInt
+  currency        String   @default("NGN")
+  asOf            DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([portfolioId])
+  @@map("holdings")
+}
+
+model Transaction {
+  id          String   @id @default(uuid()) @db.Uuid
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  portfolioId String   @db.Uuid
+  /// Business vocabulary strings (e.g. type/status) are pinned by a later
+  /// approved contract — deliberately free-form here.
+  type        String
+  status      String
+  /// Signed minor units (credit positive / debit negative).
+  amountMinor BigInt
+  currency    String   @default("NGN")
+  description String?
+  occurredAt  DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([portfolioId, occurredAt(sort: Desc)])
+  @@map("transactions")
 }
 
 /// Email-ownership challenge: 6-digit code, 10-minute lifetime, 5 attempts,
