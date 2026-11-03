@@ -2,6 +2,7 @@
 
 import { ArrowRight, Menu, Settings, X } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/ui";
 import { portalNavigation } from "./dashboard-data";
@@ -30,7 +31,7 @@ function NavigationLinks({ mobile = false, dashboardAlias, businessDashboard = f
 
   return <nav className="grid gap-1.5" aria-label={mobile ? "Mobile investor portal navigation" : "Investor portal navigation"}>{navigation.map(({ label, href, icon: Icon }) => {
     const active = href === pathname || (href === "/dashboard" && pathname === dashboardAlias);
-    return <a key={label} href={href} aria-current={active ? "page" : undefined} className={`group relative flex min-h-12 items-center gap-3 rounded-lg px-3.5 text-sm font-bold no-underline transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-lime focus-visible:ring-offset-2 ${dark ? "focus-visible:ring-offset-star-900" : "focus-visible:ring-star-700 focus-visible:ring-offset-white"} ${active ? (dark ? "bg-star-lime text-star-900" : "bg-star-100 text-star-900") : (dark ? "text-white/85 hover:bg-white/10 hover:text-white" : "text-star-700 hover:bg-star-50 hover:text-star-900")}`}><span className={`absolute -left-3 h-8 w-1 rounded-r-full ${active ? "bg-star-lime" : "bg-transparent"}`} aria-hidden="true" /><Icon size={20} strokeWidth={2} className={`shrink-0 ${dark && !active ? "text-white/75" : "text-star-700"}`} aria-hidden="true" />{label}</a>;
+    return <Link key={label} href={href} aria-current={active ? "page" : undefined} className={`group relative flex min-h-12 items-center gap-3 rounded-lg px-3.5 text-sm font-bold no-underline transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-lime focus-visible:ring-offset-2 ${dark ? "focus-visible:ring-offset-star-900" : "focus-visible:ring-star-700 focus-visible:ring-offset-white"} ${active ? (dark ? "bg-star-lime text-star-900" : "bg-star-100 text-star-900") : (dark ? "text-white/85 hover:bg-white/10 hover:text-white" : "text-star-700 hover:bg-star-50 hover:text-star-900")}`}><span className={`absolute -left-3 h-8 w-1 rounded-r-full ${active ? "bg-star-lime" : "bg-transparent"}`} aria-hidden="true" /><Icon size={20} strokeWidth={2} className={`shrink-0 ${dark && !active ? "text-white/75" : "text-star-700"}`} aria-hidden="true" />{label}</Link>;
   })}</nav>;
 }
 

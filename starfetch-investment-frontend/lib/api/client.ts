@@ -86,17 +86,23 @@ export type IndividualAccountProfile = {
   phone: string;
 };
 
+/** Exact Phase 2D /me/portfolio holding projection from docs/api/openapi.yaml. */
 export type PortfolioHolding = {
   id: string | null;
-  productName: string | null;
-  status: string | null;
-  investedMinor: number | null;
-  currentValueMinor: number | null;
-  totalReturnMinor: number | null;
+  instrumentLabel: string | null;
+  /** Decimal quantities are intentionally serialized by the API as strings. */
+  quantity: string | null;
+  valueMinor: number | null;
+  currency: string | null;
+  asOf: string | null;
+  isDemo: boolean | null;
 };
 
+/** Exact Phase 2D /me/portfolio data projection from docs/api/openapi.yaml. */
 export type InvestorPortfolio = {
-  totalPortfolioValueMinor: number | null;
+  currency: string | null;
+  totalValueMinor: number | null;
+  holdingCount: number | null;
   totalReturnMinor: number | null;
   holdings: PortfolioHolding[];
 };
@@ -144,6 +150,11 @@ function readString(record: JsonRecord, key: string) {
 function readNumber(record: JsonRecord, key: string) {
   const value = record[key];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readBoolean(record: JsonRecord, key: string) {
+  const value = record[key];
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function extractErrorRecord(payload: unknown): JsonRecord {
@@ -298,20 +309,24 @@ function readFirstArray(record: JsonRecord, keys: string[]) {
 
 function normalisePortfolio(payload: unknown): InvestorPortfolio {
   const data = unwrapPayload(payload);
-  const portfolio = isRecord(data.portfolio) ? data.portfolio : data;
-  const holdingRecords = readFirstArray(portfolio, ["holdings", "items"]);
+  const holdingRecords = data.holdings;
+  if (!Array.isArray(holdingRecords)) throw new ApiError("UNEXPECTED_RESPONSE");
+
   const holdings = holdingRecords.filter(isRecord).map((holding) => ({
-    id: readFirstString(holding, ["id", "holdingId"]),
-    productName: readFirstString(holding, ["productName", "product", "productLabel"]),
-    status: readFirstString(holding, ["status"]),
-    investedMinor: readMinor(holding, ["investedMinor", "amountInvestedMinor", "principalMinor"]),
-    currentValueMinor: readMinor(holding, ["currentValueMinor", "marketValueMinor", "valueMinor"]),
-    totalReturnMinor: readMinor(holding, ["totalReturnMinor", "returnMinor"]),
+    id: readString(holding, "id") ?? null,
+    instrumentLabel: readString(holding, "instrumentLabel") ?? null,
+    quantity: readString(holding, "quantity") ?? null,
+    valueMinor: readMinor(holding, ["valueMinor"]),
+    currency: readString(holding, "currency") ?? null,
+    asOf: readString(holding, "asOf") ?? null,
+    isDemo: readBoolean(holding, "isDemo") ?? null,
   }));
 
   return {
-    totalPortfolioValueMinor: readMinor(portfolio, ["totalPortfolioValueMinor", "totalValueMinor", "portfolioValueMinor"]),
-    totalReturnMinor: readMinor(portfolio, ["totalReturnMinor"]),
+    currency: readString(data, "currency") ?? null,
+    totalValueMinor: readMinor(data, ["totalValueMinor"]),
+    holdingCount: readMinor(data, ["holdingCount"]),
+    totalReturnMinor: readMinor(data, ["totalReturnMinor"]),
     holdings,
   };
 }
