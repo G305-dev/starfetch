@@ -1,73 +1,43 @@
 "use client";
 
+import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { getMyPortfolio, type InvestorPortfolio } from "@/lib/api/client";
 import { InvestmentFilters } from "./InvestmentFilters";
 import { InvestmentHoldings } from "./InvestmentHoldings";
-import { InvestmentPagination } from "./InvestmentPagination";
 import { InvestmentsErrorState, InvestmentsLoadingState } from "./InvestmentStates";
 import { InvestmentSummaryCards } from "./InvestmentSummaryCards";
-import { investmentHoldings } from "./investments-data";
 
-type InvestmentsViewState = "ready" | "loading" | "error";
+type InvestmentsRequestState = "loading" | "success" | "error";
 
 export function MyInvestmentsContent() {
-  const [investmentType, setInvestmentType] = useState("All Investments");
-  const [status, setStatus] = useState("All Status");
+  const [requestState, setRequestState] = useState<InvestmentsRequestState>("loading");
+  const [portfolio, setPortfolio] = useState<InvestorPortfolio | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [viewState, setViewState] = useState<InvestmentsViewState>("ready");
 
-  const filteredInvestments = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+  const loadInvestments = useCallback(async () => {
+    setRequestState("loading");
+    try {
+      const nextPortfolio = await getMyPortfolio();
+      setPortfolio(nextPortfolio);
+      setRequestState("success");
+    } catch {
+      setPortfolio(null);
+      setRequestState("error");
+    }
+  }, []);
 
-    return investmentHoldings.filter((investment) => {
-      const matchesInvestmentType = investmentType === "All Investments" || investment.investmentType === investmentType;
-      const matchesStatus = status === "All Status" || investment.status === status;
-      const matchesSearch = !normalizedSearch || [investment.product, investment.investmentType, investment.description]
-        .some((value) => value.toLowerCase().includes(normalizedSearch));
+  useEffect(() => {
+    void loadInvestments();
+  }, [loadInvestments]);
 
-      return matchesInvestmentType && matchesStatus && matchesSearch;
-    });
-  }, [investmentType, searchTerm, status]);
+  const filteredHoldings = useMemo(() => {
+    if (!portfolio) return [];
+    const normalizedSearch = searchTerm.trim().toLocaleLowerCase();
+    if (!normalizedSearch) return portfolio.holdings;
+    return portfolio.holdings.filter((holding) => holding.instrumentLabel?.toLocaleLowerCase().includes(normalizedSearch));
+  }, [portfolio, searchTerm]);
 
-  function resetToFirstPage() {
-    setCurrentPage(1);
-  }
-
-  function retry() {
-    // UI-only retry preparation: replace with an API refetch when a backend contract exists.
-    setViewState("ready");
-  }
-
-  return (
-    <section aria-labelledby="my-investments-page-heading">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 id="my-investments-page-heading" className="font-display text-[clamp(2rem,3.5vw,3rem)] font-extrabold leading-[1.08] tracking-[-0.045em] text-star-900">My Investments</h1>
-          <p className="mt-2 text-sm leading-6 text-star-muted sm:text-[0.96rem]">Track and manage your investment holdings across all products.</p>
-        </div>
-        <a href="/services" className="inline-flex w-fit items-center gap-1.5 text-sm font-extrabold text-star-700 no-underline transition hover:text-star-limeDark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">
-          Explore Products <ArrowRight size={17} aria-hidden="true" />
-        </a>
-      </div>
-
-      <div className="mt-7"><InvestmentSummaryCards /></div>
-      <InvestmentFilters
-        investmentType={investmentType}
-        status={status}
-        searchTerm={searchTerm}
-        onInvestmentTypeChange={(value) => { setInvestmentType(value); resetToFirstPage(); }}
-        onStatusChange={(value) => { setStatus(value); resetToFirstPage(); }}
-        onSearchTermChange={(value) => { setSearchTerm(value); resetToFirstPage(); }}
-      />
-
-      <section className="mt-5 rounded-xl border border-star-200 bg-white p-4 sm:p-6" aria-label="Investment holdings">
-        {viewState === "loading" ? <InvestmentsLoadingState /> : null}
-        {viewState === "error" ? <InvestmentsErrorState onRetry={retry} /> : null}
-        {viewState === "ready" ? <InvestmentHoldings investments={filteredInvestments} filtered={Boolean(searchTerm || investmentType !== "All Investments" || status !== "All Status")} /> : null}
-        {viewState === "ready" && filteredInvestments.length > 0 ? <InvestmentPagination currentPage={currentPage} totalItems={filteredInvestments.length} onPageChange={setCurrentPage} /> : null}
-      </section>
-    </section>
-  );
+  return <section aria-labelledby="my-investments-page-heading"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><h1 id="my-investments-page-heading" className="font-display text-[clamp(2rem,3.5vw,3rem)] font-extrabold leading-[1.08] tracking-[-0.045em] text-star-900">My Investments</h1><p className="mt-2 text-sm leading-6 text-star-muted sm:text-[0.96rem]">Track your investment holdings across Starfetch products.</p></div><Link href="/products" className="inline-flex w-fit items-center gap-1.5 text-sm font-extrabold text-star-700 no-underline transition hover:text-star-limeDark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Explore Products <ArrowRight size={17} aria-hidden="true" /></Link></div>{requestState === "loading" ? <section className="mt-7 rounded-xl border border-star-200 bg-white p-4 sm:p-6"><InvestmentsLoadingState /></section> : null}{requestState === "error" ? <section className="mt-7 rounded-xl border border-star-200 bg-white p-4 sm:p-6" aria-label="Investment holdings"><InvestmentsErrorState onRetry={() => void loadInvestments()} /></section> : null}{requestState === "success" && portfolio ? <><div className="mt-7"><InvestmentSummaryCards portfolio={portfolio} /></div><InvestmentFilters searchTerm={searchTerm} onSearchTermChange={setSearchTerm} /><section className="mt-5 rounded-xl border border-star-200 bg-white p-4 sm:p-6" aria-label="Investment holdings"><InvestmentHoldings holdings={filteredHoldings} filtered={Boolean(searchTerm.trim())} /></section></> : null}</section>;
 }

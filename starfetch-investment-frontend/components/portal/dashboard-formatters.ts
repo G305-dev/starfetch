@@ -1,11 +1,21 @@
+export function formatCurrencyMinor(value: number | null, currency: string | null) {
+  if (value === null || !currency) return "—";
+
+  try {
+    return new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value / 100);
+  } catch {
+    // Keep the API-supplied currency visible if it is not supported by Intl.
+    return `${currency} ${(value / 100).toFixed(2)}`;
+  }
+}
+
 export function formatNairaMinor(value: number | null) {
-  if (value === null) return "—";
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value / 100);
+  return formatCurrencyMinor(value, "NGN");
 }
 
 export function formatDashboardDate(value: string | null) {
