@@ -86,6 +86,34 @@ export type IndividualAccountProfile = {
   phone: string;
 };
 
+export type PortfolioHolding = {
+  id: string | null;
+  productName: string | null;
+  status: string | null;
+  investedMinor: number | null;
+  currentValueMinor: number | null;
+  totalReturnMinor: number | null;
+};
+
+export type InvestorPortfolio = {
+  totalPortfolioValueMinor: number | null;
+  totalReturnMinor: number | null;
+  holdings: PortfolioHolding[];
+};
+
+export type InvestorTransaction = {
+  id: string | null;
+  title: string | null;
+  productName: string | null;
+  status: string | null;
+  amountMinor: number | null;
+  occurredAt: string | null;
+};
+
+export type InvestorTransactionsPage = {
+  transactions: InvestorTransaction[];
+};
+
 export type RegisterIndividualResponse = {
   userId: string;
   verificationId: string;
@@ -240,6 +268,68 @@ function normaliseProfile(payload: unknown): IndividualAccountProfile {
   return { firstName, lastName, email, phone };
 }
 
+function readMinor(record: JsonRecord, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isSafeInteger(value)) return value;
+    if (typeof value === "string" && /^-?\d+$/.test(value)) {
+      const parsed = Number(value);
+      if (Number.isSafeInteger(parsed)) return parsed;
+    }
+  }
+  return null;
+}
+
+function readFirstString(record: JsonRecord, keys: string[]) {
+  for (const key of keys) {
+    const value = readString(record, key);
+    if (value) return value;
+  }
+  return null;
+}
+
+function readFirstArray(record: JsonRecord, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (Array.isArray(value)) return value;
+  }
+  return [];
+}
+
+function normalisePortfolio(payload: unknown): InvestorPortfolio {
+  const data = unwrapPayload(payload);
+  const portfolio = isRecord(data.portfolio) ? data.portfolio : data;
+  const holdingRecords = readFirstArray(portfolio, ["holdings", "items"]);
+  const holdings = holdingRecords.filter(isRecord).map((holding) => ({
+    id: readFirstString(holding, ["id", "holdingId"]),
+    productName: readFirstString(holding, ["productName", "product", "productLabel"]),
+    status: readFirstString(holding, ["status"]),
+    investedMinor: readMinor(holding, ["investedMinor", "amountInvestedMinor", "principalMinor"]),
+    currentValueMinor: readMinor(holding, ["currentValueMinor", "marketValueMinor", "valueMinor"]),
+    totalReturnMinor: readMinor(holding, ["totalReturnMinor", "returnMinor"]),
+  }));
+
+  return {
+    totalPortfolioValueMinor: readMinor(portfolio, ["totalPortfolioValueMinor", "totalValueMinor", "portfolioValueMinor"]),
+    totalReturnMinor: readMinor(portfolio, ["totalReturnMinor"]),
+    holdings,
+  };
+}
+
+function normaliseTransactions(payload: unknown): InvestorTransactionsPage {
+  const data = unwrapPayload(payload);
+  const transactionRecords = readFirstArray(data, ["transactions", "items", "results"]);
+  const transactions = transactionRecords.filter(isRecord).map((transaction) => ({
+    id: readFirstString(transaction, ["id", "transactionId", "reference"]),
+    title: readFirstString(transaction, ["title", "type", "description"]),
+    productName: readFirstString(transaction, ["productName", "product"]),
+    status: readFirstString(transaction, ["status"]),
+    amountMinor: readMinor(transaction, ["amountMinor", "valueMinor", "grossAmountMinor"]),
+    occurredAt: readFirstString(transaction, ["occurredAt", "createdAt", "date"]),
+  }));
+  return { transactions };
+}
+
 export async function registerIndividual(input: { firstName: string; lastName: string; email: string; password: string }): Promise<RegisterIndividualResponse> {
   const data = unwrapPayload(await request("/auth/register", { method: "POST", body: input }));
   const userId = readString(data, "userId");
@@ -303,4 +393,12 @@ export async function getMyProfile() {
 
 export async function updateMyProfile(input: { firstName: string; lastName: string; phone: string }) {
   return normaliseProfile(await request("/me/profile", { method: "PUT", body: input, headers: authorizationHeaders() }));
+}
+
+export async function getMyPortfolio() {
+  return normalisePortfolio(await request("/me/portfolio", { headers: authorizationHeaders() }));
+}
+
+export async function getMyTransactions(page = 1, pageSize = 5) {
+  return normaliseTransactions(await request(`/me/transactions?page=${page}&pageSize=${pageSize}`, { headers: authorizationHeaders() }));
 }

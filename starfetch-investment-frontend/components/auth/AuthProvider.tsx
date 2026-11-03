@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
 import {
   clearAccessToken,
   getCurrentUser,
@@ -46,13 +45,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [invalidateSession]);
 
-  // The admin preview is mock-only and must not refresh an investor session.
-  // Investor routes retain their existing session initialization behavior.
-  const pathname = usePathname();
-  const isAdminPreview = pathname === "/admin" || pathname.startsWith("/admin/");
   useEffect(() => {
-    if (!isAdminPreview) void refreshSession();
-  }, [isAdminPreview, refreshSession]);
+    void refreshSession();
+  }, [refreshSession]);
 
   const login = useCallback(async ({ email, password }: { email: string; password: string }) => {
     const result = await loginIndividual({ email, password });
