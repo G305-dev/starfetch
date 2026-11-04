@@ -35,7 +35,8 @@ export interface TransactionView {
 
 export const PORTFOLIO_CURRENCY = 'NGN';
 
-function toHoldingView(h: Holding): HoldingView {
+// Reused by Joint reads (Phase 3B Step 3) so row serialization stays byte-identical.
+export function toHoldingView(h: Holding): HoldingView {
   return {
     id: h.id,
     instrumentLabel: h.instrumentLabel,
@@ -47,7 +48,7 @@ function toHoldingView(h: Holding): HoldingView {
   };
 }
 
-function toTransactionView(t: Transaction): TransactionView {
+export function toTransactionView(t: Transaction): TransactionView {
   return {
     id: t.id,
     type: t.type,

@@ -54,11 +54,83 @@ describe('validateEnv (fail-fast, fail-secure)', () => {
 
   it('production requires SMTP_HOST for real verification delivery', () => {
     expect(() => validateEnv(base({ NODE_ENV: 'production' }))).toThrow(/SMTP_HOST/);
-    expect(() => validateEnv(base({ NODE_ENV: 'production', SMTP_HOST: 'smtp.internal' }))).not.toThrow();
+    expect(() =>
+      validateEnv(
+        base({
+          NODE_ENV: 'production',
+          SMTP_HOST: 'smtp.internal',
+          JOINT_INVITATIONS_URL: 'https://app.starfetch.ng/login',
+        }),
+      ),
+    ).not.toThrow();
   });
 
   it('rejects invalid NODE_ENV and PORT', () => {
     expect(() => validateEnv(base({ NODE_ENV: 'banana' }))).toThrow(/NODE_ENV/);
     expect(() => validateEnv(base({ PORT: '99999' }))).toThrow(/PORT/);
+  });
+
+  // ── Phase 3B — joint invitation configuration (Step-4 corrections) ────────
+
+  it('JOINT_INVITATION_TTL_HOURS: rejects zero/negative/NaN/Infinity/unbounded values', () => {
+    for (const bad of ['0', '-1', 'abc', 'Infinity', '-Infinity', '720.5', '721', '1000000']) {
+      expect(() => validateEnv(base({ JOINT_INVITATION_TTL_HOURS: bad }))).toThrow(
+        /JOINT_INVITATION_TTL_HOURS/,
+      );
+    }
+  });
+
+  it('JOINT_INVITATION_TTL_HOURS: accepts bounded positive values; defaults preserved in dev when unset', () => {
+    for (const good of ['1', '168', '720']) {
+      expect(validateEnv(base({ JOINT_INVITATION_TTL_HOURS: good })).JOINT_INVITATION_TTL_HOURS).toBe(good);
+    }
+    const env = validateEnv(base({}));
+    expect(env.JOINT_INVITATION_TTL_HOURS).toBeUndefined(); // dev default (168h) applied in configuration.ts
+  });
+
+  it('JOINT_INVITATIONS_URL: rejects non-URL / wrong scheme / query / fragment / embedded credentials', () => {
+    for (const bad of [
+      'not a url',
+      'ftp://app.starfetch.ng/login',
+      'https://app.starfetch.ng/login?token=abc',
+      'https://app.starfetch.ng/login#frag',
+      'https://user:pass@app.starfetch.ng/login',
+    ]) {
+      expect(() => validateEnv(base({ JOINT_INVITATIONS_URL: bad }))).toThrow(/JOINT_INVITATIONS_URL/);
+    }
+  });
+
+  it('JOINT_INVITATIONS_URL: http localhost is fine in DEVELOPMENT only; HTTPS+set required in production', () => {
+    expect(
+      validateEnv(base({ NODE_ENV: 'development', JOINT_INVITATIONS_URL: 'http://localhost:3000/login' }))
+        .JOINT_INVITATIONS_URL,
+    ).toBe('http://localhost:3000/login');
+
+    expect(() => validateEnv(base({ NODE_ENV: 'production', SMTP_HOST: 'smtp.internal' }))).toThrow(
+      /JOINT_INVITATIONS_URL/, // required, explicit
+    );
+    expect(() =>
+      validateEnv(
+        base({ NODE_ENV: 'production', SMTP_HOST: 'smtp.internal', JOINT_INVITATIONS_URL: 'http://app.starfetch.ng/login' }),
+      ),
+    ).toThrow(/HTTPS/);
+    expect(() =>
+      validateEnv(
+        base({
+          NODE_ENV: 'production',
+          SMTP_HOST: 'smtp.internal',
+          JOINT_INVITATIONS_URL: 'https://localhost/login',
+        }),
+      ),
+    ).toThrow(/localhost/);
+    expect(() =>
+      validateEnv(
+        base({
+          NODE_ENV: 'production',
+          SMTP_HOST: 'smtp.internal',
+          JOINT_INVITATIONS_URL: 'https://app.starfetch.ng/login',
+        }),
+      ),
+    ).not.toThrow();
   });
 });

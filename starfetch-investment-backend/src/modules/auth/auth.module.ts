@@ -5,6 +5,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { InMemoryRateLimiter } from '../../common/rate-limit/in-memory-rate-limiter';
 import { RATE_LIMITER } from '../../common/rate-limit/rate-limiter';
 import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
+import { CookieMutationGuard } from '../../common/security/cookie-mutation.guard';
+import { KeyedRateLimitGuard } from '../../common/rate-limit/keyed-rate-limit.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -47,6 +49,8 @@ import { SessionService } from './services/session.service';
     AccessTokenGuard,
     CookieOriginGuard,
     RolesGuard,
+    CookieMutationGuard,
+    KeyedRateLimitGuard,
     {
       provide: EMAIL_PROVIDER,
       inject: [ConfigService],
@@ -65,6 +69,18 @@ import { SessionService } from './services/session.service';
     // automated tests (config) so suites never flake on throttling.
     { provide: APP_GUARD, useClass: RateLimitGuard },
   ],
-  exports: [AccessTokenService, AccessTokenGuard, RolesGuard, AuthService],
+  // CsrfService/CookieMutationGuard/KeyedRateLimitGuard are exported for the
+  // joint (and later) guarded surfaces — they are consumers, not modifiers,
+  // of the existing auth posture.
+  exports: [
+    AccessTokenService,
+    AccessTokenGuard,
+    RolesGuard,
+    AuthService,
+    CsrfService,
+    CookieMutationGuard,
+    KeyedRateLimitGuard,
+    RATE_LIMITER,
+  ],
 })
 export class AuthModule {}

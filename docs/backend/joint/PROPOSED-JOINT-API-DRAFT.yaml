@@ -1,0 +1,538 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DRAFT — Phase 3A Joint Investor API fragment (PROPOSAL ONLY — UNAPPROVED)
+# Do NOT merge into docs/api/openapi.yaml until David approves J-01…J-08 and
+# this corrected contract. Conventions mirror the approved spec:
+#   success  → { data, meta { requestId, … } }
+#   error    → { error: { code, message, requestId } }
+#   money    → signed minor units (BigInt), per-row currency
+#   base     → https://{host}/api/v1   (servers block below)
+# ─────────────────────────────────────────────────────────────────────────────
+openapi: 3.0.3
+info:
+  title: Starfetch — Joint Investor MVP (DRAFT FRAGMENT, UNAPPROVED)
+  version: 0.5.0-draft.3
+  description: Draft Joint endpoints companion to docs/backend/joint/05-PROPOSED-API-CONTRACT.md.
+  license: { name: Proprietary, url: https://www.starfetch.ng }
+servers:
+  - url: https://{host}/api/v1
+    variables:
+      host: { default: api.starfetch.example }
+tags:
+  - name: Joint — DRAFT
+    description: Draft Joint Investor endpoints — proposal only, pending approval.
+paths:
+  /me/joint-accounts:
+    get:
+      tags: [Joint — DRAFT]
+      operationId: listMyJointAccounts
+      summary: List joint accounts where the caller is an ACTIVE member (DRAFT)
+      description: Empty array is the normal state for investors without joint accounts.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Accounts the caller belongs to.
+          headers:
+            x-request-id: { $ref: "#/components/headers/X-Request-Id" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JointAccountListResponse" }
+              example:
+                data: []
+                meta: { requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/ForbiddenNotInvestor" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /me/joint-invitations:
+    get:
+      tags: [Joint — DRAFT]
+      operationId: listMyJointInvitations
+      summary: Pending invitations addressed to the caller's verified email (DRAFT)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Pending inbox ([] when none).
+          headers:
+            x-request-id: { $ref: "#/components/headers/X-Request-Id" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JointInvitationListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/ForbiddenNotInvestor" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /me/joint-invitations/{invitationId}/accept:
+    post:
+      tags: [Joint — DRAFT]
+      operationId: acceptJointInvitation
+      summary: Accept membership (consent) — transactional capacity check (DRAFT)
+      description: >
+        Recipient identity verified server-side: the caller's User record is
+        loaded by session principal (userId/sessionId) and its normalizedEmail +
+        emailVerifiedAt are matched to the invitation — request bodies never
+        carry email proof. Authorized replay: if the invitation is already
+        ACCEPTED by this same verified holder and their membership is ACTIVE,
+        the same 200 is returned unchanged. Revoked/declined → 404 (as unknown);
+        expired → 410 revealed only to the addressee.
+      security:
+        - bearerAuth: []
+          csrfHeader: []
+      parameters:
+        - name: invitationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Membership ACTIVE (idempotent for double-accept by the same user).
+          headers:
+            x-request-id: { $ref: "#/components/headers/X-Request-Id" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JointAcceptResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/ForbiddenNotVerifiedEmail" }
+        "404": { $ref: "#/components/responses/NotAddressedToCaller" }
+        "409": { $ref: "#/components/responses/ConflictAccountFull" }
+        "410": { $ref: "#/components/responses/GoneExpiredInvitation" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /me/joint-invitations/{invitationId}/decline:
+    post:
+      tags: [Joint — DRAFT]
+      operationId: declineJointInvitation
+      summary: Decline membership (DRAFT)
+      security:
+        - bearerAuth: []
+          csrfHeader: []
+      parameters:
+        - name: invitationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Declined.
+          headers:
+            x-request-id: { $ref: "#/components/headers/X-Request-Id" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JointDeclineResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotAddressedToCaller" }
+        "410": { $ref: "#/components/responses/GoneExpiredInvitation" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /joint-accounts:
+    post:
+      tags: [Joint — DRAFT]
+      operationId: createJointAccount
+      summary: Initiate a joint account and invite the second holder (DRAFT)
+      security:
+        - bearerAuth: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateJointAccountRequest" }
+      responses:
+        "201":
+          description: Account + PENDING invitation created; caller is the single ACTIVE member until acceptance.
+          headers:
+            x-request-id: { $ref: "#/components/headers/X-Request-Id" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateJointAccountResponse" }
+        "400": { $ref: "#/components/responses/ValidationFailed" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/ForbiddenNotInvestor" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /joint-accounts/{jointAccountId}:
+    get:
+      tags: [Joint — DRAFT]
+      operationId: getJointAccount
+      summary: Joint account detail — ACTIVE members only (DRAFT)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jointAccountId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Account + ACTIVE members.
+          headers:
+            x-request-id: { $ref: "#/components/headers/X-Request-Id" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JointAccountDetailResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/AccountNotFoundOrNotMember" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /joint-accounts/{jointAccountId}/portfolio:
+    get:
+      tags: [Joint — DRAFT]
+      operationId: getJointPortfolio
+      summary: Joint portfolio summary — Phase 2D PortfolioResponse shape (DRAFT)
+      description: totalReturnMinor is always null (no valuation math). Honest empty state when no joint-owned rows exist.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jointAccountId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Joint portfolio snapshot.
+          headers:
+            x-request-id: { $ref: "#/components/headers/X-Request-Id" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JointPortfolioResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/AccountNotFoundOrNotMember" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /joint-accounts/{jointAccountId}/transactions:
+    get:
+      tags: [Joint — DRAFT]
+      operationId: listJointTransactions
+      summary: Joint transaction history — identical pagination to /me/transactions (DRAFT)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jointAccountId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Page of real transaction rows, newest first; data:[] with total:0 when empty.
+          headers:
+            x-request-id: { $ref: "#/components/headers/X-Request-Id" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JointTransactionsResponse" }
+        "400": { $ref: "#/components/responses/ValidationFailed" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/AccountNotFoundOrNotMember" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /joint-accounts/{jointAccountId}/invitations:
+    post:
+      tags: [Joint — DRAFT]
+      operationId: createJointInvitation
+      summary: (Re)invite the second holder — generic envelope (DRAFT)
+      description: Response is identical whether or not the email belongs to a registered user (anti-enumeration).
+      security:
+        - bearerAuth: []
+          csrfHeader: []
+      parameters:
+        - name: jointAccountId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateInvitationRequest" }
+      responses:
+        "201":
+          description: Invitation issued/replaced (generic anti-enumeration shape).
+          headers:
+            x-request-id: { $ref: "#/components/headers/X-Request-Id" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateInvitationResponse" }
+        "400": { $ref: "#/components/responses/ValidationFailed" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/AccountNotFoundOrNotMember" }
+        "409": { $ref: "#/components/responses/ConflictAccountFull" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: Signed double-submit token issued per session (equals the readable CSRF cookie value).
+  headers:
+    X-Request-Id:
+      schema: { type: string }
+      description: Correlator echoed on every response.
+  schemas:
+    # PROMOTION NOTE — HoldingRow/TransactionRow/portfolio-meta shapes mirror approved
+    # v0.4.0 canonical schemas exactly; at promotion they become $refs, not copies.
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            requestId: { type: string }
+    MetaRequestId:
+      type: object
+      required: [requestId]
+      properties:
+        requestId: { type: string }
+    JointAccountSummary:
+      type: object
+      required: [jointAccountId, displayName, memberCount, holderNames, myJoinedAt, isFull, awaitingSecondHolder]
+      properties:
+        jointAccountId: { type: string, format: uuid }
+        displayName: { type: string, maxLength: 60 }
+        memberCount: { type: integer, minimum: 1, maximum: 2 }
+        holderNames: { type: array, items: { type: string } }
+        myJoinedAt: { type: string, format: date-time }
+        isFull: { type: boolean }
+        awaitingSecondHolder: { type: boolean, description: "TRUE while only one ACTIVE member exists — never present the account as fully established." }
+    JointAccountListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/JointAccountSummary" } }
+        meta: { $ref: "#/components/schemas/MetaRequestId" }
+    JointMember:
+      type: object
+      required: [userId, firstName, lastName, email, joinedAt]
+      properties:
+        userId: { type: string, format: uuid }
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: string, format: email }
+        joinedAt: { type: string, format: date-time }
+    JointAccountDetailResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [jointAccountId, displayName, createdAt, members, membership]
+          properties:
+            jointAccountId: { type: string, format: uuid }
+            displayName: { type: string, maxLength: 60 }
+            createdAt: { type: string, format: date-time }
+            members: { type: array, minItems: 1, maxItems: 2, items: { $ref: "#/components/schemas/JointMember" } }
+            membership:
+              type: object
+              required: [capacity, activeCount, awaitingSecondHolder]
+              properties:
+                capacity: { type: integer, enum: [2] }
+                activeCount: { type: integer, minimum: 1, maximum: 2 }
+                awaitingSecondHolder: { type: boolean }
+        meta: { $ref: "#/components/schemas/MetaRequestId" }
+    JointInvitationSummary:
+      type: object
+      required: [invitationId, jointAccountId, accountDisplayName, inviterFirstName, expiresAt, sentAt]
+      properties:
+        invitationId: { type: string, format: uuid }
+        jointAccountId: { type: string, format: uuid }
+        accountDisplayName: { type: string }
+        inviterFirstName: { type: string }
+        expiresAt: { type: string, format: date-time }
+        sentAt: { type: string, format: date-time }
+    JointInvitationListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/JointInvitationSummary" } }
+        meta: { $ref: "#/components/schemas/MetaRequestId" }
+    JointAcceptResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [jointAccountId, joinedAt]
+          properties:
+            jointAccountId: { type: string, format: uuid }
+            joinedAt: { type: string, format: date-time }
+        meta: { $ref: "#/components/schemas/MetaRequestId" }
+    JointDeclineResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [invitationId, status]
+          properties:
+            invitationId: { type: string, format: uuid }
+            status: { type: string, enum: [DECLINED] }
+        meta: { $ref: "#/components/schemas/MetaRequestId" }
+    CreateJointAccountRequest:
+      type: object
+      required: [inviteeEmail]
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Optional account label (defaults to holder names server-side if omitted).
+        inviteeEmail: { type: string, format: email, maxLength: 254 }
+    CreateJointAccountResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [jointAccountId, displayName, invitation]
+          properties:
+            jointAccountId: { type: string, format: uuid }
+            displayName: { type: string }
+            invitation:
+              type: object
+              required: [invitationId, invitedEmailMasked, expiresAt, status]
+              properties:
+                invitationId: { type: string, format: uuid }
+                invitedEmailMasked: { type: string, description: "e.g. d***@gmail.com" }
+                expiresAt: { type: string, format: date-time }
+                status: { type: string, enum: [PENDING] }
+        meta: { $ref: "#/components/schemas/MetaRequestId" }
+    CreateInvitationRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+    CreateInvitationResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [invitationId, invitedEmailMasked, expiresAt, status]
+          properties:
+            invitationId: { type: string, format: uuid }
+            invitedEmailMasked: { type: string }
+            expiresAt: { type: string, format: date-time }
+            status: { type: string, enum: [PENDING] }
+        meta: { $ref: "#/components/schemas/MetaRequestId" }
+    HoldingRow:
+      # Exact mirror of approved v0.4.0 HoldingItem (incl. required isDemo:false)
+      type: object
+      required: [id, instrumentLabel, quantity, valueMinor, currency, asOf, isDemo]
+      properties:
+        id: { type: string, format: uuid }
+        instrumentLabel: { type: string }
+        quantity: { type: string, nullable: true, description: "Decimal serialized as string" }
+        valueMinor: { type: integer, format: int64 }
+        currency: { type: string, example: "NGN" }
+        asOf: { type: string, format: date-time }
+        isDemo: { type: boolean, enum: [false], description: "Always false — no demo/fake records exist." }
+    JointPortfolioResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [currency, totalValueMinor, holdingCount, totalReturnMinor, holdings]
+          properties:
+            currency: { type: string, enum: ["NGN"], description: "Summary currency — same contract as /me/portfolio" }
+            totalValueMinor: { type: integer, format: int64 }
+            holdingCount: { type: integer, minimum: 0 }
+            totalReturnMinor:
+              type: integer
+              format: int64
+              nullable: true
+              description: ALWAYS null — no valuation/return math in MVP.
+            holdings: { type: array, items: { $ref: "#/components/schemas/HoldingRow" } }
+        meta:
+          type: object
+          required: [requestId, asOf]
+          properties:
+            requestId: { type: string }
+            asOf: { type: string, format: date-time }
+    TransactionRow:
+      type: object
+      required: [id, type, status, amountMinor, currency, description, occurredAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string }
+        status: { type: string }
+        amountMinor: { type: integer, format: int64, description: "Signed minor units (credit +/debit -)" }
+        currency: { type: string, example: "NGN" }
+        description: { type: string, nullable: true }
+        occurredAt: { type: string, format: date-time }
+    JointTransactionsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/TransactionRow" } }
+        meta:
+          type: object
+          required: [requestId, page, pageSize, total]
+          properties:
+            requestId: { type: string }
+            page: { type: integer, minimum: 1 }
+            pageSize: { type: integer, minimum: 1, maximum: 100 }
+            total: { type: integer, minimum: 0 }
+  responses:
+    Unauthorized:
+      description: Missing/invalid/expired bearer token or revoked session (UNAUTHENTICATED).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    ForbiddenNotInvestor:
+      description: Authenticated principal lacks the INVESTOR role (FORBIDDEN).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    ForbiddenNotVerifiedEmail:
+      description: 403 with code EMAIL_NOT_VERIFIED (existing approved vocabulary) — caller's email unverified.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    AccountNotFoundOrNotMember:
+      description: Unknown account OR caller is not an ACTIVE member — identical response either way (NOT_FOUND; anti-enumeration).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotAddressedToCaller:
+      description: Invitation unknown, terminal, or not addressed to the caller's verified email — identical response (NOT_FOUND).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    GoneExpiredInvitation:
+      description: Invitation expired — revealed only when the caller IS the addressee (GONE).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    ConflictAccountFull:
+      description: Account already has two ACTIVE members, or membership capacity reached during concurrent acceptance (CONFLICT).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    ValidationFailed:
+      description: Body/query validation failed — malformed email, unknown fields, out-of-range pagination, self-invite (VALIDATION_FAILED).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    RateLimited:
+      description: Keyed limit exceeded (RATE_LIMITED; context.retryAfterSeconds present).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    InternalError:
+      description: Unhandled failure (INTERNAL_ERROR; requestId for server-side correlation only).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }

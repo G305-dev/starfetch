@@ -9,6 +9,8 @@ export interface ValidatedEnv {
   JWT_ACCESS_SECRET: string;
   CSRF_HMAC_SECRET: string;
   EMAIL_VERIFICATION_HMAC_SECRET: string;
+  JOINT_INVITATION_TTL_HOURS?: string;
+  JOINT_INVITATIONS_URL?: string;
 }
 
 const MIN_SECRET_LENGTH = 32;
@@ -60,6 +62,48 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
     errors.push('SMTP_HOST is required in staging/production (verification codes must be deliverable).');
   }
 
+  // ── Phase 3B: joint invitation configuration ─────────────────────────────
+  // TTL: positive, finite, bounded (max 30 days — "unreasonable" durations
+  // rejected). Default 168h (7 days) is the preserving-dev default; zero/
+  // negative/NaN/Infinity values must fail startup.
+  const ttlRaw = raw.JOINT_INVITATION_TTL_HOURS as string | undefined;
+  if (ttlRaw !== undefined && ttlRaw.trim().length > 0) {
+    const ttl = Number(ttlRaw.trim());
+    if (!Number.isFinite(ttl) || ttl <= 0 || ttl > 720) {
+      errors.push(
+        'JOINT_INVITATION_TTL_HOURS must be a finite number in (0, 720] hours (zero/negative/NaN/Infinity/unbounded durations rejected).',
+      );
+    }
+  }
+  // Invitation page URL: when set it must be a syntactically valid http(s)
+  // URL with NO query/fragment (no place to smuggle tokens/credentials).
+  // In staging/production it is REQUIRED, must be HTTPS, and must not point
+  // at localhost/127.0.0.1/[::1] — production mail can never carry a local link.
+  const urlRaw = stringOrUndefined(raw.JOINT_INVITATIONS_URL);
+  if (urlRaw) {
+    let parsed: URL | null = null;
+    try {
+      parsed = new URL(urlRaw);
+    } catch {
+      parsed = null;
+    }
+    if (!parsed || !['http:', 'https:'].includes(parsed.protocol) || parsed.search || parsed.hash || parsed.username || parsed.password) {
+      errors.push(
+        'JOINT_INVITATIONS_URL must be a plain http/https URL without query, fragment or embedded credentials.',
+      );
+    } else if (productionLike) {
+      const host = parsed.hostname.toLowerCase();
+      if (parsed.protocol !== 'https:') {
+        errors.push('JOINT_INVITATIONS_URL must use HTTPS in staging/production.');
+      }
+      if (['localhost', '127.0.0.1', '::1', '[::1]'].includes(host) || host.endsWith('.local')) {
+        errors.push('JOINT_INVITATIONS_URL must not point to localhost in staging/production.');
+      }
+    }
+  } else if (productionLike) {
+    errors.push('JOINT_INVITATIONS_URL is required in staging/production (invitation links must target the real app).');
+  }
+
   if (errors.length > 0) {
     throw new Error(`Environment validation failed: ${errors.join(' ')}`);
   }
@@ -73,6 +117,8 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
     JWT_ACCESS_SECRET: jwtAccessSecret!,
     CSRF_HMAC_SECRET: csrfHmacSecret!,
     EMAIL_VERIFICATION_HMAC_SECRET: emailVerificationHmacSecret!,
+    JOINT_INVITATION_TTL_HOURS: stringOrUndefined(raw.JOINT_INVITATION_TTL_HOURS),
+    JOINT_INVITATIONS_URL: urlRaw,
   };
 }
 
