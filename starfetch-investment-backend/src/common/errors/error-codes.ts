@@ -14,6 +14,8 @@ export const ERROR_CODES = {
   UNSUPPORTED_FILE_TYPE: 'UNSUPPORTED_FILE_TYPE',
   RATE_LIMITED: 'RATE_LIMITED',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
+  // Phase 3B joint invitations
+  GONE: 'GONE',
   // Authentication / identity (Phase 2B)
   INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
   EMAIL_NOT_VERIFIED: 'EMAIL_NOT_VERIFIED',
@@ -39,6 +41,7 @@ const STATUS_TO_CODE: Record<number, ErrorCode> = {
   413: ERROR_CODES.FILE_TOO_LARGE,
   415: ERROR_CODES.UNSUPPORTED_FILE_TYPE,
   429: ERROR_CODES.RATE_LIMITED,
+  410: ERROR_CODES.GONE,
 };
 
 export function errorCodeForStatus(status: number): ErrorCode {

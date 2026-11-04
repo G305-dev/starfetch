@@ -49,6 +49,15 @@ export default () => {
         enabled: (process.env.RATE_LIMIT_ENABLED ?? (nodeEnv === 'test' ? 'false' : 'true')) === 'true',
       },
     },
+    // Phase 3B joint invitations (DEV defaults — pending business approval;
+    // hard failure for invalid/critical values happens in env.validation).
+    joint: {
+      invitationTtlHours: (() => {
+        const n = parseFloat(process.env.JOINT_INVITATION_TTL_HOURS ?? '168'); // 7 days
+        return Number.isFinite(n) && n > 0 && n <= 720 ? n : 168;
+      })(),
+      invitationsUrl: process.env.JOINT_INVITATIONS_URL ?? 'http://localhost:3000/login',
+    },
     smtp: {
       host: process.env.SMTP_HOST,
       port: parseInt(process.env.SMTP_PORT ?? '1025', 10),

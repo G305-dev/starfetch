@@ -60,6 +60,11 @@ model User {
   portfolio                   Portfolio?
   emailVerificationChallenges EmailVerificationChallenge[]
   authSessions                AuthSession[]
+  // Phase 3B Step 1 — joint account back-relations (no scalar columns added).
+  jointMemberships       JointAccountMember[]
+  createdJointAccounts   JointAccount[]           @relation("CreatedJointAccounts")
+  sentJointInvitations   JointAccountInvitation[] @relation("SentJointInvitations")
+  acceptedJointInvitations JointAccountInvitation[] @relation("AcceptedJointInvitations")
 
   @@map("users")
 }
@@ -84,16 +89,112 @@ model InvestorProfile {
 /// yet, so these stay plain strings until an approved contract pins them.
 /// Records are written only by real business flows (later phases) — the
 /// dashboard NEVER seeds demo/fake rows.
+///
+/// Phase 3B Step 1 (Joint Investor foundation — reviewed Phase 3A Option B):
+/// ownership is EXACTLY-ONE-OF (userId XOR jointAccountId). Existing individual
+/// rows keep userId set / jointAccountId NULL; joint rows are the inverse.
+/// The XOR rule is enforced by a PostgreSQL CHECK added via the hand-authored
+/// SQL block inside the generated migration (Prisma does not emit CHECK
+/// constraints) — see prisma/migrations documentation + docs/backend/joint/.
 model Portfolio {
-  id           String        @id @default(uuid()) @db.Uuid
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId       String        @unique @db.Uuid
-  holdings     Holding[]
-  transactions Transaction[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id             String        @id @default(uuid()) @db.Uuid
+  /// Individual owner — NOW NULLABLE (Phase 3B). Unique 1:1 rule preserved.
+  user           User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String?       @unique @db.Uuid
+  /// Joint account owner (Option B). Restricted delete: an account owning
+  /// financial records cannot be removed at the database level.
+  jointAccount   JointAccount? @relation(fields: [jointAccountId], references: [id], onDelete: Restrict)
+  jointAccountId String?       @unique @db.Uuid
+  holdings       Holding[]
+  transactions   Transaction[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@map("portfolios")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 3B Step 1 — Joint Investor account foundation (schema ONLY; REST
+// endpoints and business services are NOT implemented in this step).
+// Identity (User) and account membership (JointAccountMember) are separate
+// concerns; there is deliberately NO new user role (J-02).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A shared investment account belonging to at most two ACTIVE holders.
+/// One-member accounts are a normal intermediate state while the second
+/// holder's invitation is pending consent — never presented as fully
+/// established or KYC-verified.
+model JointAccount {
+  id          String  @id @default(uuid()) @db.Uuid
+  /// Optional display label chosen at creation.
+  displayName String  @db.VarChar(60)
+  /// Initiating holder — audit only; authorization derives from member rows.
+  createdBy       User   @relation("CreatedJointAccounts", fields: [createdByUserId], references: [id])
+  createdByUserId String @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members     JointAccountMember[]
+  invitations JointAccountInvitation[]
+  portfolio   Portfolio?
+
+  @@map("joint_accounts")
+}
+
+/// ACTIVE membership only (pending relationships live in JointAccountInvitation).
+/// Capacity (max 2) is enforced by the future transactional acceptance flow via
+/// parent-row locking — documented in docs/backend/joint/03 §3 (Phase 3B Step 2+).
+model JointAccountMember {
+  id             String       @id @default(uuid()) @db.Uuid
+  jointAccount   JointAccount @relation(fields: [jointAccountId], references: [id], onDelete: Cascade)
+  jointAccountId String       @db.Uuid
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String       @db.Uuid
+  joinedAt       DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  /// Duplicate membership is impossible regardless of application races.
+  @@unique([jointAccountId, userId])
+  @@index([userId])
+  @@map("joint_account_members")
+}
+
+/// Invitation-scoped vocabulary — intentionally disjoint from the OPEN
+/// D-08/D-09 application vocabulary. Native PostgreSQL enum in the database.
+enum JointInvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  REVOKED
+}
+
+/// Login-only inbox model: the email carries only a page link, never an
+/// authorization credential. Recipient identity is proven server-side against
+/// the caller's CURRENT User record (normalizedEmail + emailVerifiedAt); email
+/// values are stored plaintext ONLY for delivery and are masked in responses.
+model JointAccountInvitation {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  jointAccount           JointAccount           @relation(fields: [jointAccountId], references: [id], onDelete: Cascade)
+  jointAccountId         String                 @db.Uuid
+  invitedEmailNormalized String
+  /// Plaintext for delivery; masked in any future API response.
+  invitedEmail           String
+  invitedBy              User                   @relation("SentJointInvitations", fields: [invitedByUserId], references: [id])
+  invitedByUserId        String                 @db.Uuid
+  /// Set at acceptance — supports the idempotent authorized-replay path.
+  acceptedBy             User?                  @relation("AcceptedJointInvitations", fields: [acceptedByUserId], references: [id])
+  acceptedByUserId       String?                @db.Uuid
+  status                 JointInvitationStatus  @default(PENDING)
+  expiresAt              DateTime
+  respondedAt            DateTime?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+
+  @@index([invitedEmailNormalized, status])
+  @@index([jointAccountId, status])
+  @@map("joint_account_invitations")
 }
 
 model Holding {
