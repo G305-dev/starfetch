@@ -1,13 +1,16 @@
 "use client";
 
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ApiError,
   clearAccessToken,
   getCurrentUser,
   type AuthUser,
   loginIndividual,
   logoutSession,
   refreshAccessToken,
+  setAccessToken,
+  setSessionExpiredListener,
 } from "@/lib/api/client";
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
@@ -26,49 +29,74 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
+  const operationRef = useRef(0);
 
-  const invalidateSession = useCallback(() => {
+  const commitUnauthenticated = useCallback(() => {
     clearAccessToken();
     setUser(null);
     setStatus("unauthenticated");
   }, []);
 
+  const invalidateSession = useCallback(() => {
+    operationRef.current += 1;
+    commitUnauthenticated();
+  }, [commitUnauthenticated]);
+
   const refreshSession = useCallback(async () => {
+    const operation = operationRef.current + 1;
+    operationRef.current = operation;
+    setUser(null);
     setStatus("loading");
+
     try {
       await refreshAccessToken();
       const currentUser = await getCurrentUser();
+      if (operation !== operationRef.current) return;
       setUser(currentUser);
       setStatus("authenticated");
     } catch {
-      invalidateSession();
+      if (operation !== operationRef.current) return;
+      commitUnauthenticated();
     }
-  }, [invalidateSession]);
+  }, [commitUnauthenticated]);
 
   useEffect(() => {
+    const removeSessionExpiredListener = setSessionExpiredListener(invalidateSession);
     void refreshSession();
-  }, [refreshSession]);
+    return removeSessionExpiredListener;
+  }, [invalidateSession, refreshSession]);
 
   const login = useCallback(async ({ email, password }: { email: string; password: string }) => {
-    const result = await loginIndividual({ email, password });
+    const operation = operationRef.current + 1;
+    operationRef.current = operation;
+    setUser(null);
+    setStatus("loading");
+
     try {
+      const result = await loginIndividual({ email, password });
+      if (operation !== operationRef.current) throw new ApiError("UNAUTHENTICATED");
+      setAccessToken(result.accessToken);
       const currentUser = result.user ?? await getCurrentUser();
+      if (operation !== operationRef.current) throw new ApiError("UNAUTHENTICATED");
       setUser(currentUser);
       setStatus("authenticated");
       return currentUser;
     } catch (error) {
-      invalidateSession();
+      if (operation === operationRef.current) commitUnauthenticated();
       throw error;
     }
-  }, [invalidateSession]);
+  }, [commitUnauthenticated]);
 
   const logout = useCallback(async () => {
+    operationRef.current += 1;
+    // Clear local authority first so an in-flight refresh cannot reveal private UI.
+    commitUnauthenticated();
     try {
       await logoutSession();
-    } finally {
-      invalidateSession();
+    } catch {
+      // Local session state remains safely cleared when the network is unavailable.
     }
-  }, [invalidateSession]);
+  }, [commitUnauthenticated]);
 
   const value = useMemo<AuthContextValue>(() => ({ status, user, login, logout, invalidateSession, refreshSession }), [invalidateSession, login, logout, refreshSession, status, user]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

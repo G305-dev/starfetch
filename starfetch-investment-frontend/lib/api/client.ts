@@ -34,17 +34,34 @@ const safeMessages: Record<ApiErrorCode, string> = {
  * written to localStorage, sessionStorage, or a frontend-controlled cookie.
  */
 let inMemoryAccessToken: string | null = null;
+let authGeneration = 0;
+let refreshInFlight: Promise<string> | null = null;
+let sessionExpiredListener: (() => void) | null = null;
 
 export function setAccessToken(accessToken: string) {
+  authGeneration += 1;
   inMemoryAccessToken = accessToken;
 }
 
 export function clearAccessToken() {
+  authGeneration += 1;
   inMemoryAccessToken = null;
 }
 
 export function hasAccessToken() {
   return Boolean(inMemoryAccessToken);
+}
+
+/** Lets the provider react to an unrecoverable, authenticated API failure. */
+export function setSessionExpiredListener(listener: (() => void) | null) {
+  sessionExpiredListener = listener;
+  return () => {
+    if (sessionExpiredListener === listener) sessionExpiredListener = null;
+  };
+}
+
+function notifySessionExpired() {
+  sessionExpiredListener?.();
 }
 
 export class ApiError extends Error {
@@ -83,7 +100,7 @@ export type IndividualAccountProfile = {
   firstName: string;
   lastName: string;
   email: string;
-  phone: string;
+  phone: string | null;
 };
 
 /** Exact Phase 2D /me/portfolio holding projection from docs/api/openapi.yaml. */
@@ -107,17 +124,22 @@ export type InvestorPortfolio = {
   holdings: PortfolioHolding[];
 };
 
+/** Exact Phase 2D /me/transactions item projection from docs/api/openapi.yaml. */
 export type InvestorTransaction = {
   id: string | null;
-  title: string | null;
-  productName: string | null;
+  type: string | null;
   status: string | null;
   amountMinor: number | null;
+  currency: string | null;
+  description: string | null;
   occurredAt: string | null;
 };
 
 export type InvestorTransactionsPage = {
   transactions: InvestorTransaction[];
+  page: number | null;
+  pageSize: number | null;
+  total: number | null;
 };
 
 export type RegisterIndividualResponse = {
@@ -214,6 +236,7 @@ async function request(path: string, options: RequestOptions = {}) {
     const response = await fetch(`/api/v1${path}`, {
       method: options.method ?? "GET",
       credentials: "include",
+      cache: "no-store",
       headers: {
         ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
         ...options.headers,
@@ -250,6 +273,48 @@ function authorizationHeaders() {
   return { Authorization: `Bearer ${inMemoryAccessToken}` };
 }
 
+/**
+ * Makes one bounded refresh-and-retry attempt for an authenticated request.
+ * Concurrent 401s share refreshAccessToken's single-flight rotation.
+ */
+async function authenticatedRequest(path: string, options: RequestOptions = {}) {
+  const generationAtStart = authGeneration;
+  const requestWithCurrentToken = () => request(path, {
+    ...options,
+    headers: { ...options.headers, ...authorizationHeaders() },
+  });
+
+  try {
+    return await requestWithCurrentToken();
+  } catch (error) {
+    if (!isApiError(error) || error.code !== "UNAUTHENTICATED" || generationAtStart !== authGeneration) throw error;
+
+    let generationAfterRefresh: number;
+    try {
+      await refreshAccessToken();
+      generationAfterRefresh = authGeneration;
+    } catch (refreshError) {
+      // A logout or newer login owns the current session. A stale request must
+      // never clear that newer authority when its old refresh finishes.
+      if (generationAtStart === authGeneration) {
+        clearAccessToken();
+        notifySessionExpired();
+      }
+      throw refreshError;
+    }
+
+    try {
+      return await requestWithCurrentToken();
+    } catch (retryError) {
+      if (isApiError(retryError) && retryError.code === "UNAUTHENTICATED" && generationAfterRefresh === authGeneration) {
+        clearAccessToken();
+        notifySessionExpired();
+      }
+      throw retryError;
+    }
+  }
+}
+
 function normaliseUser(payload: unknown): AuthUser {
   const data = unwrapPayload(payload);
   const user = isRecord(data.user) ? data.user : data;
@@ -274,7 +339,7 @@ function normaliseProfile(payload: unknown): IndividualAccountProfile {
   const lastName = readString(profile, "lastName");
   const email = readString(profile, "email");
   const phoneValue = profile.phone;
-  const phone = typeof phoneValue === "string" ? phoneValue : "";
+  const phone: string | null = typeof phoneValue === "string" ? phoneValue : null;
   if (!firstName || !lastName || !email) throw new ApiError("UNEXPECTED_RESPONSE");
   return { firstName, lastName, email, phone };
 }
@@ -289,22 +354,6 @@ function readMinor(record: JsonRecord, keys: string[]) {
     }
   }
   return null;
-}
-
-function readFirstString(record: JsonRecord, keys: string[]) {
-  for (const key of keys) {
-    const value = readString(record, key);
-    if (value) return value;
-  }
-  return null;
-}
-
-function readFirstArray(record: JsonRecord, keys: string[]) {
-  for (const key of keys) {
-    const value = record[key];
-    if (Array.isArray(value)) return value;
-  }
-  return [];
 }
 
 function normalisePortfolio(payload: unknown): InvestorPortfolio {
@@ -332,17 +381,23 @@ function normalisePortfolio(payload: unknown): InvestorPortfolio {
 }
 
 function normaliseTransactions(payload: unknown): InvestorTransactionsPage {
-  const data = unwrapPayload(payload);
-  const transactionRecords = readFirstArray(data, ["transactions", "items", "results"]);
-  const transactions = transactionRecords.filter(isRecord).map((transaction) => ({
-    id: readFirstString(transaction, ["id", "transactionId", "reference"]),
-    title: readFirstString(transaction, ["title", "type", "description"]),
-    productName: readFirstString(transaction, ["productName", "product"]),
-    status: readFirstString(transaction, ["status"]),
-    amountMinor: readMinor(transaction, ["amountMinor", "valueMinor", "grossAmountMinor"]),
-    occurredAt: readFirstString(transaction, ["occurredAt", "createdAt", "date"]),
+  if (!isRecord(payload) || !Array.isArray(payload.data)) throw new ApiError("UNEXPECTED_RESPONSE");
+  const meta = isRecord(payload.meta) ? payload.meta : {};
+  const transactions = payload.data.filter(isRecord).map((transaction) => ({
+    id: readString(transaction, "id") ?? null,
+    type: readString(transaction, "type") ?? null,
+    status: readString(transaction, "status") ?? null,
+    amountMinor: readMinor(transaction, ["amountMinor"]),
+    currency: readString(transaction, "currency") ?? null,
+    description: readString(transaction, "description") ?? null,
+    occurredAt: readString(transaction, "occurredAt") ?? null,
   }));
-  return { transactions };
+  return {
+    transactions,
+    page: readMinor(meta, ["page"]),
+    pageSize: readMinor(meta, ["pageSize"]),
+    total: readMinor(meta, ["total"]),
+  };
 }
 
 export async function registerIndividual(input: { firstName: string; lastName: string; email: string; password: string }): Promise<RegisterIndividualResponse> {
@@ -377,7 +432,6 @@ export async function loginIndividual(input: { email: string; password: string }
   const data = unwrapPayload(payload);
   const accessToken = readString(data, "accessToken");
   if (!accessToken) throw new ApiError("UNEXPECTED_RESPONSE");
-  setAccessToken(accessToken);
   try {
     return { accessToken, user: normaliseUser(data) };
   } catch (error) {
@@ -386,12 +440,23 @@ export async function loginIndividual(input: { email: string; password: string }
   }
 }
 
+/** Shares a single refresh-token rotation across concurrent authenticated requests. */
 export async function refreshAccessToken() {
-  const data = unwrapPayload(await request("/auth/refresh", { method: "POST", headers: csrfHeaders() }));
-  const accessToken = readString(data, "accessToken");
-  if (!accessToken) throw new ApiError("UNAUTHENTICATED");
-  setAccessToken(accessToken);
-  return accessToken;
+  if (refreshInFlight) return refreshInFlight;
+  const generationAtStart = authGeneration;
+  refreshInFlight = (async () => {
+    const data = unwrapPayload(await request("/auth/refresh", { method: "POST", headers: csrfHeaders() }));
+    const accessToken = readString(data, "accessToken");
+    if (!accessToken || generationAtStart !== authGeneration) throw new ApiError("UNAUTHENTICATED");
+    setAccessToken(accessToken);
+    return accessToken;
+  })();
+
+  try {
+    return await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
+  }
 }
 
 export async function logoutSession() {
@@ -399,21 +464,21 @@ export async function logoutSession() {
 }
 
 export async function getCurrentUser() {
-  return normaliseUser(await request("/me", { headers: authorizationHeaders() }));
+  return normaliseUser(await authenticatedRequest("/me"));
 }
 
 export async function getMyProfile() {
-  return normaliseProfile(await request("/me/profile", { headers: authorizationHeaders() }));
+  return normaliseProfile(await authenticatedRequest("/me/profile"));
 }
 
-export async function updateMyProfile(input: { firstName: string; lastName: string; phone: string }) {
-  return normaliseProfile(await request("/me/profile", { method: "PUT", body: input, headers: authorizationHeaders() }));
+export async function updateMyProfile(input: { firstName: string; lastName: string; phone: string | null }) {
+  return normaliseProfile(await authenticatedRequest("/me/profile", { method: "PUT", body: input }));
 }
 
 export async function getMyPortfolio() {
-  return normalisePortfolio(await request("/me/portfolio", { headers: authorizationHeaders() }));
+  return normalisePortfolio(await authenticatedRequest("/me/portfolio"));
 }
 
 export async function getMyTransactions(page = 1, pageSize = 5) {
-  return normaliseTransactions(await request(`/me/transactions?page=${page}&pageSize=${pageSize}`, { headers: authorizationHeaders() }));
+  return normaliseTransactions(await authenticatedRequest(`/me/transactions?page=${page}&pageSize=${pageSize}`));
 }

@@ -8,7 +8,7 @@ export type FixedNoteRateBand = {
   rate365: string;
 };
 
-/** Frontend-only indicative rate-card data for Starfetch Fixed Note enquiries. */
+/** Legacy business-portal rate-card content retained for the pre-existing corporate route. */
 export const fixedNoteRateBands: FixedNoteRateBand[] = [
   { id: "tier-1", tier: "Tier 1", band: "₦10m – ₦24.9m", rate180: "18.0%", rate365: "19.0%" },
   { id: "tier-2", tier: "Tier 2", band: "₦25m – ₦49.9m", rate180: "19.25%", rate365: "20.25%" },

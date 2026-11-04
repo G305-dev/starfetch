@@ -2,8 +2,6 @@ import {
   BarChart3,
   BriefcaseBusiness,
   CircleDollarSign,
-  FileDown,
-  FolderUp,
   LayoutDashboard,
   type LucideIcon,
 } from "lucide-react";
@@ -17,10 +15,8 @@ export type IndividualQuickAction = {
 };
 
 export const individualQuickActions: IndividualQuickAction[] = [
-  { label: "Create an Investment", href: "/products", icon: BriefcaseBusiness, primary: true },
+  { label: "Explore Products", href: "/products", icon: BriefcaseBusiness, primary: true },
   { label: "See Investments", href: "/investments", icon: BriefcaseBusiness },
-  { label: "Download Statements", href: "/dashboard#statements", icon: FileDown },
-  { label: "Upload Documents", href: "/dashboard#documents", icon: FolderUp },
 ];
 
 export const individualInvestmentSolutions = [
