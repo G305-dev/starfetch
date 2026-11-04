@@ -8,7 +8,7 @@ type ProductEnquiryFormProps = {
   onClose: () => void;
 };
 
-/** A local-only product interest form. It deliberately makes no network request. */
+/** Legacy business-portal local-only product interest form. It makes no network request. */
 export function ProductEnquiryForm({ productName, onClose }: ProductEnquiryFormProps) {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");

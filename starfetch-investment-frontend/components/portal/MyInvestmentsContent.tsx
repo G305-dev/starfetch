@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getMyPortfolio, type InvestorPortfolio } from "@/lib/api/client";
 import { InvestmentFilters } from "./InvestmentFilters";
 import { InvestmentHoldings } from "./InvestmentHoldings";
@@ -15,14 +15,19 @@ export function MyInvestmentsContent() {
   const [requestState, setRequestState] = useState<InvestmentsRequestState>("loading");
   const [portfolio, setPortfolio] = useState<InvestorPortfolio | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const requestVersion = useRef(0);
 
   const loadInvestments = useCallback(async () => {
+    const version = requestVersion.current + 1;
+    requestVersion.current = version;
     setRequestState("loading");
     try {
       const nextPortfolio = await getMyPortfolio();
+      if (version !== requestVersion.current) return;
       setPortfolio(nextPortfolio);
       setRequestState("success");
     } catch {
+      if (version !== requestVersion.current) return;
       setPortfolio(null);
       setRequestState("error");
     }
@@ -30,6 +35,9 @@ export function MyInvestmentsContent() {
 
   useEffect(() => {
     void loadInvestments();
+    return () => {
+      requestVersion.current += 1;
+    };
   }, [loadInvestments]);
 
   const filteredHoldings = useMemo(() => {

@@ -5,7 +5,7 @@ import { type FormEvent, useMemo, useState } from "react";
 import { ArrowLeft, Check, ChevronDown, Info } from "lucide-react";
 import { fixedNoteRateBands, fixedNoteTerms, type FixedNoteTenor } from "./fixed-note-data";
 
-/** Dedicated, frontend-only Fixed Note enquiry page—not a modal or investment booking flow. */
+/** Retained unchanged for the existing corporate fixed-note route. */
 export function FixedNoteRateForm({ backHref = "/products" }: { backHref?: string }) {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
