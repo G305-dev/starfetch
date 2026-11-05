@@ -6,6 +6,7 @@ import { InvestmentsEmptyState } from "./InvestmentStates";
 type InvestmentHoldingsProps = {
   holdings: PortfolioHolding[];
   filtered?: boolean;
+  productsHref?: string;
 };
 
 function InstrumentName({ holding }: { holding: PortfolioHolding }) {
@@ -16,8 +17,8 @@ function Quantity({ value }: { value: string | null }) {
   return <>{value ?? "Not available"}</>;
 }
 
-export function InvestmentHoldings({ holdings, filtered = false }: InvestmentHoldingsProps) {
-  if (holdings.length === 0) return <InvestmentsEmptyState filtered={filtered} />;
+export function InvestmentHoldings({ holdings, filtered = false, productsHref }: InvestmentHoldingsProps) {
+  if (holdings.length === 0) return <InvestmentsEmptyState filtered={filtered} productsHref={productsHref} />;
 
   return <>
     <div className="mt-5 hidden overflow-x-auto lg:block">

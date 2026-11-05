@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:joint-contract": "node scripts/run-typescript-check.cjs scripts/joint-phase4-contract-check.ts",
+    "test:auth-navigation": "node scripts/run-typescript-check.cjs scripts/auth-return-navigation-check.ts"
   },
   "dependencies": {
     "@types/node": "22.13.10",

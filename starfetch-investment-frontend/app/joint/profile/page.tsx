@@ -5,7 +5,7 @@ import { JointSidebar } from "@/components/joint/JointSidebar";
 
 export const metadata: Metadata = {
   title: "Joint Profile | Starfetch Joint Account",
-  description: "Frontend-only joint account profile for Starfetch Investment Limited.",
+  description: "Joint Account membership profile for Starfetch Investment Limited.",
 };
 
 export default function JointProfilePage() {
