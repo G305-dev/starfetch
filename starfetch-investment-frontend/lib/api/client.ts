@@ -4,7 +4,9 @@ export type ApiErrorCode =
   | "EMAIL_NOT_VERIFIED"
   | "UNAUTHENTICATED"
   | "FORBIDDEN"
+  | "NOT_FOUND"
   | "CONFLICT"
+  | "GONE"
   | "RATE_LIMITED"
   | "NETWORK_ERROR"
   | "UNEXPECTED_RESPONSE";
@@ -23,7 +25,9 @@ const safeMessages: Record<ApiErrorCode, string> = {
   EMAIL_NOT_VERIFIED: "Please verify your email address before signing in.",
   UNAUTHENTICATED: "Your session has ended. Please sign in again.",
   FORBIDDEN: "You do not have permission to perform this action.",
+  NOT_FOUND: "This item is not available to your account.",
   CONFLICT: "An account with these details already exists.",
+  GONE: "This invitation is no longer available.",
   RATE_LIMITED: "Too many requests were made. Please wait a moment and try again.",
   NETWORK_ERROR: "We could not reach Starfetch securely. Please check your connection and try again.",
   UNEXPECTED_RESPONSE: "We could not complete your request. Please try again.",
@@ -142,6 +146,64 @@ export type InvestorTransactionsPage = {
   total: number | null;
 };
 
+/** Phase 4A Joint API views. IDs originate only from authenticated API responses. */
+export type JointAccountSummary = {
+  jointAccountId: string;
+  displayName: string;
+  memberCount: number;
+  holderNames: string[];
+  myJoinedAt: string;
+  isFull: boolean;
+  awaitingSecondHolder: boolean;
+};
+
+export type JointAccountMember = {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  joinedAt: string;
+};
+
+export type JointAccountDetail = {
+  jointAccountId: string;
+  displayName: string;
+  createdAt: string;
+  members: JointAccountMember[];
+  membership: {
+    capacity: number;
+    activeCount: number;
+    awaitingSecondHolder: boolean;
+  };
+};
+
+export type JointInvitation = {
+  invitationId: string;
+  jointAccountId: string;
+  accountDisplayName: string;
+  inviterFirstName: string;
+  expiresAt: string;
+  sentAt: string;
+};
+
+export type CreatedJointAccount = {
+  jointAccountId: string;
+  displayName: string;
+  invitation: {
+    invitationId: string;
+    invitedEmailMasked: string;
+    expiresAt: string;
+    status: "PENDING";
+  };
+};
+
+export type CreatedJointInvitation = {
+  invitationId: string;
+  invitedEmailMasked: string;
+  expiresAt: string;
+  status: "PENDING";
+};
+
 export type RegisterIndividualResponse = {
   userId: string;
   verificationId: string;
@@ -191,7 +253,9 @@ function toKnownErrorCode(value: string | undefined, status: number): ApiErrorCo
   if (status === 400 || status === 422) return "VALIDATION_FAILED";
   if (status === 401) return "UNAUTHENTICATED";
   if (status === 403) return "FORBIDDEN";
+  if (status === 404) return "NOT_FOUND";
   if (status === 409) return "CONFLICT";
+  if (status === 410) return "GONE";
   if (status === 429) return "RATE_LIMITED";
   return "UNEXPECTED_RESPONSE";
 }
@@ -228,6 +292,15 @@ type RequestOptions = {
   method?: "GET" | "POST" | "PUT";
   body?: unknown;
   headers?: HeadersInit;
+};
+
+type AuthenticatedRequestOptions = RequestOptions & {
+  /**
+   * Evaluated immediately before every authenticated HTTP attempt. This is
+   * required for mutation CSRF headers because a successful refresh can rotate
+   * the readable double-submit cookie between the original request and retry.
+   */
+  attemptHeaders?: () => Record<string, string>;
 };
 
 /** All browser requests use the same-origin /api/v1 Next.js rewrite. */
@@ -277,11 +350,14 @@ function authorizationHeaders() {
  * Makes one bounded refresh-and-retry attempt for an authenticated request.
  * Concurrent 401s share refreshAccessToken's single-flight rotation.
  */
-async function authenticatedRequest(path: string, options: RequestOptions = {}) {
+async function authenticatedRequest(path: string, options: AuthenticatedRequestOptions = {}) {
   const generationAtStart = authGeneration;
+  const { attemptHeaders, ...requestOptions } = options;
   const requestWithCurrentToken = () => request(path, {
-    ...options,
-    headers: { ...options.headers, ...authorizationHeaders() },
+    ...requestOptions,
+    // Rebuild both authorization and per-attempt headers for every request.
+    // In particular, a refresh can rotate the CSRF cookie before a POST retry.
+    headers: { ...requestOptions.headers, ...attemptHeaders?.(), ...authorizationHeaders() },
   });
 
   try {
@@ -313,6 +389,19 @@ async function authenticatedRequest(path: string, options: RequestOptions = {}) 
       throw retryError;
     }
   }
+}
+
+/**
+ * Authenticated mutations use the existing CSRF double-submit helper. The
+ * cookie is intentionally read per HTTP attempt, not once for the full
+ * request, so a bounded post-refresh retry sends the rotated CSRF token.
+ */
+async function authenticatedMutation(path: string, body?: unknown) {
+  return authenticatedRequest(path, {
+    method: "POST",
+    body,
+    attemptHeaders: csrfHeaders,
+  });
 }
 
 function normaliseUser(payload: unknown): AuthUser {
@@ -400,6 +489,102 @@ function normaliseTransactions(payload: unknown): InvestorTransactionsPage {
   };
 }
 
+function normaliseJointAccountSummary(record: JsonRecord): JointAccountSummary {
+  const jointAccountId = readString(record, "jointAccountId");
+  const displayName = readString(record, "displayName");
+  const memberCount = readNumber(record, "memberCount");
+  const holderNamesValue = record.holderNames;
+  const myJoinedAt = readString(record, "myJoinedAt");
+  const isFull = readBoolean(record, "isFull");
+  const awaitingSecondHolder = readBoolean(record, "awaitingSecondHolder");
+  if (!jointAccountId || !displayName || memberCount === undefined || !Array.isArray(holderNamesValue) || !holderNamesValue.every((name) => typeof name === "string") || !myJoinedAt || isFull === undefined || awaitingSecondHolder === undefined) throw new ApiError("UNEXPECTED_RESPONSE");
+  return { jointAccountId, displayName, memberCount, holderNames: holderNamesValue, myJoinedAt, isFull, awaitingSecondHolder };
+}
+
+function normaliseJointAccounts(payload: unknown): JointAccountSummary[] {
+  if (!isRecord(payload) || !Array.isArray(payload.data) || !payload.data.every(isRecord)) throw new ApiError("UNEXPECTED_RESPONSE");
+  return payload.data.map(normaliseJointAccountSummary);
+}
+
+function normaliseJointAccountDetail(payload: unknown): JointAccountDetail {
+  const data = unwrapPayload(payload);
+  const jointAccountId = readString(data, "jointAccountId");
+  const displayName = readString(data, "displayName");
+  const createdAt = readString(data, "createdAt");
+  const membersValue = data.members;
+  const membership = data.membership;
+  if (!jointAccountId || !displayName || !createdAt || !Array.isArray(membersValue) || !membersValue.every(isRecord) || !isRecord(membership)) throw new ApiError("UNEXPECTED_RESPONSE");
+  const members = membersValue.map((member) => {
+    const userId = readString(member, "userId");
+    const firstName = readString(member, "firstName");
+    const lastName = readString(member, "lastName");
+    const email = readString(member, "email");
+    const joinedAt = readString(member, "joinedAt");
+    if (!userId || firstName === undefined || lastName === undefined || !email || !joinedAt) throw new ApiError("UNEXPECTED_RESPONSE");
+    return { userId, firstName, lastName, email, joinedAt };
+  });
+  const capacity = readNumber(membership, "capacity");
+  const activeCount = readNumber(membership, "activeCount");
+  const awaitingSecondHolder = readBoolean(membership, "awaitingSecondHolder");
+  if (capacity === undefined || activeCount === undefined || awaitingSecondHolder === undefined) throw new ApiError("UNEXPECTED_RESPONSE");
+  return { jointAccountId, displayName, createdAt, members, membership: { capacity, activeCount, awaitingSecondHolder } };
+}
+
+function normaliseJointInvitations(payload: unknown): JointInvitation[] {
+  if (!isRecord(payload) || !Array.isArray(payload.data) || !payload.data.every(isRecord)) throw new ApiError("UNEXPECTED_RESPONSE");
+  return payload.data.map((invitation) => {
+    const invitationId = readString(invitation, "invitationId");
+    const jointAccountId = readString(invitation, "jointAccountId");
+    const accountDisplayName = readString(invitation, "accountDisplayName");
+    const inviterFirstName = readString(invitation, "inviterFirstName");
+    const expiresAt = readString(invitation, "expiresAt");
+    const sentAt = readString(invitation, "sentAt");
+    if (!invitationId || !jointAccountId || !accountDisplayName || !inviterFirstName || !expiresAt || !sentAt) throw new ApiError("UNEXPECTED_RESPONSE");
+    return { invitationId, jointAccountId, accountDisplayName, inviterFirstName, expiresAt, sentAt };
+  });
+}
+
+function normaliseCreatedJointAccount(payload: unknown): CreatedJointAccount {
+  const data = unwrapPayload(payload);
+  const jointAccountId = readString(data, "jointAccountId");
+  const displayName = readString(data, "displayName");
+  const invitation = data.invitation;
+  if (!jointAccountId || !displayName || !isRecord(invitation)) throw new ApiError("UNEXPECTED_RESPONSE");
+  const invitationId = readString(invitation, "invitationId");
+  const invitedEmailMasked = readString(invitation, "invitedEmailMasked");
+  const expiresAt = readString(invitation, "expiresAt");
+  if (!invitationId || !invitedEmailMasked || !expiresAt || invitation.status !== "PENDING") throw new ApiError("UNEXPECTED_RESPONSE");
+  return { jointAccountId, displayName, invitation: { invitationId, invitedEmailMasked, expiresAt, status: "PENDING" } };
+}
+
+function normaliseCreatedJointInvitation(payload: unknown): CreatedJointInvitation {
+  const data = unwrapPayload(payload);
+  const invitationId = readString(data, "invitationId");
+  const invitedEmailMasked = readString(data, "invitedEmailMasked");
+  const expiresAt = readString(data, "expiresAt");
+  if (!invitationId || !invitedEmailMasked || !expiresAt || data.status !== "PENDING") throw new ApiError("UNEXPECTED_RESPONSE");
+  return { invitationId, invitedEmailMasked, expiresAt, status: "PENDING" };
+}
+
+function normaliseJointInvitationAcceptance(payload: unknown) {
+  const data = unwrapPayload(payload);
+  const jointAccountId = readString(data, "jointAccountId");
+  const joinedAt = readString(data, "joinedAt");
+  if (!jointAccountId || !joinedAt) throw new ApiError("UNEXPECTED_RESPONSE");
+  return { jointAccountId, joinedAt };
+}
+
+function normaliseJointInvitationDecline(payload: unknown) {
+  const data = unwrapPayload(payload);
+  const invitationId = readString(data, "invitationId");
+  if (!invitationId || data.status !== "DECLINED") throw new ApiError("UNEXPECTED_RESPONSE");
+  return { invitationId, status: "DECLINED" as const };
+}
+
+function jointPathSegment(id: string) {
+  return encodeURIComponent(id);
+}
+
 export async function registerIndividual(input: { firstName: string; lastName: string; email: string; password: string }): Promise<RegisterIndividualResponse> {
   const data = unwrapPayload(await request("/auth/register", { method: "POST", body: input }));
   const userId = readString(data, "userId");
@@ -481,4 +666,50 @@ export async function getMyPortfolio() {
 
 export async function getMyTransactions(page = 1, pageSize = 5) {
   return normaliseTransactions(await authenticatedRequest(`/me/transactions?page=${page}&pageSize=${pageSize}`));
+}
+
+/** R1 — active memberships for the authenticated Investor only. */
+export async function getMyJointAccounts() {
+  return normaliseJointAccounts(await authenticatedRequest("/me/joint-accounts"));
+}
+
+/** R2 — account detail. The server verifies membership; callers must use an ID from R1. */
+export async function getJointAccount(jointAccountId: string) {
+  return normaliseJointAccountDetail(await authenticatedRequest(`/joint-accounts/${jointPathSegment(jointAccountId)}`));
+}
+
+/** R3 prepared for Phase 4B; no joint financial UI consumes it in Phase 4A. */
+export async function getJointPortfolio(jointAccountId: string) {
+  return normalisePortfolio(await authenticatedRequest(`/joint-accounts/${jointPathSegment(jointAccountId)}/portfolio`));
+}
+
+/** R4 prepared for Phase 4B; no joint financial UI consumes it in Phase 4A. */
+export async function getJointTransactions(jointAccountId: string, page = 1, pageSize = 10) {
+  return normaliseTransactions(await authenticatedRequest(`/joint-accounts/${jointPathSegment(jointAccountId)}/transactions?page=${page}&pageSize=${pageSize}`));
+}
+
+/** M1 — create an account with one ACTIVE holder and one PENDING invitation. */
+export async function createJointAccount(input: { inviteeEmail: string; displayName?: string }) {
+  const body = input.displayName ? { inviteeEmail: input.inviteeEmail, displayName: input.displayName } : { inviteeEmail: input.inviteeEmail };
+  return normaliseCreatedJointAccount(await authenticatedMutation("/joint-accounts", body));
+}
+
+/** M2 — send or safely replace the invitation for an awaiting-second-holder account. */
+export async function createJointInvitation(jointAccountId: string, email: string) {
+  return normaliseCreatedJointInvitation(await authenticatedMutation(`/joint-accounts/${jointPathSegment(jointAccountId)}/invitations`, { email }));
+}
+
+/** M3 — current user's pending, unexpired invitation inbox. */
+export async function getMyJointInvitations() {
+  return normaliseJointInvitations(await authenticatedRequest("/me/joint-invitations"));
+}
+
+/** M4 — explicit consent; backend makes an authorized retry idempotent. */
+export async function acceptJointInvitation(invitationId: string) {
+  return normaliseJointInvitationAcceptance(await authenticatedMutation(`/me/joint-invitations/${jointPathSegment(invitationId)}/accept`));
+}
+
+/** M5 — explicit decline; backend makes a same-recipient retry idempotent. */
+export async function declineJointInvitation(invitationId: string) {
+  return normaliseJointInvitationDecline(await authenticatedMutation(`/me/joint-invitations/${jointPathSegment(invitationId)}/decline`));
 }

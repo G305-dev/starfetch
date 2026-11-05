@@ -15,7 +15,8 @@ function BusinessBuyNowAction({ product, onBuyNow, fixedNoteHref }: { product: P
 }
 
 export function ProductsContent({ fixedNoteHref = "/products/fixed-note" }: { fixedNoteHref?: string }) {
-  const isLegacyNonIndividualPortal = fixedNoteHref.startsWith("/corporate/") || fixedNoteHref.startsWith("/joint/");
+  // Corporate keeps its pre-existing legacy product flow. Individual and Joint are informational-only.
+  const isLegacyNonIndividualPortal = fixedNoteHref.startsWith("/corporate/");
   const [selectedProduct, setSelectedProduct] = useState<ProductDetail | null>(null);
   const [enquiryProduct, setEnquiryProduct] = useState<ProductDetail | null>(null);
   const openBusinessEnquiry = (product: ProductDetail) => {

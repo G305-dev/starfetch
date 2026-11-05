@@ -5,7 +5,7 @@ import { JointTransactionsContent } from "@/components/joint/JointTransactionsCo
 
 export const metadata: Metadata = {
   title: "Transactions | Starfetch Joint Account",
-  description: "Frontend-only joint account transaction history for Starfetch Investment Limited.",
+  description: "Joint Account transaction screen for Starfetch Investment Limited.",
 };
 
 export default function JointTransactionsPage() {

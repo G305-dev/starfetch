@@ -20,7 +20,7 @@ export function InvestmentSummaryCards({ portfolio }: { portfolio: InvestorPortf
     },
     {
       label: "Total Returns",
-      value: formatCurrencyMinor(portfolio.totalReturnMinor, portfolio.currency),
+      value: portfolio.totalReturnMinor === null ? "Not available" : formatCurrencyMinor(portfolio.totalReturnMinor, portfolio.currency),
       detail: portfolio.totalReturnMinor === null ? "Not available yet" : "Approved portfolio return",
       icon: CircleDollarSign,
       emphasis: false,
