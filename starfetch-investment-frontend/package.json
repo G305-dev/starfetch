@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test:joint-contract": "node scripts/run-typescript-check.cjs scripts/joint-phase4-contract-check.ts",
+    "test:joint-contract": "node scripts/run-typescript-check.cjs scripts/joint-phase4-contract-check.ts && node scripts/run-typescript-check.cjs scripts/joint-ui-isolation-check.ts",
     "test:auth-navigation": "node scripts/run-typescript-check.cjs scripts/auth-return-navigation-check.ts"
   },
   "dependencies": {

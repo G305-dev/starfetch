@@ -5,7 +5,7 @@ import { JointSidebar } from "@/components/joint/JointSidebar";
 
 export const metadata: Metadata = {
   title: "Joint Account Dashboard | Starfetch Investment Limited",
-  description: "Manage authorized Starfetch Joint Account access and membership.",
+  description: "View your Starfetch Joint Account portfolio, holdings and recent activity.",
 };
 
 export default function JointDashboardPage() {
