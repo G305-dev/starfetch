@@ -8,7 +8,13 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test:joint-contract": "node scripts/run-typescript-check.cjs scripts/joint-phase4-contract-check.ts && node scripts/run-typescript-check.cjs scripts/joint-ui-isolation-check.ts",
-    "test:auth-navigation": "node scripts/run-typescript-check.cjs scripts/auth-return-navigation-check.ts"
+    "test:auth-navigation": "node scripts/run-typescript-check.cjs scripts/auth-return-navigation-check.ts",
+    "test:footer-navigation": "node scripts/run-typescript-check.cjs scripts/footer-navigation-check.ts",
+    "test:privacy-policy": "node scripts/run-typescript-check.cjs scripts/privacy-policy-check.ts",
+    "test:complaints-policy": "node scripts/run-typescript-check.cjs scripts/complaints-policy-check.ts",
+    "test:tools-page": "node scripts/run-typescript-check.cjs scripts/tools-page-check.ts",
+    "test:budget-planner": "node scripts/run-typescript-check.cjs scripts/budget-planner-check.ts",
+    "test:returns-calculator": "node scripts/run-typescript-check.cjs scripts/returns-calculator-check.ts"
   },
   "dependencies": {
     "@types/node": "22.13.10",

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { AccountTypeSelection } from "@/components/auth/AccountTypeSelection";
 import { OnboardingHeader } from "@/components/auth/OnboardingHeader";
 
@@ -18,12 +19,12 @@ export default function OpenAccountPage() {
       </main>
       <footer className="relative z-10 border-t border-star-200 bg-white/85 px-5 py-5 text-[0.7rem] text-star-muted backdrop-blur-sm sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-[1280px] items-center gap-3 text-center sm:grid-cols-3 sm:text-left">
-          <a
-            href="https://starfetchinvestltd.com.ng/privacy"
+          <Link
+            href="/privacy"
             className="w-fit justify-self-center font-semibold text-star-700 no-underline transition hover:text-star-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 sm:justify-self-start"
           >
             Privacy Policy
-          </a>
+          </Link>
           <p className="justify-self-center">© 2026 Starfetch Investment Limited</p>
           <a
             href="/terms-of-service"

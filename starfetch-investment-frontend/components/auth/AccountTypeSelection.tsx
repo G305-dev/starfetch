@@ -159,12 +159,12 @@ export function AccountTypeSelection() {
           Terms &amp; Conditions
         </a>{" "}
         and{" "}
-        <a
-          href="https://starfetchinvestltd.com.ng/privacy"
+        <Link
+          href="/privacy"
           className="font-bold text-star-700 underline decoration-star-lime decoration-2 underline-offset-3 transition hover:text-star-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2"
         >
           Privacy Policy
-        </a>.
+        </Link>.
       </p>
     </section>
   );

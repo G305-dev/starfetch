@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   ApiError,
   clearAccessToken,
@@ -27,6 +28,11 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  // Public calculators are deliberately self-contained: opening either one
+  // must not initialize a session or make an authentication request. Existing
+  // auth state is left intact for a user who navigates there from another route.
+  const skipInitialSessionRefresh = pathname === "/tools/budget" || pathname === "/tools/returns";
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
   const operationRef = useRef(0);
@@ -62,9 +68,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const removeSessionExpiredListener = setSessionExpiredListener(invalidateSession);
-    void refreshSession();
+    if (!skipInitialSessionRefresh) void refreshSession();
     return removeSessionExpiredListener;
-  }, [invalidateSession, refreshSession]);
+  }, [invalidateSession, refreshSession, skipInitialSessionRefresh]);
 
   const login = useCallback(async ({ email, password }: { email: string; password: string }) => {
     const operation = operationRef.current + 1;

@@ -1,14 +1,22 @@
+import Link from "next/link";
+
 const exploreLinks = [
-  { label: "About us", href: "https://starfetchinvestltd.com.ng/about" },
-  { label: "Services", href: "https://starfetchinvestltd.com.ng/services" },
-  { label: "Free tools", href: "https://starfetchinvestltd.com.ng/tools/" },
-  { label: "Contact", href: "https://starfetchinvestltd.com.ng/contact" },
+  { label: "About us", href: "/about" },
+  { label: "Services", href: "/services" },
+  { label: "Free tools", href: "/tools" },
+  { label: "Contact", href: "/#contact" },
 ];
 
 const legalLinks = [
-  { label: "Privacy policy", href: "https://starfetchinvestltd.com.ng/privacy" },
-  { label: "Complaints policy", href: "https://starfetchinvestltd.com.ng/complaints" },
+  { label: "Privacy policy", href: "/privacy" },
+  { label: "Complaints policy", href: "/complaints" },
 ];
+
+type FooterLink = {
+  label: string;
+  href?: string;
+  unavailable?: string;
+};
 
 export function Footer() {
   return (
@@ -36,13 +44,15 @@ export function Footer() {
   );
 }
 
-function FooterLinkGroup({ heading, links }: { heading: string; links: { label: string; href: string }[] }) {
+function FooterLinkGroup({ heading, links }: { heading: string; links: FooterLink[] }) {
   return (
     <section>
       <h2 className="text-[0.68rem] font-bold uppercase tracking-[0.12em] text-white">{heading}</h2>
       <nav className="mt-3 grid gap-2" aria-label={`${heading} links`}>
-        {links.map((link) => (
-          <a key={link.label} href={link.href} className="w-fit text-[0.7rem] text-star-100 no-underline transition hover:text-star-lime focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-lime">{link.label}</a>
+        {links.map((link) => link.href ? (
+          <Link key={link.label} href={link.href} className="w-fit text-[0.7rem] text-star-100 no-underline transition hover:text-star-lime focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-lime">{link.label}</Link>
+        ) : (
+          <span key={link.label} aria-disabled="true" className="w-fit cursor-default text-[0.7rem] text-star-100/60">{link.label} <span className="text-[0.6rem]">({link.unavailable})</span></span>
         ))}
       </nav>
     </section>
