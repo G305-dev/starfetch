@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight, BarChart3, ChevronDown, FileText, Menu, UsersRound, X } from "lucide-react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRef, useState, type KeyboardEvent } from "react";
 import { Button, Logo } from "./ui";
@@ -39,7 +40,7 @@ const navItems = [
   { label: "Home", href: "#home", activePath: "/" },
   { label: "About", href: "/about", activePath: "/about" },
   { label: "Services", href: "/services", activePath: "/services" },
-  { label: "Free Tools", href: "#tools" },
+  { label: "Free Tools", href: "/tools", activePath: "/tools" },
   { label: "Contact", href: "#contact" },
 ];
 
@@ -56,8 +57,9 @@ export function Navbar() {
   const firstServiceMenuItemRef = useRef<HTMLAnchorElement>(null);
 
   const isAboutRoute = pathname.startsWith("/about");
+  const isToolsRoute = pathname === "/tools" || pathname.startsWith("/tools/");
   const linkHref = (href: string) => (href.startsWith("#") && pathname !== "/" ? `/${href}` : href);
-  const isActive = (activePath?: string) => activePath === "/about" ? isAboutRoute : pathname === activePath;
+  const isActive = (activePath?: string) => activePath === "/about" ? isAboutRoute : activePath === "/tools" ? isToolsRoute : pathname === activePath;
 
   const closeAllMenus = () => {
     setIsOpen(false);
@@ -272,6 +274,20 @@ export function Navbar() {
               );
             }
 
+            if (item.label === "Free Tools") {
+              return (
+                <Link
+                  key={item.label}
+                  href="/tools"
+                  aria-current={active ? "page" : undefined}
+                  onClick={closeAllMenus}
+                  className={`flex h-full items-center border-b-2 text-[0.68rem] font-semibold no-underline transition-colors duration-200 hover:text-star-limeDark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-inset ${active ? "border-star-lime text-star-700" : "border-transparent text-star-700"}`}
+                >
+                  {item.label}
+                </Link>
+              );
+            }
+
             return (
               <a
                 key={item.label}
@@ -377,6 +393,20 @@ export function Navbar() {
                     ))}
                   </div>
                 </div>
+              );
+            }
+
+            if (item.label === "Free Tools") {
+              return (
+                <Link
+                  key={item.label}
+                  href="/tools"
+                  aria-current={active ? "page" : undefined}
+                  onClick={closeAllMenus}
+                  className={`rounded px-3 py-2.5 text-sm font-semibold no-underline transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 ${active ? "bg-star-100 text-star-700" : "text-star-700 hover:bg-star-50 hover:text-star-limeDark"}`}
+                >
+                  {item.label}
+                </Link>
               );
             }
 
