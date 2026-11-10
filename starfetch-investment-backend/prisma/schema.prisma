@@ -5,20 +5,23 @@
 // read models (Portfolio / Holding / Transaction — READ-only APIs; records
 // are created only by future real business flows, never seeded as fakes).
 //
-// Authorized model set:
+// Authorized model set for this repository snapshot:
 //
 //   Auth/identity: User, InvestorProfile, EmailVerificationChallenge,
 //                  AuthSession, RefreshToken (+ enum UserRole)
 //   Dashboard:     Portfolio, Holding, Transaction
+//   Corporate O2: CorporateAccount, OnboardingApplication, canonical
+//                  CorporateOnboardingDetails with envelope-encrypted TIN,
+//                  history and versioned HMAC idempotency primitives. The
+//                  public O2 route is behind a disabled-by-default gate.
 //
-// Still explicitly EXCLUDED pending approvals:
-//   - D-08: application status / state-transition map .................. OPEN
-//   - D-09: one-active-application semantics (+ staff-list selection) .. OPEN
+// Still excluded pending approvals / later phases:
+//   - Live O2 activation until KMS, privacy/legal and retention gates pass
+//   - Submission, verification, documents, bank data, staff/compliance,
+//     investment eligibility/activation, payments, statements, NAV,
+//     ledger, trades, settlement, IMS ........................ NOT AUTHORIZED
 //   - Document categories / review outcomes / lifecycle vocabulary ..... TBD
 //     (BUSINESS / COMPLIANCE + CONTRACT APPROVAL REQUIRED)
-//   - Applications / KYC / documents / banking / payments / investments /
-//     statements / NAV / ledger / trades /
-//     settlement / IMS ..................................... NOT AUTHORIZED
 //
 // Security posture (see docs/backend/auth/AUTH-SECURITY-CONTRACT-v1.md):
 //   - passwords: Argon2id hash strings only
@@ -43,6 +46,118 @@ enum UserRole {
   ADMIN
 }
 
+/// Shared application lifecycle from the accepted C1 architecture.
+enum OnboardingApplicationKind {
+  INDIVIDUAL
+  CORPORATE
+  JOINT
+}
+
+enum OnboardingApplicationStatus {
+  DRAFT
+  SUBMITTED
+  IN_REVIEW
+  INFO_REQUESTED
+  APPROVED
+  REJECTED
+}
+
+enum OnboardingApplicationHistoryEvent {
+  CREATED
+  IN_REVIEW
+  INFO_REQUESTED
+  APPROVED
+  REJECTED
+}
+
+/// Ruleset publication is intentionally separate from approval authority.
+/// There is no default published version and no publication service in C1.3.
+enum VerificationRulesetLifecycle {
+  DRAFT
+  PUBLISHED
+}
+
+enum ApplicationRulesetBindingEventKind {
+  BOUND
+  SUBMISSION_PINNED
+}
+
+enum VerificationSubjectTargetKind {
+  INDIVIDUAL_APPLICANT
+  JOINT_ACCOUNT_MEMBER
+  CORPORATE_LEGAL_ENTITY
+  CORPORATE_AUTHORIZED_REPRESENTATIVE
+  CORPORATE_BENEFICIAL_OWNER
+}
+
+enum VerificationSubjectResolutionState {
+  RESOLVED
+  UNRESOLVED
+}
+
+enum VerificationResolutionIssue {
+  MISSING_APPLICANT_IDENTITY
+  NO_ACTIVE_JOINT_MEMBERS
+  CORPORATE_PERSON_SOURCE_UNAVAILABLE
+  SUBJECT_KIND_NOT_APPLICABLE
+  LEGACY_SUBJECT_KIND_UNCLASSIFIED
+  DOCUMENT_CONDITION_NOT_EVALUATED
+}
+
+enum ApplicationVerificationRequirementStage {
+  TIER_1_BASIC_MONO
+  TIER_2_DOCUMENTS
+  TIER_3_STAFF_COMPLIANCE
+}
+
+enum ApplicationVerificationRequirementKind {
+  VERIFICATION_CHECK
+  CONDITIONAL_DOCUMENT
+  STAFF_REVIEW
+  INDEPENDENT_COMPLIANCE_APPROVAL
+}
+
+enum ApplicationVerificationRequirementState {
+  PENDING
+  UNRESOLVED
+}
+
+enum VerificationConsentEventKind {
+  GRANTED
+  WITHDRAWN
+}
+
+enum ProviderVerificationEvidenceStatus {
+  PENDING
+  PROVIDER_VERIFIED
+  AWAITING_REVIEW
+  CANCELLED
+  EXPIRED
+  PROVIDER_FAILED
+  UNAVAILABLE
+}
+
+enum VerificationDocumentEventKind {
+  QUARANTINED
+  SCAN_CLEAN
+  SCAN_REJECTED
+  REPLACED
+  ACCESS_GRANTED
+}
+
+enum ApplicationStaffReviewEventKind {
+  REVIEW_STARTED
+  INFORMATION_REQUESTED
+  DECISION_RECORDED
+  FINAL_COMPLIANCE_APPROVED
+  FINAL_COMPLIANCE_REJECTED
+}
+
+enum ApplicationStaffDecision {
+  APPROVE
+  REJECT
+}
+
 model User {
   id              String    @id @default(uuid()) @db.Uuid
   /// Display email exactly as the user typed it (trimmed).
@@ -61,10 +176,39 @@ model User {
   emailVerificationChallenges EmailVerificationChallenge[]
   authSessions                AuthSession[]
   // Phase 3B Step 1 — joint account back-relations (no scalar columns added).
-  jointMemberships       JointAccountMember[]
-  createdJointAccounts   JointAccount[]           @relation("CreatedJointAccounts")
-  sentJointInvitations   JointAccountInvitation[] @relation("SentJointInvitations")
-  acceptedJointInvitations JointAccountInvitation[] @relation("AcceptedJointInvitations")
+  jointMemberships            JointAccountMember[]
+  createdJointAccounts        JointAccount[]               @relation("CreatedJointAccounts")
+  sentJointInvitations        JointAccountInvitation[]     @relation("SentJointInvitations")
+  acceptedJointInvitations    JointAccountInvitation[]     @relation("AcceptedJointInvitations")
+
+  // C1.1A shared onboarding back-relations. No existing Individual/Joint
+  // ownership model is replaced; application ownership uses typed FKs.
+  initiatedOnboardingApplications OnboardingApplication[]        @relation("OnboardingInitiator")
+  ownedIndividualApplications     OnboardingApplication[]        @relation("OnboardingIndividualOwner")
+  submittedOnboardingApplications OnboardingApplication[]        @relation("OnboardingSubmitter")
+  onboardingHistoryEvents         OnboardingApplicationHistory[] @relation("OnboardingHistoryActor")
+  corporateDraftCreations         CorporateDraftCreation[]       @relation("CorporateDraftCreationInitiator")
+  corporateDetailsRevisions       CorporateDetailsRevision[]     @relation("CorporateDetailsRevisionActor")
+  corporateDraftIdempotencyKeys   CorporateDraftIdempotencyKey[] @relation("CorporateDraftKeyInitiator")
+
+  // C1.3 ruleset authoring/binding audit actors. These relations confer no
+  // compliance authority; runtime publication/binding grants remain disabled.
+  createdVerificationRulesets          VerificationRuleset[]                    @relation("VerificationRulesetCreator")
+  createdVerificationRulesetVersions   VerificationRulesetVersion[]             @relation("VerificationRulesetVersionCreator")
+  updatedVerificationRulesetVersions   VerificationRulesetVersion[]             @relation("VerificationRulesetVersionUpdater")
+  approvedVerificationRulesetVersions  VerificationRulesetVersion[]             @relation("VerificationRulesetVersionApprover")
+  publishedVerificationRulesetVersions VerificationRulesetVersion[]             @relation("VerificationRulesetVersionPublisher")
+  madeApplicationRulesetBindings       OnboardingApplicationRulesetBinding[]    @relation("ApplicationRulesetBindingActor")
+  applicationRulesetBindingEvents      ApplicationRulesetBindingEvent[]         @relation("ApplicationRulesetBindingEventActor")
+  pinnedApplicationRulesets            OnboardingApplicationRulesetPin[]        @relation("ApplicationRulesetPinActor")
+  createdVerificationSnapshots         ApplicationVerificationSnapshot[]        @relation("VerificationSnapshotCreator")
+  resolvedVerificationSubjectSnapshots ApplicationVerificationSubjectSnapshot[] @relation("ResolvedVerificationSubjectUser")
+  recordedVerificationConsentEvents    VerificationConsentEvent[]               @relation("VerificationConsentActor")
+  providerVerificationAttempts         ProviderVerificationAttempt[]            @relation("ProviderAttemptActor")
+  providerVerificationSubjects         ProviderVerificationAttempt[]            @relation("ProviderAttemptSubject")
+  uploadedVerificationDocuments        VerificationDocument[]                   @relation("VerificationDocumentUploader")
+  verificationDocumentEvents           VerificationDocumentEvent[]              @relation("VerificationDocumentEventActor")
+  staffReviewEvents                    ApplicationStaffReviewEvent[]            @relation("StaffReviewActor")
 
   @@map("users")
 }
@@ -125,18 +269,21 @@ model Portfolio {
 /// holder's invitation is pending consent — never presented as fully
 /// established or KYC-verified.
 model JointAccount {
-  id          String  @id @default(uuid()) @db.Uuid
+  id                String   @id @default(uuid()) @db.Uuid
   /// Optional display label chosen at creation.
-  displayName String  @db.VarChar(60)
+  displayName       String   @db.VarChar(60)
   /// Initiating holder — audit only; authorization derives from member rows.
-  createdBy       User   @relation("CreatedJointAccounts", fields: [createdByUserId], references: [id])
-  createdByUserId String @db.Uuid
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdBy         User     @relation("CreatedJointAccounts", fields: [createdByUserId], references: [id])
+  createdByUserId   String   @db.Uuid
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  /// Incremented transactionally by database triggers on any member-set change.
+  membershipVersion Int      @default(1)
 
-  members     JointAccountMember[]
-  invitations JointAccountInvitation[]
-  portfolio   Portfolio?
+  members                JointAccountMember[]
+  invitations            JointAccountInvitation[]
+  portfolio              Portfolio?
+  onboardingApplications OnboardingApplication[]  @relation("OnboardingJointOwner")
 
   @@map("joint_accounts")
 }
@@ -145,14 +292,15 @@ model JointAccount {
 /// Capacity (max 2) is enforced by the future transactional acceptance flow via
 /// parent-row locking — documented in docs/backend/joint/03 §3 (Phase 3B Step 2+).
 model JointAccountMember {
-  id             String       @id @default(uuid()) @db.Uuid
-  jointAccount   JointAccount @relation(fields: [jointAccountId], references: [id], onDelete: Cascade)
-  jointAccountId String       @db.Uuid
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId         String       @db.Uuid
-  joinedAt       DateTime     @default(now())
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id                           String                                   @id @default(uuid()) @db.Uuid
+  jointAccount                 JointAccount                             @relation(fields: [jointAccountId], references: [id], onDelete: Cascade)
+  jointAccountId               String                                   @db.Uuid
+  user                         User                                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                       String                                   @db.Uuid
+  joinedAt                     DateTime                                 @default(now())
+  createdAt                    DateTime                                 @default(now())
+  updatedAt                    DateTime                                 @updatedAt
+  verificationSubjectSnapshots ApplicationVerificationSubjectSnapshot[]
 
   /// Duplicate membership is impossible regardless of application races.
   @@unique([jointAccountId, userId])
@@ -175,22 +323,22 @@ enum JointInvitationStatus {
 /// the caller's CURRENT User record (normalizedEmail + emailVerifiedAt); email
 /// values are stored plaintext ONLY for delivery and are masked in responses.
 model JointAccountInvitation {
-  id                     String                 @id @default(uuid()) @db.Uuid
-  jointAccount           JointAccount           @relation(fields: [jointAccountId], references: [id], onDelete: Cascade)
-  jointAccountId         String                 @db.Uuid
+  id                     String                @id @default(uuid()) @db.Uuid
+  jointAccount           JointAccount          @relation(fields: [jointAccountId], references: [id], onDelete: Cascade)
+  jointAccountId         String                @db.Uuid
   invitedEmailNormalized String
   /// Plaintext for delivery; masked in any future API response.
   invitedEmail           String
-  invitedBy              User                   @relation("SentJointInvitations", fields: [invitedByUserId], references: [id])
-  invitedByUserId        String                 @db.Uuid
+  invitedBy              User                  @relation("SentJointInvitations", fields: [invitedByUserId], references: [id])
+  invitedByUserId        String                @db.Uuid
   /// Set at acceptance — supports the idempotent authorized-replay path.
-  acceptedBy             User?                  @relation("AcceptedJointInvitations", fields: [acceptedByUserId], references: [id])
-  acceptedByUserId       String?                @db.Uuid
-  status                 JointInvitationStatus  @default(PENDING)
+  acceptedBy             User?                 @relation("AcceptedJointInvitations", fields: [acceptedByUserId], references: [id])
+  acceptedByUserId       String?               @db.Uuid
+  status                 JointInvitationStatus @default(PENDING)
   expiresAt              DateTime
   respondedAt            DateTime?
-  createdAt              DateTime               @default(now())
-  updatedAt              DateTime               @updatedAt
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
 
   @@index([invitedEmailNormalized, status])
   @@index([jointAccountId, status])
@@ -198,38 +346,38 @@ model JointAccountInvitation {
 }
 
 model Holding {
-  id              String   @id @default(uuid()) @db.Uuid
+  id              String    @id @default(uuid()) @db.Uuid
   portfolio       Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
-  portfolioId     String   @db.Uuid
+  portfolioId     String    @db.Uuid
   instrumentLabel String
   /// Nullable quantity (Decimal serialized as string in API output).
-  quantity        Decimal? @db.Decimal(20, 6)
+  quantity        Decimal?  @db.Decimal(20, 6)
   /// Stored holding value in minor units — read-only aggregation source for
   /// the dashboard; NO market valuation or revaluation exists.
   valueMinor      BigInt
-  currency        String   @default("NGN")
+  currency        String    @default("NGN")
   asOf            DateTime
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([portfolioId])
   @@map("holdings")
 }
 
 model Transaction {
-  id          String   @id @default(uuid()) @db.Uuid
+  id          String    @id @default(uuid()) @db.Uuid
   portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
-  portfolioId String   @db.Uuid
+  portfolioId String    @db.Uuid
   /// Business vocabulary strings (e.g. type/status) are pinned by a later
   /// approved contract — deliberately free-form here.
   type        String
   status      String
   /// Signed minor units (credit positive / debit negative).
   amountMinor BigInt
-  currency    String   @default("NGN")
+  currency    String    @default("NGN")
   description String?
   occurredAt  DateTime
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([portfolioId, occurredAt(sort: Desc)])
   @@map("transactions")
@@ -239,16 +387,16 @@ model Transaction {
 /// 60s resend cooldown, max 5 resends/hour. Only a keyed HMAC of the code is
 /// stored; resends rotate code/verifier/timestamps; success consumes it.
 model EmailVerificationChallenge {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @db.Uuid
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                    String    @id @default(uuid()) @db.Uuid
+  userId                String    @db.Uuid
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// HMAC-SHA-256(key=EMAIL_VERIFICATION_HMAC_SECRET, "<challengeId>.<code>")
-  codeHmac  String
-  expiresAt DateTime
+  codeHmac              String
+  expiresAt             DateTime
   /// Set on successful verification (code is single-use).
-  consumedAt DateTime?
+  consumedAt            DateTime?
   /// Set when attempts are exhausted (code becomes permanently unusable).
-  revokedAt DateTime?
+  revokedAt             DateTime?
   attemptCount          Int       @default(0)
   resendCount           Int       @default(0)
   resendWindowStartedAt DateTime  @default(now())
@@ -285,17 +433,608 @@ model AuthSession {
 /// tokenHash = SHA-256(raw). On success the token is marked used and chained
 /// to its replacement via replacedByTokenId.
 model RefreshToken {
-  id        String      @id @default(uuid()) @db.Uuid
-  sessionId String      @db.Uuid
-  session   AuthSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id                String      @id @default(uuid()) @db.Uuid
+  sessionId         String      @db.Uuid
+  session           AuthSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   /// SHA-256 hex of the raw opaque refresh credential. Never the token itself.
-  tokenHash String      @unique
-  createdAt DateTime    @default(now())
-  expiresAt DateTime
-  usedAt    DateTime?
-  revokedAt DateTime?
-  replacedByTokenId String? @db.Uuid
+  tokenHash         String      @unique
+  createdAt         DateTime    @default(now())
+  expiresAt         DateTime
+  usedAt            DateTime?
+  revokedAt         DateTime?
+  replacedByTokenId String?     @db.Uuid
 
   @@index([sessionId])
   @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Corporate DRAFT registration. TIN is persisted only as an AES-256-GCM
+// envelope-encrypted value under a replaceable KMS provider; never plaintext.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CorporateAccount {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  applications                 OnboardingApplication[]                  @relation("OnboardingCorporateOwner")
+  verificationSubjectSnapshots ApplicationVerificationSubjectSnapshot[]
+  draftCreations               CorporateDraftCreation[]
+
+  @@map("corporate_accounts")
+}
+
+model OnboardingApplication {
+  id                      String                      @id @default(uuid()) @db.Uuid
+  kind                    OnboardingApplicationKind
+  ownerUserId             String?                     @db.Uuid
+  ownerCorporateAccountId String?                     @db.Uuid
+  ownerJointAccountId     String?                     @db.Uuid
+  initiatingUserId        String                      @db.Uuid
+  submittedByUserId       String?                     @db.Uuid
+  status                  OnboardingApplicationStatus @default(DRAFT)
+  submittedAt             DateTime?                   @db.Timestamp(3)
+  createdAt               DateTime                    @default(now())
+  updatedAt               DateTime                    @updatedAt
+
+  individualOwner User?             @relation("OnboardingIndividualOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  corporateOwner  CorporateAccount? @relation("OnboardingCorporateOwner", fields: [ownerCorporateAccountId], references: [id], onDelete: Restrict)
+  jointOwner      JointAccount?     @relation("OnboardingJointOwner", fields: [ownerJointAccountId], references: [id], onDelete: Restrict)
+  initiatingUser  User              @relation("OnboardingInitiator", fields: [initiatingUserId], references: [id], onDelete: Restrict)
+  submittedByUser User?             @relation("OnboardingSubmitter", fields: [submittedByUserId], references: [id], onDelete: Restrict)
+
+  corporateDetails             CorporateOnboardingDetails?
+  history                      OnboardingApplicationHistory[]
+  draftCreation                CorporateDraftCreation?
+  rulesetBinding               OnboardingApplicationRulesetBinding?
+  rulesetPin                   OnboardingApplicationRulesetPin?
+  verificationSnapshots        ApplicationVerificationSnapshot[]
+  verificationConsentEvents    VerificationConsentEvent[]
+  providerVerificationAttempts ProviderVerificationAttempt[]
+  verificationDocuments        VerificationDocument[]
+  staffReviewEvents            ApplicationStaffReviewEvent[]
+
+  @@unique([id, kind])
+  @@index([initiatingUserId, status])
+  @@index([ownerUserId, status])
+  @@index([ownerCorporateAccountId, status])
+  @@index([ownerJointAccountId, status])
+  @@map("onboarding_applications")
+}
+
+/// One canonical, versioned Corporate details row. TIN columns form an
+/// all-null legacy row or a complete AES-256-GCM/KMS envelope; no plaintext TIN.
+model CorporateOnboardingDetails {
+  applicationId                           String   @id @db.Uuid
+  institutionName                         String   @db.Text
+  dateOfIncorporation                     DateTime @db.Date
+  rcNumber                                String   @db.Text
+  businessPhoneNumber                     String   @db.Text
+  businessEmail                           String   @db.Text
+  taxIdentificationNumberCiphertext       String?  @db.Text
+  taxIdentificationNumberIv               String?  @db.VarChar(32)
+  taxIdentificationNumberAuthTag          String?  @db.VarChar(32)
+  taxIdentificationNumberEncryptedDataKey String?  @db.Text
+  taxIdentificationNumberKeyProvider      String?  @db.VarChar(32)
+  taxIdentificationNumberKeyId            String?  @db.Text
+  taxIdentificationNumberKeyVersion       String?  @db.VarChar(64)
+  taxIdentificationNumberContextVersion   Int?
+  version                                 Int      @default(1)
+  createdAt                               DateTime @default(now())
+  updatedAt                               DateTime @updatedAt
+
+  application OnboardingApplication      @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  revisions   CorporateDetailsRevision[]
+
+  @@map("corporate_onboarding_details")
+}
+
+/// Append-only, versioned amendment snapshots. Sensitive TIN values inside
+/// before/after payloads are AES-256-GCM envelope ciphertext only.
+model CorporateDetailsRevision {
+  id                String   @id @default(uuid()) @db.Uuid
+  applicationId     String   @db.Uuid
+  version           Int
+  changedByUserId   String   @db.Uuid
+  changedFieldNames String[] @db.Text
+  beforeSnapshot    Json     @db.JsonB
+  afterSnapshot     Json     @db.JsonB
+  createdAt         DateTime @default(now()) @db.Timestamp(3)
+
+  details   CorporateOnboardingDetails @relation(fields: [applicationId], references: [applicationId], onDelete: Restrict)
+  changedBy User                       @relation("CorporateDetailsRevisionActor", fields: [changedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([applicationId, version])
+  @@index([applicationId, createdAt])
+  @@map("corporate_details_revisions")
+}
+
+model OnboardingApplicationHistory {
+  id            String                            @id @default(uuid()) @db.Uuid
+  applicationId String                            @db.Uuid
+  event         OnboardingApplicationHistoryEvent
+  fromStatus    OnboardingApplicationStatus?
+  toStatus      OnboardingApplicationStatus
+  actorUserId   String                            @db.Uuid
+  createdAt     DateTime                          @default(now())
+
+  application OnboardingApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  actor       User                  @relation("OnboardingHistoryActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([applicationId, createdAt])
+  @@map("onboarding_application_history")
+}
+
+/// Stores only keyed fingerprints and a sanitized receipt; never request fields.
+model CorporateDraftCreation {
+  id                           String   @id @default(uuid()) @db.Uuid
+  initiatingUserId             String   @db.Uuid
+  operation                    String   @db.VarChar(64)
+  payloadFingerprintHmac       String   @db.Char(64)
+  payloadFingerprintKeyVersion String?  @db.VarChar(32)
+  corporateAccountId           String   @db.Uuid
+  applicationId                String   @unique @db.Uuid
+  receipt                      Json     @db.JsonB
+  createdAt                    DateTime @default(now())
+
+  initiatingUser   User                           @relation("CorporateDraftCreationInitiator", fields: [initiatingUserId], references: [id], onDelete: Restrict)
+  corporateAccount CorporateAccount               @relation(fields: [corporateAccountId], references: [id], onDelete: Restrict)
+  application      OnboardingApplication          @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  idempotencyKeys  CorporateDraftIdempotencyKey[]
+
+  @@unique([initiatingUserId, operation, payloadFingerprintHmac], name: "initiatorOperationPayload", map: "corporate_draft_creations_initiator_operation_payload_key")
+  @@index([corporateAccountId])
+  @@map("corporate_draft_creations")
+}
+
+/// Multiple caller keys can map to one immutable creation receipt. The raw
+/// Idempotency-Key is never stored. The digest is domain-separated by purpose.
+model CorporateDraftIdempotencyKey {
+  id                     String   @id @default(uuid()) @db.Uuid
+  initiatingUserId       String   @db.Uuid
+  operation              String   @db.VarChar(64)
+  idempotencyKeyDigest   String   @db.Char(64)
+  idempotencyHmacVersion String?  @db.VarChar(32)
+  creationId             String   @db.Uuid
+  createdAt              DateTime @default(now())
+
+  initiatingUser User                   @relation("CorporateDraftKeyInitiator", fields: [initiatingUserId], references: [id], onDelete: Restrict)
+  creation       CorporateDraftCreation @relation(fields: [creationId], references: [id], onDelete: Restrict)
+
+  @@unique([initiatingUserId, operation, idempotencyKeyDigest], name: "initiatorOperationKey", map: "corporate_draft_idempotency_keys_initiator_operation_key_key")
+  @@index([creationId])
+  @@map("corporate_draft_idempotency_keys")
+}
+
+/// Stable ruleset identity. Its key/account kind never represent an approved
+/// policy by themselves; only a separately approved, published version is bindable.
+model VerificationRuleset {
+  id              String                    @id @default(uuid()) @db.Uuid
+  rulesetKey      String                    @db.VarChar(120)
+  accountKind     OnboardingApplicationKind
+  createdByUserId String                    @db.Uuid
+  createdAt       DateTime                  @default(now())
+
+  createdBy User                         @relation("VerificationRulesetCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  versions  VerificationRulesetVersion[]
+
+  @@unique([rulesetKey, accountKind])
+  @@unique([id, accountKind])
+  @@map("verification_rulesets")
+}
+
+/// One immutable-after-publication policy version. C1.3 has no publish or
+/// approval operation; nullable attribution is mandatory until future approval.
+model VerificationRulesetVersion {
+  id                String                       @id @default(uuid()) @db.Uuid
+  rulesetId         String                       @db.Uuid
+  accountKind       OnboardingApplicationKind
+  version           Int
+  lifecycle         VerificationRulesetLifecycle @default(DRAFT)
+  createdByUserId   String                       @db.Uuid
+  updatedByUserId   String?                      @db.Uuid
+  approvedByUserId  String?                      @db.Uuid
+  approvedAt        DateTime?                    @db.Timestamp(3)
+  publishedByUserId String?                      @db.Uuid
+  publishedAt       DateTime?                    @db.Timestamp(3)
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+
+  ruleset                 VerificationRuleset                        @relation(fields: [rulesetId, accountKind], references: [id, accountKind], onDelete: Restrict)
+  createdBy               User                                       @relation("VerificationRulesetVersionCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy               User?                                      @relation("VerificationRulesetVersionUpdater", fields: [updatedByUserId], references: [id], onDelete: Restrict)
+  approvedBy              User?                                      @relation("VerificationRulesetVersionApprover", fields: [approvedByUserId], references: [id], onDelete: Restrict)
+  publishedBy             User?                                      @relation("VerificationRulesetVersionPublisher", fields: [publishedByUserId], references: [id], onDelete: Restrict)
+  subjectDefinitions      VerificationSubjectDefinition[]
+  checkDefinitions        VerificationCheckDefinition[]
+  acceptedEvidenceSources AcceptedEvidenceSourceDefinition[]
+  documentRequirements    ConditionalDocumentRequirementDefinition[]
+  applicationBindings     OnboardingApplicationRulesetBinding[]
+  applicationPins         OnboardingApplicationRulesetPin[]
+  verificationSnapshots   ApplicationVerificationSnapshot[]
+
+  @@unique([rulesetId, version])
+  @@unique([id, accountKind])
+  @@map("verification_ruleset_versions")
+}
+
+/// Data-defined required subject type. Keys are policy content, not an
+/// application-level enum or an invented person/evidence category.
+model VerificationSubjectDefinition {
+  id               String                         @id @default(uuid()) @db.Uuid
+  rulesetVersionId String                         @db.Uuid
+  subjectKey       String                         @db.VarChar(120)
+  targetKind       VerificationSubjectTargetKind?
+  createdAt        DateTime                       @default(now())
+
+  rulesetVersion       VerificationRulesetVersion               @relation(fields: [rulesetVersionId], references: [id], onDelete: Restrict)
+  checks               VerificationCheckDefinition[]
+  applicationSnapshots ApplicationVerificationSubjectSnapshot[]
+
+  @@unique([rulesetVersionId, subjectKey])
+  @@unique([id, rulesetVersionId])
+  @@map("verification_subject_definitions")
+}
+
+/// A data-defined required check kind for one required subject.
+model VerificationCheckDefinition {
+  id                  String   @id @default(uuid()) @db.Uuid
+  rulesetVersionId    String   @db.Uuid
+  subjectDefinitionId String   @db.Uuid
+  checkKindKey        String   @db.VarChar(120)
+  createdAt           DateTime @default(now())
+
+  rulesetVersion          VerificationRulesetVersion           @relation(fields: [rulesetVersionId], references: [id], onDelete: Restrict)
+  subjectDefinition       VerificationSubjectDefinition        @relation(fields: [subjectDefinitionId, rulesetVersionId], references: [id, rulesetVersionId], onDelete: Restrict)
+  acceptedEvidenceSources AcceptedEvidenceSourceDefinition[]
+  snapshotRequirements    ApplicationVerificationRequirement[]
+
+  @@unique([subjectDefinitionId, checkKindKey])
+  @@unique([id, rulesetVersionId])
+  @@map("verification_check_definitions")
+}
+
+/// Accepted evidence-source key definitions only. This creates no source
+/// adapter, evidence record, external call, or verification outcome.
+model AcceptedEvidenceSourceDefinition {
+  id                String   @id @default(uuid()) @db.Uuid
+  rulesetVersionId  String   @db.Uuid
+  checkDefinitionId String   @db.Uuid
+  evidenceSourceKey String   @db.VarChar(120)
+  createdAt         DateTime @default(now())
+
+  rulesetVersion  VerificationRulesetVersion  @relation(fields: [rulesetVersionId], references: [id], onDelete: Restrict)
+  checkDefinition VerificationCheckDefinition @relation(fields: [checkDefinitionId, rulesetVersionId], references: [id, rulesetVersionId], onDelete: Restrict)
+
+  @@unique([checkDefinitionId, evidenceSourceKey])
+  @@map("accepted_evidence_source_definitions")
+}
+
+/// Conditional document requirement definition. documentKindKey and the
+/// condition JSON are policy-provided data; C1.3 does not interpret conditions
+/// or enable document collection.
+model ConditionalDocumentRequirementDefinition {
+  id               String   @id @default(uuid()) @db.Uuid
+  rulesetVersionId String   @db.Uuid
+  requirementKey   String   @db.VarChar(120)
+  documentKindKey  String   @db.VarChar(120)
+  condition        Json     @db.JsonB
+  completeness     Json?    @db.JsonB
+  createdAt        DateTime @default(now())
+
+  rulesetVersion       VerificationRulesetVersion           @relation(fields: [rulesetVersionId], references: [id], onDelete: Restrict)
+  snapshotRequirements ApplicationVerificationRequirement[]
+
+  @@unique([rulesetVersionId, requirementKey])
+  @@unique([id, rulesetVersionId])
+  @@map("conditional_document_requirement_definitions")
+}
+
+/// One immutable initial binding per application. Rebinding has no service and
+/// cannot silently replace this row. The separate submission pin is created
+/// only by a future approved submission operation.
+model OnboardingApplicationRulesetBinding {
+  id               String                    @id @default(uuid()) @db.Uuid
+  operationId      String                    @unique @default(uuid()) @db.Uuid
+  applicationId    String                    @unique @db.Uuid
+  accountKind      OnboardingApplicationKind
+  rulesetVersionId String                    @db.Uuid
+  boundByUserId    String                    @db.Uuid
+  boundAt          DateTime                  @default(now()) @db.Timestamp(3)
+
+  application           OnboardingApplication             @relation(fields: [applicationId, accountKind], references: [id, kind], onDelete: Restrict)
+  rulesetVersion        VerificationRulesetVersion        @relation(fields: [rulesetVersionId, accountKind], references: [id, accountKind], onDelete: Restrict)
+  boundBy               User                              @relation("ApplicationRulesetBindingActor", fields: [boundByUserId], references: [id], onDelete: Restrict)
+  events                ApplicationRulesetBindingEvent[]
+  pin                   OnboardingApplicationRulesetPin?
+  verificationSnapshots ApplicationVerificationSnapshot[]
+
+  @@unique([id, applicationId, rulesetVersionId, accountKind])
+  @@unique([applicationId, accountKind])
+  @@map("onboarding_application_ruleset_bindings")
+}
+
+/// Immutable audit event for binding and future submission-pinning operations.
+/// C1.3 writes BOUND only; no rebinding or submission operation is available.
+model ApplicationRulesetBindingEvent {
+  id               String                             @id @default(uuid()) @db.Uuid
+  bindingId        String                             @db.Uuid
+  applicationId    String                             @db.Uuid
+  accountKind      OnboardingApplicationKind
+  rulesetVersionId String                             @db.Uuid
+  eventKind        ApplicationRulesetBindingEventKind
+  operationId      String                             @unique @db.Uuid
+  actorUserId      String                             @db.Uuid
+  occurredAt       DateTime                           @default(now()) @db.Timestamp(3)
+
+  binding OnboardingApplicationRulesetBinding @relation(fields: [bindingId, applicationId, rulesetVersionId, accountKind], references: [id, applicationId, rulesetVersionId, accountKind], onDelete: Restrict)
+  actor   User                                @relation("ApplicationRulesetBindingEventActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([bindingId, eventKind])
+  @@index([applicationId, occurredAt])
+  @@map("application_ruleset_binding_events")
+}
+
+/// Separate immutable pin representing the exact version captured by a future
+/// successful submission. No C1.3 service creates pins or submits applications.
+model OnboardingApplicationRulesetPin {
+  id               String                    @id @default(uuid()) @db.Uuid
+  bindingId        String                    @unique @db.Uuid
+  applicationId    String                    @unique @db.Uuid
+  accountKind      OnboardingApplicationKind
+  rulesetVersionId String                    @db.Uuid
+  pinnedByUserId   String                    @db.Uuid
+  pinnedAt         DateTime                  @default(now()) @db.Timestamp(3)
+
+  application    OnboardingApplication               @relation(fields: [applicationId, accountKind], references: [id, kind], onDelete: Restrict)
+  binding        OnboardingApplicationRulesetBinding @relation(fields: [bindingId, applicationId, rulesetVersionId, accountKind], references: [id, applicationId, rulesetVersionId, accountKind], onDelete: Restrict)
+  rulesetVersion VerificationRulesetVersion          @relation(fields: [rulesetVersionId, accountKind], references: [id, accountKind], onDelete: Restrict)
+  pinnedBy       User                                @relation("ApplicationRulesetPinActor", fields: [pinnedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([applicationId, accountKind])
+  @@unique([bindingId, applicationId, rulesetVersionId, accountKind])
+  @@map("onboarding_application_ruleset_pins")
+}
+
+/// Immutable, exact-version capture of the staged requirements for one bound application.
+/// This is not a submission pin, verification result, or approval.
+model ApplicationVerificationSnapshot {
+  id                      String                    @id @default(uuid()) @db.Uuid
+  applicationId           String                    @db.Uuid
+  generation              Int                       @default(1)
+  bindingId               String                    @db.Uuid
+  accountKind             OnboardingApplicationKind
+  rulesetVersionId        String                    @db.Uuid
+  corporateDetailsVersion Int?
+  jointMembershipVersion  Int?
+  createdByUserId         String                    @db.Uuid
+  createdAt               DateTime                  @default(now()) @db.Timestamp(3)
+
+  application       OnboardingApplication                    @relation(fields: [applicationId, accountKind], references: [id, kind], onDelete: Restrict)
+  binding           OnboardingApplicationRulesetBinding      @relation(fields: [bindingId, applicationId, rulesetVersionId, accountKind], references: [id, applicationId, rulesetVersionId, accountKind], onDelete: Restrict)
+  rulesetVersion    VerificationRulesetVersion               @relation(fields: [rulesetVersionId, accountKind], references: [id, accountKind], onDelete: Restrict)
+  createdBy         User                                     @relation("VerificationSnapshotCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  subjects          ApplicationVerificationSubjectSnapshot[]
+  requirements      ApplicationVerificationRequirement[]
+  staffReviewEvents ApplicationStaffReviewEvent[]
+
+  @@unique([id, rulesetVersionId])
+  @@unique([id, rulesetVersionId, accountKind])
+  @@unique([applicationId, generation])
+  @@unique([bindingId, generation])
+  @@index([applicationId, createdAt])
+  @@map("application_verification_snapshots")
+}
+
+/// Subject identity references are snapshots of existing account context only.
+/// An unresolved row denotes a requirement, never a fabricated person.
+model ApplicationVerificationSubjectSnapshot {
+  id                         String                             @id @default(uuid()) @db.Uuid
+  snapshotId                 String                             @db.Uuid
+  rulesetVersionId           String                             @db.Uuid
+  subjectDefinitionId        String                             @db.Uuid
+  targetKind                 VerificationSubjectTargetKind?
+  resolutionState            VerificationSubjectResolutionState
+  unresolvedIssue            VerificationResolutionIssue?
+  resolvedUserId             String?                            @db.Uuid
+  resolvedCorporateAccountId String?                            @db.Uuid
+  sourceJointMembershipId    String?                            @db.Uuid
+  createdAt                  DateTime                           @default(now()) @db.Timestamp(3)
+
+  snapshot                 ApplicationVerificationSnapshot      @relation(fields: [snapshotId, rulesetVersionId], references: [id, rulesetVersionId], onDelete: Restrict)
+  subjectDefinition        VerificationSubjectDefinition        @relation(fields: [subjectDefinitionId, rulesetVersionId], references: [id, rulesetVersionId], onDelete: Restrict)
+  resolvedUser             User?                                @relation("ResolvedVerificationSubjectUser", fields: [resolvedUserId], references: [id], onDelete: Restrict)
+  resolvedCorporateAccount CorporateAccount?                    @relation(fields: [resolvedCorporateAccountId], references: [id], onDelete: Restrict)
+  sourceJointMembership    JointAccountMember?                  @relation(fields: [sourceJointMembershipId], references: [id], onDelete: Restrict)
+  requirements             ApplicationVerificationRequirement[]
+
+  @@unique([id, snapshotId, rulesetVersionId])
+  @@unique([snapshotId, subjectDefinitionId, resolvedUserId], map: "avs_snapshot_subject_user_key")
+  @@unique([snapshotId, subjectDefinitionId, resolvedCorporateAccountId], map: "avs_snapshot_subject_entity_key")
+  @@map("application_verification_subject_snapshots")
+}
+
+/// Pending checklist row copied from a specific ruleset definition. There is
+/// deliberately no SATISFIED/VERIFIED state and no evidence/result relation.
+model ApplicationVerificationRequirement {
+  id                                    String                                  @id @default(uuid()) @db.Uuid
+  snapshotId                            String                                  @db.Uuid
+  rulesetVersionId                      String                                  @db.Uuid
+  subjectSnapshotId                     String?                                 @db.Uuid
+  requirementKind                       ApplicationVerificationRequirementKind
+  stage                                 ApplicationVerificationRequirementStage
+  state                                 ApplicationVerificationRequirementState @default(PENDING)
+  unresolvedIssue                       VerificationResolutionIssue?
+  requirementKey                        String                                  @db.VarChar(320)
+  sourceCheckDefinitionId               String?                                 @db.Uuid
+  sourceDocumentRequirementDefinitionId String?                                 @db.Uuid
+  documentKindKeySnapshot               String?                                 @db.VarChar(120)
+  conditionSnapshot                     Json?                                   @db.JsonB
+  documentCompletenessSnapshot          Json?                                   @db.JsonB
+  createdAt                             DateTime                                @default(now()) @db.Timestamp(3)
+
+  snapshot                 ApplicationVerificationSnapshot           @relation(fields: [snapshotId, rulesetVersionId], references: [id, rulesetVersionId], onDelete: Restrict)
+  subject                  ApplicationVerificationSubjectSnapshot?   @relation(fields: [subjectSnapshotId, snapshotId, rulesetVersionId], references: [id, snapshotId, rulesetVersionId], onDelete: Restrict)
+  sourceCheckDefinition    VerificationCheckDefinition?              @relation(fields: [sourceCheckDefinitionId, rulesetVersionId], references: [id, rulesetVersionId], onDelete: Restrict)
+  sourceDocumentDefinition ConditionalDocumentRequirementDefinition? @relation(fields: [sourceDocumentRequirementDefinitionId, rulesetVersionId], references: [id, rulesetVersionId], onDelete: Restrict)
+  providerAttempts         ProviderVerificationAttempt[]
+  documents                VerificationDocument[]
+
+  @@unique([snapshotId, requirementKey])
+  @@map("application_verification_requirements")
+}
+
+/// Versioned, append-only applicant consent. Raw consent text, identifiers and
+/// provider request payloads are never retained in this record.
+model VerificationConsentEvent {
+  id                   String                       @id @default(uuid()) @db.Uuid
+  applicationId        String                       @db.Uuid
+  actorUserId          String                       @db.Uuid
+  providerKey          String                       @db.VarChar(40)
+  eventKind            VerificationConsentEventKind
+  consentTextVersion   String                       @db.VarChar(64)
+  privacyNoticeVersion String                       @db.VarChar(64)
+  lawfulBasisVersion   String                       @db.VarChar(64)
+  consentTextSha256    String                       @db.Char(64)
+  allowedIdentityKinds String[]                     @db.Text
+  operationKeyDigest   String                       @db.Char(64)
+  hmacKeyVersion       String                       @db.VarChar(32)
+  sequence             Int                          @default(1)
+  occurredAt           DateTime                     @default(now()) @db.Timestamp(3)
+
+  application OnboardingApplication         @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  actor       User                          @relation("VerificationConsentActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  attempts    ProviderVerificationAttempt[]
+
+  @@unique([applicationId, actorUserId, providerKey, operationKeyDigest], map: "verification_consent_events_operation_key")
+  @@unique([applicationId, actorUserId, providerKey, sequence], map: "verification_consent_events_sequence_key")
+  @@index([applicationId, actorUserId, providerKey, sequence])
+  @@map("verification_consent_events")
+}
+
+/// One immutable, idempotently reserved provider operation. It stores typed
+/// identity kinds and keyed digests only; never a BVN, NIN, TIN or raw key.
+model ProviderVerificationAttempt {
+  id                 String   @id @default(uuid()) @db.Uuid
+  applicationId      String   @db.Uuid
+  requirementId      String   @db.Uuid
+  subjectSnapshotId  String?  @db.Uuid
+  subjectUserId      String?  @db.Uuid
+  actorUserId        String   @db.Uuid
+  consentEventId     String   @db.Uuid
+  providerKey        String   @db.VarChar(40)
+  reference          String   @unique @db.VarChar(128)
+  operationKeyDigest String   @db.Char(64)
+  hmacKeyVersion     String   @db.VarChar(32)
+  identityKinds      String[] @db.Text
+  createdAt          DateTime @default(now()) @db.Timestamp(3)
+
+  application  OnboardingApplication               @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  requirement  ApplicationVerificationRequirement  @relation(fields: [requirementId], references: [id], onDelete: Restrict)
+  subjectUser  User?                               @relation("ProviderAttemptSubject", fields: [subjectUserId], references: [id], onDelete: Restrict)
+  actor        User                                @relation("ProviderAttemptActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  consentEvent VerificationConsentEvent            @relation(fields: [consentEventId], references: [id], onDelete: Restrict)
+  events       ProviderVerificationEvidenceEvent[]
+
+  @@unique([providerKey, operationKeyDigest])
+  @@index([applicationId, requirementId, createdAt])
+  @@map("provider_verification_attempts")
+}
+
+/// Append-only sanitized evidence timeline. Webhook replay digest and event
+/// insert are committed in the same PostgreSQL transaction.
+model ProviderVerificationEvidenceEvent {
+  id                String                             @id @default(uuid()) @db.Uuid
+  attemptId         String                             @db.Uuid
+  providerKey       String                             @db.VarChar(40)
+  providerEventId   String?                            @db.VarChar(256)
+  replayDigest      String?                            @unique @db.Char(64)
+  providerSessionId String?                            @db.VarChar(128)
+  providerReference String                             @db.VarChar(128)
+  status            ProviderVerificationEvidenceStatus
+  sequence          Int                                @default(1)
+  rawPayloadSha256  String?                            @db.Char(64)
+  safeReason        String?                            @db.VarChar(80)
+  occurredAt        DateTime                           @db.Timestamp(3)
+  recordedAt        DateTime                           @default(now()) @db.Timestamp(3)
+
+  attempt ProviderVerificationAttempt @relation(fields: [attemptId], references: [id], onDelete: Restrict)
+
+  @@unique([providerKey, providerEventId], map: "provider_verification_evidence_provider_event_key")
+  @@unique([attemptId, sequence], map: "provider_verification_evidence_attempt_sequence_key")
+  @@index([attemptId, sequence])
+  @@map("provider_verification_evidence_events")
+}
+
+/// Private object metadata. Object keys are random, content-addressed only by
+/// SHA-256, and never exposed as public URLs. Every asset begins quarantined.
+model VerificationDocument {
+  id                 String   @id @default(uuid()) @db.Uuid
+  applicationId      String   @db.Uuid
+  requirementId      String   @db.Uuid
+  uploadedByUserId   String   @db.Uuid
+  replacesDocumentId String?  @db.Uuid
+  documentKindKey    String   @db.VarChar(120)
+  objectKey          String   @unique @db.VarChar(160)
+  contentSha256      String   @db.Char(64)
+  contentLength      BigInt
+  mediaType          String   @db.VarChar(120)
+  version            Int      @default(1)
+  createdAt          DateTime @default(now()) @db.Timestamp(3)
+
+  application  OnboardingApplication              @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  requirement  ApplicationVerificationRequirement @relation(fields: [requirementId], references: [id], onDelete: Restrict)
+  uploadedBy   User                               @relation("VerificationDocumentUploader", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+  replaces     VerificationDocument?              @relation("VerificationDocumentReplacement", fields: [replacesDocumentId], references: [id], onDelete: Restrict)
+  replacements VerificationDocument[]             @relation("VerificationDocumentReplacement")
+  events       VerificationDocumentEvent[]
+
+  @@unique([replacesDocumentId, version], map: "verification_documents_replacement_version_key")
+  @@index([applicationId, requirementId, createdAt])
+  @@map("verification_documents")
+}
+
+/// Append-only lifecycle/access audit. No document bytes or free-form staff
+/// comments are stored here.
+model VerificationDocumentEvent {
+  id             String                        @id @default(uuid()) @db.Uuid
+  documentId     String                        @db.Uuid
+  actorUserId    String?                       @db.Uuid
+  eventKind      VerificationDocumentEventKind
+  sequence       Int                           @default(1)
+  scannerVersion String?                       @db.VarChar(64)
+  safeReason     String?                       @db.VarChar(80)
+  occurredAt     DateTime                      @default(now()) @db.Timestamp(3)
+
+  document VerificationDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  actor    User?                @relation("VerificationDocumentEventActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([documentId, sequence], map: "verification_document_events_document_sequence_key")
+  @@index([documentId, sequence])
+  @@map("verification_document_events")
+}
+
+/// Append-only staff actions and independently-attributed final compliance
+/// outcomes. It contains references, not free-form applicant or reviewer text.
+model ApplicationStaffReviewEvent {
+  id               String                          @id @default(uuid()) @db.Uuid
+  operationId      String                          @unique @default(uuid()) @db.Uuid
+  applicationId    String                          @db.Uuid
+  snapshotId       String                          @db.Uuid
+  rulesetVersionId String                          @db.Uuid
+  actorUserId      String                          @db.Uuid
+  eventKind        ApplicationStaffReviewEventKind
+  decision         ApplicationStaffDecision?
+  relatedEventId   String?                         @db.Uuid
+  requirementIds   String[]                        @db.Uuid
+  occurredAt       DateTime                        @default(now()) @db.Timestamp(3)
+
+  application OnboardingApplication           @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  snapshot    ApplicationVerificationSnapshot @relation(fields: [snapshotId, rulesetVersionId], references: [id, rulesetVersionId], onDelete: Restrict)
+  actor       User                            @relation("StaffReviewActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([applicationId, occurredAt])
+  @@index([snapshotId, eventKind])
+  @@map("application_staff_review_events")
 }

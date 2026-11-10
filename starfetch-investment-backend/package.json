@@ -1,14 +1,14 @@
 {
   "name": "starfetch-investment-backend",
   "version": "0.0.1",
-  "description": "Starfetch Investment Limited — backend service. Phase 2A foundation + Phase 2B authentication & identity (registration, email verification, login, session/refresh rotation with reuse detection, CSRF, /me). No further business endpoints.",
+  "description": "Starfetch Investment Limited backend. Authentication, Individual/Joint foundations, and gated encrypted Corporate O2 plus owner-scoped Corporate O3/O11 read APIs.",
   "private": true,
   "license": "UNLICENSED",
   "engines": {
-    "node": "24.x"
+    "node": ">=20"
   },
   "scripts": {
-    "build": "prisma generate && nest build",
+    "build": "nest build",
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -22,6 +22,7 @@
     "prisma:migrate:dev": "prisma migrate dev"
   },
   "dependencies": {
+    "@aws-sdk/client-kms": "3.1164.0",
     "@nestjs/common": "^10.4.15",
     "@nestjs/config": "^3.3.0",
     "@nestjs/core": "^10.4.15",
