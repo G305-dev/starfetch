@@ -102,7 +102,7 @@ describe('CorporateApplicationReadService', () => {
         version: true,
         createdAt: true,
         updatedAt: true,
-      }, 
+      },
     });
   });
 

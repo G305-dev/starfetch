@@ -5,7 +5,7 @@ import { DenyAllVerificationRulesetAuthoringAuthorizer } from '../security/rules
 const actorId = '11111111-1111-4111-8111-111111111111';
 const rulesetId = '22222222-2222-4222-8222-222222222222';
 const versionId = '33333333-3333-4333-8333-333333333333';
-const principal = { userId: actorId, role: UserRole.INVESTOR, sessionId: 'trusted-test-session' }; 
+const principal = { userId: actorId, role: UserRole.INVESTOR, sessionId: 'trusted-test-session' };
 
 function makeService(txOverrides: Record<string, unknown> = {}, authorized = true) {
   const tx = {
