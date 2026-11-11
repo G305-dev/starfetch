@@ -1,7 +1,7 @@
 # D-06 Change Record — Corporate O4 amendments, owner discovery, and snapshot staging
 
-**Change ID:** D06-CORP-O4-SNAPSHOT-STAGING  
-**Date:** 2026-10-22  
+**Change ID:** D06-CORP-O4-SNAPSHOT-STAGING
+**Date:** 2026-10-22
 **Disposition:** Backend implementation authorized as part of the coordinated Corporate-onboarding assignment; these exact operations are promoted in canonical `docs/api/openapi.yaml` v0.6.0. No frontend source was changed. Emmanuel coordination/review remains a handoff item; this record does not imply business/legal approval for provider use, documents, submission, compliance decisions, or investment access.
 
 This record adds only the O4/D-06 surface below to the earlier O2/O3/O11 contract in `10-D06-CORPORATE-O2-ADDENDUM.md`. The six O2 Business Information fields and the six-state application lifecycle remain unchanged. The applicant identity, account ownership, verification tier, lifecycle state, and compliance decision are separate concepts. No Corporate principal access or permission is created by these routes.

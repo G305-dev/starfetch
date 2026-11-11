@@ -1,6 +1,6 @@
 # Mono Prove sandbox adapter — implementation and activation status
 
-**As of:** 2026-10-22  
+**As of:** 2026-10-22
 **Disposition:** User selected preparation for sandbox-only Mono integration. The backend adapter seam and synthetic tests are implemented, but the provider remains unavailable. No request was sent to Mono, no credentials were configured or inspected, no public route/webhook URL was created, and no evidence/replay persistence model is active.
 
 ## Provider contract used

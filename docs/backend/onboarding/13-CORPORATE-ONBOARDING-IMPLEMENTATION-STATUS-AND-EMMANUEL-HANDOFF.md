@@ -1,6 +1,6 @@
 # Corporate onboarding backend — implementation status and Emmanuel handoff
 
-**As of:** 2026-10-22  
+**As of:** 2026-10-22
 **Overall disposition:** the O2/O3/O11 foundation plus O4 amendment/discovery/snapshot-staging subset is implemented and tested. The expanded Corporate-onboarding assignment is **not complete and is not production-ready**: provider evidence, documents/scanning, staff review, conditional data collection, submission, final approval, and investment eligibility remain unimplemented or blocked on approved policy/operations. This record distinguishes working backend behavior from unavailable future capabilities; it does not imply business, legal, provider, or production approval.
 
 ## Implemented in this repository

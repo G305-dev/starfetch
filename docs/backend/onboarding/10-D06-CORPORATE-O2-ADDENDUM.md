@@ -1,6 +1,6 @@
 # D-06 Addendum — Corporate O2/O3/O11 API Contract and Handoff
 
-**Date:** 2026-10-22  
+**Date:** 2026-10-22
 **Status:** Historical O2/O3/O11 subset promoted in canonical `docs/api/openapi.yaml` v0.5.0; O2 TIN writes/decryption remain gated by explicit privacy/KMS approvals. The current combined contract is v0.6.0; O4, owner discovery, and snapshot staging are recorded separately in `12-D06-CORPORATE-O4-OWNER-SCOPED-DRAFT-AMENDMENT-AND-SNAPSHOT-STAGING.md`.
 
 This addendum records the exact O2/O3/O11 backend/frontend contract and remains unchanged for those routes. It supersedes only the older O2/O3/O11 examples in D-06 and the wider proposal document. Individual and Joint contracts, other endpoints, and business/compliance decisions are unchanged. Production activation approvals remain gates; do not infer approval from engineering implementation.
