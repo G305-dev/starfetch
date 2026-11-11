@@ -10,7 +10,7 @@ type Props = {
 export function CorporateApplicantDetailsForm({ data, errors, onChange }: Props) {
   return (
     <div className="grid gap-5 sm:grid-cols-2">
-      <CorporateInput label="Name of Institution" name="institutionName" value={data.institutionName} error={errors.institutionName} onChange={onChange} autoComplete="organization" className="sm:col-span-2" />
+      <CorporateInput label="Institution name" name="institutionName" value={data.institutionName} error={errors.institutionName} onChange={onChange} autoComplete="organization" className="sm:col-span-2" />
       <CorporateInput label="Date of Incorporation" name="dateOfIncorporation" type="date" value={data.dateOfIncorporation} error={errors.dateOfIncorporation} onChange={onChange} />
       <CorporateInput label="RC Number" name="rcNumber" value={data.rcNumber} error={errors.rcNumber} onChange={onChange} />
       <CorporateInput label="Tax Identification Number (TIN)" name="taxIdentificationNumber" value={data.taxIdentificationNumber} error={errors.taxIdentificationNumber} onChange={onChange} />

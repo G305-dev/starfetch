@@ -2,10 +2,11 @@ import { Check } from "lucide-react";
 import { corporateOnboardingSteps } from "./corporate-onboarding-data";
 
 export function CorporateOnboardingStepper({ currentStep }: { currentStep: number }) {
+  const totalSteps = corporateOnboardingSteps.length;
   return (
-    <div className="mx-auto mt-7 max-w-2xl" aria-label={`Step ${currentStep} of 3`}>
-      <p className="text-center text-xs font-bold text-star-700">Step {currentStep} of 3</p>
-      <ol className="mt-3 grid grid-cols-3 gap-2 sm:gap-4">
+    <div className="mx-auto mt-7 max-w-2xl" aria-label={`Step ${currentStep} of ${totalSteps}`}>
+      <p className="text-center text-xs font-bold text-star-700">Step {currentStep} of {totalSteps}</p>
+      <ol className={`mt-3 grid gap-2 sm:gap-4 ${totalSteps === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
         {corporateOnboardingSteps.map(({ number, label }) => {
           const complete = number < currentStep;
           const active = number === currentStep;

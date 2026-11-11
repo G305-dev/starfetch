@@ -14,7 +14,9 @@
     "test:complaints-policy": "node scripts/run-typescript-check.cjs scripts/complaints-policy-check.ts",
     "test:tools-page": "node scripts/run-typescript-check.cjs scripts/tools-page-check.ts",
     "test:budget-planner": "node scripts/run-typescript-check.cjs scripts/budget-planner-check.ts",
-    "test:returns-calculator": "node scripts/run-typescript-check.cjs scripts/returns-calculator-check.ts"
+    "test:returns-calculator": "node scripts/run-typescript-check.cjs scripts/returns-calculator-check.ts",
+    "test:corporate-verification": "node scripts/run-typescript-check.cjs scripts/corporate-verification-check.ts",
+    "test:corporate-api": "node scripts/run-typescript-check.cjs scripts/corporate-api-contract-check.ts"
   },
   "dependencies": {
     "@types/node": "22.13.10",

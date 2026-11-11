@@ -1,28 +1,15 @@
-import type { ChangeEvent } from "react";
-import type { CorporateApplicationData, CorporateFieldErrors } from "./corporate-onboarding-data";
+import { UserRound } from "lucide-react";
 
-type Props = {
-  data: CorporateApplicationData;
-  errors: CorporateFieldErrors;
-  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
-};
-
-export function CorporatePersonalInformationForm({ data, errors, onChange }: Props) {
-  return <div className="grid gap-5 sm:grid-cols-2"><PersonalInput label="Full Name" name="fullName" value={data.fullName} error={errors.fullName} onChange={onChange} autoComplete="name" className="sm:col-span-2" /><PersonalInput label="Email Address" name="personalEmail" type="email" value={data.personalEmail} error={errors.personalEmail} onChange={onChange} autoComplete="email" /><PersonalInput label="Phone Number" name="personalPhoneNumber" type="tel" value={data.personalPhoneNumber} error={errors.personalPhoneNumber} onChange={onChange} autoComplete="tel" /></div>;
-}
-
-type PersonalInputProps = {
-  label: string;
-  name: "fullName" | "personalEmail" | "personalPhoneNumber";
-  value: string;
-  error?: string;
-  type?: "text" | "email" | "tel";
-  autoComplete: string;
-  className?: string;
-  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
-};
-
-function PersonalInput({ label, name, value, error, type = "text", autoComplete, className = "", onChange }: PersonalInputProps) {
-  const id = `business-${name}`;
-  return <div className={className}><label htmlFor={id} className="mb-2 block text-sm font-bold text-star-900">{label} <span className="text-star-700" aria-hidden="true">*</span></label><input id={id} name={name} type={type} value={value} onChange={onChange} autoComplete={autoComplete} required aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} className={`h-12 w-full rounded-lg border bg-white px-3.5 text-sm text-star-900 outline-none transition focus:border-star-700 focus:ring-2 focus:ring-star-100 ${error ? "border-red-500 focus:border-red-600 focus:ring-red-100" : "border-star-200"}`} />{error ? <p id={`${id}-error`} className="mt-2 text-xs font-medium text-red-700">{error}</p> : null}</div>;
+/**
+ * The Corporate O2 contract has no additional representative fields. The
+ * authenticated initiating applicant is shown for review without collecting or
+ * persisting a duplicate personal profile.
+ */
+export function CorporatePersonalInformationForm({ fullName, email }: { fullName: string; email: string }) {
+  return (
+    <section className="rounded-xl border border-star-200 bg-star-50 p-5" aria-labelledby="corporate-initiating-applicant-heading">
+      <div className="flex gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-full bg-white text-star-700"><UserRound size={20} aria-hidden="true" /></span><div><h3 id="corporate-initiating-applicant-heading" className="text-base font-extrabold text-star-900">Initiating applicant</h3><p className="mt-1 text-sm leading-6 text-star-muted">This application is associated with the signed-in investor. Additional representative fields will be shown only when approved by the Corporate backend contract.</p></div></div>
+      <dl className="mt-4 grid gap-4 border-t border-star-200 pt-4 sm:grid-cols-2"><div><dt className="text-xs font-bold uppercase tracking-[0.06em] text-star-muted">Name</dt><dd className="mt-1 text-sm font-semibold text-star-700">{fullName}</dd></div><div><dt className="text-xs font-bold uppercase tracking-[0.06em] text-star-muted">Email</dt><dd className="mt-1 break-all text-sm font-semibold text-star-700">{email}</dd></div></dl>
+    </section>
+  );
 }

@@ -1,22 +1,12 @@
+import type { Metadata } from "next";
 import { CorporateDocumentsContent } from "@/components/corporate/CorporateDocumentsContent";
-import { CorporateSidebar } from "@/components/corporate/CorporateSidebar";
-import { CorporateTopbar } from "@/components/corporate/CorporateTopbar";
+import { CorporatePortalLayout } from "@/components/corporate/CorporatePortalLayout";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Documents | Starfetch Investor Portal",
-  description: "Manage corporate documents in the Starfetch Investor Portal.",
+  description: "Review corporate document requirements and secure-upload availability.",
 };
 
 export default function CorporateDocumentsPage() {
-  return (
-    <div className="min-h-screen bg-[#f7faf7] lg:flex">
-      <CorporateSidebar />
-      <div className="min-w-0 flex-1">
-        <CorporateTopbar sectionLabel="Documents" />
-        <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-7">
-          <CorporateDocumentsContent />
-        </div>
-      </div>
-    </div>
-  );
+  return <CorporatePortalLayout sectionLabel="Documents"><CorporateDocumentsContent /></CorporatePortalLayout>;
 }

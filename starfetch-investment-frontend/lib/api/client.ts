@@ -1,3 +1,19 @@
+import {
+  corporateApplicationStates,
+  corporateEditableFieldNames,
+  corporateSnapshotIssueCodes,
+  type CorporateApplicationDiscoveryItem,
+  type CorporateApplicationHistory,
+  type CorporateApplicationReceipt,
+  type CorporateApplicationState,
+  type CorporateDetailsAmendment,
+  type CorporateDraftInput,
+  type CorporateDraftPatch,
+  type CorporateDraftUpdateResult,
+  type CorporateOnboardingRecord,
+  type CorporateSnapshotFreshness,
+} from "../corporate/application";
+
 export type ApiErrorCode =
   | "VALIDATION_FAILED"
   | "INVALID_CREDENTIALS"
@@ -8,6 +24,8 @@ export type ApiErrorCode =
   | "CONFLICT"
   | "GONE"
   | "RATE_LIMITED"
+  | "FEATURE_UNAVAILABLE"
+  | "SERVICE_UNAVAILABLE"
   | "NETWORK_ERROR"
   | "UNEXPECTED_RESPONSE";
 
@@ -29,6 +47,8 @@ const safeMessages: Record<ApiErrorCode, string> = {
   CONFLICT: "An account with these details already exists.",
   GONE: "This invitation is no longer available.",
   RATE_LIMITED: "Too many requests were made. Please wait a moment and try again.",
+  FEATURE_UNAVAILABLE: "Corporate registration is currently unavailable.",
+  SERVICE_UNAVAILABLE: "Corporate registration is temporarily unavailable. Please try again later.",
   NETWORK_ERROR: "We could not reach Starfetch securely. Please check your connection and try again.",
   UNEXPECTED_RESPONSE: "We could not complete your request. Please try again.",
 };
@@ -289,7 +309,7 @@ async function parseJson(response: Response): Promise<unknown> {
 }
 
 type RequestOptions = {
-  method?: "GET" | "POST" | "PUT";
+  method?: "GET" | "POST" | "PUT" | "PATCH";
   body?: unknown;
   headers?: HeadersInit;
 };
@@ -396,10 +416,11 @@ async function authenticatedRequest(path: string, options: AuthenticatedRequestO
  * cookie is intentionally read per HTTP attempt, not once for the full
  * request, so a bounded post-refresh retry sends the rotated CSRF token.
  */
-async function authenticatedMutation(path: string, body?: unknown) {
+async function authenticatedMutation(path: string, body?: unknown, headers?: HeadersInit, method: "POST" | "PATCH" = "POST") {
   return authenticatedRequest(path, {
-    method: "POST",
+    method,
     body,
+    headers,
     attemptHeaders: csrfHeaders,
   });
 }
@@ -487,6 +508,112 @@ function normaliseTransactions(payload: unknown): InvestorTransactionsPage {
     pageSize: readMinor(meta, ["pageSize"]),
     total: readMinor(meta, ["total"]),
   };
+}
+
+function isCorporateApplicationState(value: unknown): value is CorporateApplicationState {
+  return typeof value === "string" && (corporateApplicationStates as readonly string[]).includes(value);
+}
+
+function normaliseCorporateApplicationReceipt(payload: unknown): CorporateApplicationReceipt {
+  const data = unwrapPayload(payload);
+  const corporateAccountId = readString(data, "corporateAccountId");
+  const applicationId = readString(data, "applicationId");
+  const detailsVersion = readNumber(data, "detailsVersion");
+  if (!corporateAccountId || !applicationId || data.applicationStatus !== "DRAFT" || detailsVersion !== 1) throw new ApiError("UNEXPECTED_RESPONSE");
+  return { corporateAccountId, applicationId, applicationStatus: "DRAFT", detailsVersion: 1 };
+}
+
+function normaliseCorporateDetails(value: unknown) {
+  if (!isRecord(value)) throw new ApiError("UNEXPECTED_RESPONSE");
+  const institutionName = readString(value, "institutionName");
+  const dateOfIncorporation = readString(value, "dateOfIncorporation");
+  const rcNumber = readString(value, "rcNumber");
+  const businessPhoneNumber = readString(value, "businessPhoneNumber");
+  const businessEmail = readString(value, "businessEmail");
+  const maskedValue = value.taxIdentificationNumberMasked;
+  const taxIdentificationNumberMasked = typeof maskedValue === "string" ? maskedValue : maskedValue === null ? null : undefined;
+  const version = readNumber(value, "version");
+  const createdAt = readString(value, "createdAt");
+  const updatedAt = readString(value, "updatedAt");
+  if (!institutionName || !dateOfIncorporation || !rcNumber || !businessPhoneNumber || !businessEmail || taxIdentificationNumberMasked === undefined || !version || !createdAt || !updatedAt) throw new ApiError("UNEXPECTED_RESPONSE");
+  return { institutionName, dateOfIncorporation, rcNumber, businessPhoneNumber, businessEmail, taxIdentificationNumberMasked, version, createdAt, updatedAt };
+}
+
+function normaliseCorporateOnboarding(payload: unknown): CorporateOnboardingRecord {
+  const data = unwrapPayload(payload);
+  const corporateAccountId = readString(data, "corporateAccountId");
+  const applicationId = readString(data, "applicationId");
+  const status = data.status;
+  const createdAt = readString(data, "createdAt");
+  const updatedAt = readString(data, "updatedAt");
+  if (!corporateAccountId || !applicationId || !isCorporateApplicationState(status) || !createdAt || !updatedAt) throw new ApiError("UNEXPECTED_RESPONSE");
+  return { corporateAccountId, applicationId, status, createdAt, updatedAt, details: normaliseCorporateDetails(data.details) };
+}
+
+function normaliseCorporateDraftUpdate(payload: unknown): CorporateDraftUpdateResult {
+  const data = unwrapPayload(payload);
+  const corporateAccountId = readString(data, "corporateAccountId");
+  const applicationId = readString(data, "applicationId");
+  const status = data.status;
+  if (!corporateAccountId || !applicationId || !isCorporateApplicationState(status)) throw new ApiError("UNEXPECTED_RESPONSE");
+  return { corporateAccountId, applicationId, status, details: normaliseCorporateDetails(data.details) };
+}
+
+function normaliseCorporateDiscovery(payload: unknown): CorporateApplicationDiscoveryItem[] {
+  if (!isRecord(payload) || !Array.isArray(payload.data) || !payload.data.every(isRecord)) throw new ApiError("UNEXPECTED_RESPONSE");
+  return payload.data.map((item) => {
+    const corporateAccountId = readString(item, "corporateAccountId");
+    const applicationId = readString(item, "applicationId");
+    const status = item.status;
+    const detailsVersion = readNumber(item, "detailsVersion");
+    const createdAt = readString(item, "createdAt");
+    const updatedAt = readString(item, "updatedAt");
+    if (!corporateAccountId || !applicationId || !isCorporateApplicationState(status) || !detailsVersion || !createdAt || !updatedAt || item.accessVia !== "INITIATING_APPLICANT") throw new ApiError("UNEXPECTED_RESPONSE");
+    return { corporateAccountId, applicationId, status, detailsVersion, createdAt, updatedAt, accessVia: "INITIATING_APPLICANT" as const };
+  });
+}
+
+function normaliseCorporateHistory(payload: unknown): CorporateApplicationHistory {
+  const data = unwrapPayload(payload);
+  const corporateAccountId = readString(data, "corporateAccountId");
+  const applicationId = readString(data, "applicationId");
+  const historyValue = data.history;
+  const amendmentsValue = data.detailsAmendments;
+  if (!corporateAccountId || !applicationId || !Array.isArray(historyValue) || !historyValue.every(isRecord) || !Array.isArray(amendmentsValue) || !amendmentsValue.every(isRecord)) throw new ApiError("UNEXPECTED_RESPONSE");
+  const history = historyValue.map((entry) => {
+    const id = readString(entry, "id");
+    const fromStatusValue = entry.fromStatus;
+    const fromStatus = fromStatusValue === null ? null : isCorporateApplicationState(fromStatusValue) ? fromStatusValue : undefined;
+    const toStatus = entry.toStatus;
+    const createdAt = readString(entry, "createdAt");
+    if (!id || entry.event !== "CREATED" || fromStatus === undefined || !isCorporateApplicationState(toStatus) || !createdAt) throw new ApiError("UNEXPECTED_RESPONSE");
+    return { id, event: "CREATED" as const, fromStatus, toStatus, createdAt };
+  });
+  const detailsAmendments: CorporateDetailsAmendment[] = amendmentsValue.map((entry) => {
+    const version = readNumber(entry, "version");
+    const changedAt = readString(entry, "changedAt");
+    const changedFieldNames = entry.changedFieldNames;
+    if (!version || version < 2 || !changedAt || !Array.isArray(changedFieldNames) || !changedFieldNames.every((field) => typeof field === "string" && (corporateEditableFieldNames as readonly string[]).includes(field))) throw new ApiError("UNEXPECTED_RESPONSE");
+    return { version, changedFieldNames: [...changedFieldNames] as CorporateDetailsAmendment["changedFieldNames"], changedAt };
+  });
+  return { corporateAccountId, applicationId, history, detailsAmendments };
+}
+
+function normaliseCorporateSnapshotFreshness(payload: unknown): CorporateSnapshotFreshness {
+  const data = unwrapPayload(payload);
+  const applicationId = readString(data, "applicationId");
+  const snapshotIdValue = data.snapshotId;
+  const generationValue = data.generation;
+  const snapshotId = typeof snapshotIdValue === "string" ? snapshotIdValue : snapshotIdValue === null ? null : undefined;
+  const generation = typeof generationValue === "number" && Number.isInteger(generationValue) && generationValue >= 1 ? generationValue : generationValue === null ? null : undefined;
+  const isFresh = readBoolean(data, "isFresh");
+  const issues = data.issues;
+  if (!applicationId || snapshotId === undefined || generation === undefined || isFresh === undefined || !Array.isArray(issues) || !issues.every((issue) => typeof issue === "string" && (corporateSnapshotIssueCodes as readonly string[]).includes(issue))) throw new ApiError("UNEXPECTED_RESPONSE");
+  return { applicationId, snapshotId, generation, isFresh, issues: [...issues] as CorporateSnapshotFreshness["issues"] };
+}
+
+function corporateAccountPathSegment(corporateAccountId: string) {
+  return encodeURIComponent(corporateAccountId);
 }
 
 function normaliseJointAccountSummary(record: JsonRecord): JointAccountSummary {
@@ -658,6 +785,51 @@ export async function getMyProfile() {
 
 export async function updateMyProfile(input: { firstName: string; lastName: string; phone: string | null }) {
   return normaliseProfile(await authenticatedRequest("/me/profile", { method: "PUT", body: input }));
+}
+
+/** O2 — feature-gated Corporate DRAFT creation. The six-field body is explicit. */
+export async function createCorporateApplication(input: CorporateDraftInput, idempotencyKey: string) {
+  const body: CorporateDraftInput = {
+    institutionName: input.institutionName,
+    dateOfIncorporation: input.dateOfIncorporation,
+    rcNumber: input.rcNumber,
+    taxIdentificationNumber: input.taxIdentificationNumber,
+    businessPhoneNumber: input.businessPhoneNumber,
+    businessEmail: input.businessEmail,
+  };
+  return normaliseCorporateApplicationReceipt(await authenticatedMutation("/corporate-accounts/applications", body, { "Idempotency-Key": idempotencyKey }));
+}
+
+/** Owner-scoped discovery for the authenticated initiating applicant; empty is normal. */
+export async function getMyCorporateApplications() {
+  return normaliseCorporateDiscovery(await authenticatedRequest("/me/corporate-accounts"));
+}
+
+/** O3 — owner-scoped onboarding read. The account ID must originate from O2 or discovery. */
+export async function getCorporateOnboarding(corporateAccountId: string) {
+  return normaliseCorporateOnboarding(await authenticatedRequest(`/corporate-accounts/${corporateAccountPathSegment(corporateAccountId)}/onboarding`));
+}
+
+/** O4 — optimistic DRAFT/INFO_REQUESTED amendment with the mandatory quoted details version. */
+export async function updateCorporateDraft(corporateAccountId: string, detailsVersion: number, patch: CorporateDraftPatch) {
+  if (!Number.isSafeInteger(detailsVersion) || detailsVersion < 1) throw new ApiError("VALIDATION_FAILED");
+  const body: CorporateDraftPatch = {};
+  for (const field of corporateEditableFieldNames) {
+    const value = patch[field];
+    if (value !== undefined) body[field] = value;
+  }
+  if (Object.keys(body).length === 0) throw new ApiError("VALIDATION_FAILED");
+  return normaliseCorporateDraftUpdate(await authenticatedMutation(`/corporate-accounts/${corporateAccountPathSegment(corporateAccountId)}/onboarding/draft`, body, { "If-Match": `"${detailsVersion}"` }, "PATCH"));
+}
+
+/** O11 — owner-scoped permitted lifecycle and safe amendment metadata. */
+export async function getCorporateOnboardingHistory(corporateAccountId: string) {
+  return normaliseCorporateHistory(await authenticatedRequest(`/corporate-accounts/${corporateAccountPathSegment(corporateAccountId)}/onboarding/history`));
+}
+
+/** Read-only technical snapshot freshness; no snapshot regeneration is called by this UI. */
+export async function getCorporateSnapshotFreshness(corporateAccountId: string) {
+  return normaliseCorporateSnapshotFreshness(await authenticatedRequest(`/corporate-accounts/${corporateAccountPathSegment(corporateAccountId)}/onboarding/verification-snapshot/freshness`));
 }
 
 export async function getMyPortfolio() {

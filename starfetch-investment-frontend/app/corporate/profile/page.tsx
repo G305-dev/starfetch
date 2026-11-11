@@ -1,22 +1,12 @@
+import type { Metadata } from "next";
+import { CorporatePortalLayout } from "@/components/corporate/CorporatePortalLayout";
 import { CorporateProfileContent } from "@/components/corporate/CorporateProfileContent";
-import { CorporateSidebar } from "@/components/corporate/CorporateSidebar";
-import { CorporateTopbar } from "@/components/corporate/CorporateTopbar";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Company Profile | Starfetch Investor Portal",
-  description: "Manage corporate company profile information in the Starfetch Investor Portal.",
+  description: "Review canonical company information and corporate verification progress.",
 };
 
 export default function CorporateProfilePage() {
-  return (
-    <div className="min-h-screen bg-[#f7faf7] lg:flex">
-      <CorporateSidebar />
-      <div className="min-w-0 flex-1">
-        <CorporateTopbar sectionLabel="Company Profile" />
-        <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-          <CorporateProfileContent />
-        </div>
-      </div>
-    </div>
-  );
+  return <CorporatePortalLayout sectionLabel="Company Profile"><CorporateProfileContent /></CorporatePortalLayout>;
 }

@@ -6,6 +6,7 @@ const validCases: Array<[string, string]> = [
   ["/joint/dashboard", "/joint/dashboard"],
   ["/joint/invitations", "/joint/invitations"],
   ["/register/joint", "/register/joint"],
+  ["/register/corporate", "/register/corporate"],
   ["/joint/transactions?page=2&pageSize=10#history", "/joint/transactions?page=2&pageSize=10#history"],
 ];
 
@@ -42,4 +43,4 @@ if (jointSignInNext !== "/register/joint" || getSafeReturnPath(jointSignInNext) 
   throw new Error("Joint registration explanation actions do not preserve safe registration navigation");
 }
 
-console.log("PASS — safe post-login return navigation and Joint registration entry actions accept internal Joint paths and reject external, malformed, encoded, and auth-loop redirects");
+console.log("PASS — safe post-login return navigation, including the verified-Investor Corporate preparation route, and Joint registration entry actions accept internal paths and reject external, malformed, encoded, and auth-loop redirects");
