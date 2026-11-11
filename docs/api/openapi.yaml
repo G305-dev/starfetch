@@ -2,32 +2,28 @@ openapi: 3.0.3
 
 info:
   title: Starfetch Investment Limited — Platform API
-  version: 0.4.0
+  version: 0.6.0
   description: |
     Canonical API contract for the Starfetch platform (one API serving the public
     website, investor web portal, staff/admin portal, and the future Android/iOS
     React Native clients).
 
-    **Current scope: IMPLEMENTED — PHASE 2A foundation + PHASE 2B authentication
-    & identity + PHASE 2C investor profile foundation + PHASE 2D investor
-    dashboard read APIs.** Contracts below match the running implementation
-    exactly: health, registration, email verification, login, refresh rotation,
-    logout, `/me`, `GET`/`PUT /me/profile`, and the dashboard reads
-    `GET /me/portfolio` + `GET /me/transactions` (INVESTOR role only, ownership
-    strictly from the authenticated principal). **A new investor with no
-    portfolio/holding/transaction rows is a NORMAL state** — these reads return
-    a real, successful empty dashboard; the backend NEVER seeds demo or fake
-    financial records. No other business endpoints exist yet.
+    **Implemented scope:** Phase 2A–2D foundations, authentication and investor
+    profile/dashboard reads; gated Corporate O2 creation; owner-scoped O3/O11
+    reads; O4 optimistic draft amendments with immutable versioned history;
+    Corporate application discovery; and immutable verification-snapshot
+    freshness/regeneration staging. TIN writes remain gated by privacy/KMS
+    prerequisites, and staged snapshots do not imply verification or submission
+    eligibility.
 
-    Business surfaces (applications, documents/KYC, products, portfolio,
-    transactions, statements, staff tooling) are incorporated **one feature at
-    a time, only after contract approval in their implementation phases** —
-    never silently. Open decisions D-08 / D-09 and document vocabulary remain
-    OPEN and are not presumed anywhere in this document.
+    Individual and Joint contracts remain unchanged. Document upload, Mono
+    provider calls/webhooks, staff review, final compliance decisions and
+    investment eligibility/activation remain unavailable pending approved
+    policy, operational dependencies and coordinated D-06 change control.
 
     Change control: no unilateral breaking changes; breaking changes require a
     coordinated version/change decision by David and Emmanuel.
-  x-status: PHASE-2D-INVESTOR-DASHBOARD-READ-APIS
+  x-status: PHASE-2D-PLUS-CORPORATE-O2-O4-OWNER-READS-SNAPSHOT-STAGING
   contact:
     name: Starfetch Engineering (David — backend; Emmanuel — frontend/mobile)
 
@@ -42,6 +38,8 @@ tags:
     description: Phase 2B authentication & identity (client-neutral core)
   - name: Me
     description: Current authenticated user
+  - name: Corporate
+    description: Gated O2 creation, owner-scoped O3/O11 reads, versioned O4 amendments, discovery and snapshot staging; submission and approval are not exposed.
 
 paths:
   /health:
@@ -419,6 +417,404 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /corporate-accounts/applications:
+    post:
+      tags: [Corporate]
+      operationId: createCorporateApplicationO2
+      summary: Create an authenticated Corporate DRAFT (O2)
+      description: |
+        The route is unavailable unless the explicit O2 switch, lawful-basis,
+        privacy-notice and retention approvals, environment-specific KMS key,
+        and dedicated versioned O2 HMAC keyring are all ready. The gate is
+        disabled by default and fails closed with `503 FEATURE_UNAVAILABLE`.
+        The authenticated, live-session INVESTOR must have verified email.
+        Browser clients must send an allowlisted Origin or Referer and the
+        session-bound signed double-submit CSRF cookie/header pair. Exactly the
+        six request fields are accepted; actor, owner, status, submission,
+        authority and approval fields are rejected.
+
+        TIN is encrypted before persistence and never returned, logged or stored
+        as plaintext. Exact same-user/key/payload retries replay the original
+        receipt; same-user duplicate canonical content returns that user's
+        existing receipt; cross-user content is neither searched nor disclosed
+        and is not merged. No global RC uniqueness or applicant-visible
+        cross-user duplicate check is performed. No submission, approval or
+        investment permission is created.
+
+        Rate limit: 5 requests/hour per authenticated user via the current
+        process-local in-memory limiter. It is effective per backend instance
+        only; horizontal production requires a shared/distributed RATE_LIMITER
+        implementation or an explicitly single-instance deployment. This O2
+        route currently has no separate IP-keyed limit.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/X-CSRF-Token"
+        - $ref: "#/components/parameters/Idempotency-Key"
+        - name: Cookie
+          in: header
+          required: true
+          description: Contains `sf_csrf` in development/test or `__Host-sf_csrf` in staging/production.
+          schema: { type: string }
+        - name: Origin
+          in: header
+          required: false
+          description: Browser Origin must match the configured allowlist; Referer is accepted as the existing fallback.
+          schema: { type: string, format: uri }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CorporateO2CreateRequest"
+      responses:
+        "201":
+          description: Owner-bound Corporate DRAFT created or safely replayed.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CorporateO2CreateResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          description: Missing, invalid, expired, or revoked session-bound access token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "403":
+          description: Unverified email, non-investor, untrusted browser origin, or failed CSRF validation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "429":
+          $ref: "#/components/responses/RateLimitError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          description: >-
+            FEATURE_UNAVAILABLE while the activation gate is closed, or safe
+            SERVICE_UNAVAILABLE for missing HMAC/KMS crypto dependencies. Writes
+            roll back on crypto failure.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              examples:
+                featureUnavailable:
+                  value:
+                    error: { code: FEATURE_UNAVAILABLE, message: Corporate registration is currently unavailable., requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d" }
+                cryptoUnavailable:
+                  value:
+                    error: { code: SERVICE_UNAVAILABLE, message: Corporate registration is temporarily unavailable., requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d" }
+
+  /corporate-accounts/{corporateAccountId}/onboarding:
+    get:
+      tags: [Corporate]
+      operationId: getOwnCorporateOnboardingO3
+      summary: Read the initiating applicant's Corporate application and details
+      description: |
+        The path identifier is specifically the `CorporateAccount.id`; it is
+        distinct from the returned `applicationId`. The backend maps this
+        account ID to a Corporate application owned by the authenticated,
+        verified INVESTOR who initiated it, then rechecks that ownership on
+        every request. Supplying an application ID in this path does not
+        address the application. Missing, malformed, and non-owned IDs return
+        the identical generic `404 NOT_FOUND`.
+
+        Status is returned without lifecycle-state filtering for all six states.
+        TIN is never returned in plaintext: it is `null` while the KMS/privacy
+        activation gate is closed; when open it is a masked projection (values
+        of 8 code points or fewer are fully masked; longer values reveal at
+        most one quarter of the suffix, capped at four code points). Ciphertext,
+        key metadata, fingerprints, actors and internal authorization records
+        are excluded. This read grants no edit, submission, approval or
+        investment permission. GET requires bearer/session auth and no CSRF.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CorporateAccountId"
+      responses:
+        "200":
+          description: Owner-scoped application status and approved masked details.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorporateOnboardingResponse" }
+        "401":
+          description: Missing, invalid, expired, or revoked session-bound access token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "403":
+          description: Non-investor or unverified initiating applicant.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "404":
+          description: Identical generic response for missing, malformed, or non-owned CorporateAccount IDs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          description: Masked TIN projection could not be safely produced because KMS/envelope decryption was unavailable; no plaintext or crypto metadata is returned.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /corporate-accounts/{corporateAccountId}/onboarding/draft:
+    patch:
+      tags: [Corporate]
+      operationId: updateOwnCorporateDraftO4
+      summary: Amend the initiating applicant's Corporate DRAFT details (O4)
+      description: |
+        The path identifier is specifically a CorporateAccount UUID. Every
+        request re-proves the verified INVESTOR's immutable initiating-user
+        ownership; principals are not inferred or supported. Edits are allowed
+        only in DRAFT or INFO_REQUESTED and update the single canonical details
+        row. `If-Match` must be the current quoted positive details version;
+        stale versions return 409 without changing details or history. Every
+        successful patch appends an immutable versioned amendment snapshot in
+        the same transaction. TIN is accepted only after the privacy/KMS gate
+        passes and is encrypted before persistence; responses/history never
+        contain plaintext or envelope metadata. No submission or approval is
+        performed. Rate limit: 60 requests/hour per authenticated user using
+        the process-local keyed limiter; it is per instance and resets on restart.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CorporateAccountId"
+        - $ref: "#/components/parameters/X-CSRF-Token"
+        - name: If-Match
+          in: header
+          required: true
+          description: Strong quoted details version, for example `"3"`.
+          schema: { type: string, pattern: '^"[1-9][0-9]*"$' }
+        - name: Cookie
+          in: header
+          required: true
+          description: Contains the session-bound CSRF cookie (`sf_csrf` locally or `__Host-sf_csrf` in secure environments).
+          schema: { type: string }
+        - name: Origin
+          in: header
+          required: false
+          description: Browser Origin must match the configured allowlist; Referer is the existing fallback.
+          schema: { type: string, format: uri }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CorporateDetailsUpdateRequest" }
+      responses:
+        "200":
+          description: Canonical details amended and immutable revision appended.
+          headers:
+            x-request-id: { $ref: "#/components/headers/X-Request-Id" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorporateDraftUpdateResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401":
+          description: Missing, invalid, expired, or revoked session-bound access token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "403":
+          description: Non-investor, unverified applicant, untrusted browser origin, or failed CSRF validation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "404":
+          description: Identical generic response for missing, malformed, or non-owned CorporateAccount IDs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "409":
+          description: Stale If-Match version or application state does not permit editing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "429": { $ref: "#/components/responses/RateLimitError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503":
+          description: TIN crypto/privacy gate unavailable; the amendment transaction rolls back.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /corporate-accounts/{corporateAccountId}/onboarding/verification-snapshot/freshness:
+    get:
+      tags: [Corporate]
+      operationId: getOwnCorporateVerificationSnapshotFreshness
+      summary: Assess the latest immutable verification snapshot's source freshness
+      description: |
+        Owner-scoped read of the newest staged snapshot generation. It compares
+        the captured Corporate details version to the current canonical details
+        version. A stale snapshot is retained unchanged; this endpoint neither
+        creates evidence nor grants submission/approval eligibility.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CorporateAccountId"
+      responses:
+        "200":
+          description: Latest snapshot generation and freshness issues; no snapshot is a safe stale result.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorporateSnapshotFreshnessResponse" }
+        "401":
+          description: Missing, invalid, expired, or revoked session-bound access token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "403":
+          description: Non-investor or unverified initiating applicant.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "404":
+          description: Identical generic response for missing, malformed, or non-owned CorporateAccount IDs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /corporate-accounts/{corporateAccountId}/onboarding/verification-snapshot:
+    post:
+      tags: [Corporate]
+      operationId: regenerateOwnCorporateVerificationSnapshot
+      summary: Append or retrieve the current immutable verification snapshot generation
+      description: |
+        Owner-scoped, idempotent staging operation. Requires an exact approved
+        and published ruleset version already bound to this application. A
+        fresh generation is returned on replay; changed details append a new
+        generation while stale generations remain immutable. This does not run
+        a provider check, satisfy a requirement, submit the application, or
+        create a compliance decision. Submission eligibility is always false.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CorporateAccountId"
+        - $ref: "#/components/parameters/X-CSRF-Token"
+        - name: Cookie
+          in: header
+          required: true
+          description: Contains the session-bound CSRF cookie (`sf_csrf` locally or `__Host-sf_csrf` in secure environments).
+          schema: { type: string }
+        - name: Origin
+          in: header
+          required: false
+          description: Browser Origin must match the configured allowlist; Referer is the existing fallback.
+          schema: { type: string, format: uri }
+      responses:
+        "200":
+          description: Current immutable generation created or safely replayed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorporateVerificationSnapshotResponse" }
+        "401":
+          description: Missing, invalid, expired, or revoked session-bound access token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "403":
+          description: Non-investor, unverified applicant, untrusted browser origin, or failed CSRF validation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "404":
+          description: Identical generic response for missing, malformed, or non-owned CorporateAccount IDs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "409":
+          description: No exact approved/published ruleset binding or the application is not editable for staging.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /corporate-accounts/{corporateAccountId}/onboarding/history:
+    get:
+      tags: [Corporate]
+      operationId: getOwnCorporateOnboardingHistoryO11
+      summary: Read permitted history for the initiating applicant's Corporate application
+      description: |
+        `corporateAccountId` is a CorporateAccount UUID, not an application UUID.
+        Requires the authenticated, verified initiating INVESTOR and rechecks
+        ownership on every request. Missing, malformed, and non-owned IDs share
+        the same generic 404. The read returns only permitted application
+        lifecycle-history fields; actor IDs, staff/compliance authorization,
+        evidence, and internal audit records are not exposed. Read access grants
+        no mutation or approval authority. GET requires no CSRF token.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CorporateAccountId"
+      responses:
+        "200":
+          description: Owner-scoped permitted history, ordered oldest first.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorporateHistoryResponse" }
+        "401":
+          description: Missing, invalid, expired, or revoked session-bound access token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "403":
+          description: Non-investor or unverified initiating applicant.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "404":
+          description: Identical generic response for missing, malformed, or non-owned CorporateAccount IDs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /me/corporate-accounts:
+    get:
+      tags: [Corporate]
+      operationId: listOwnCorporateApplications
+      summary: Discover Corporate applications initiated by the current investor
+      description: |
+        Returns only applications whose immutable initiatingUserId matches the
+        authenticated, verified INVESTOR. No principal access is inferred; rows
+        are not merged across users. Identifiers are explicitly typed and the
+        list contains no business details or TIN.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Owner-scoped Corporate application list (empty is normal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorporateApplicationDiscoveryResponse" }
+        "401":
+          description: Missing, invalid, expired, or revoked session-bound access token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "403":
+          description: Non-investor or unverified applicant.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /me:
     get:
       tags:
@@ -732,6 +1128,23 @@ components:
         authenticated session. Rotated on every successful refresh.
       schema:
         type: string
+    Idempotency-Key:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Opaque client-generated key; 1–255 characters. Reuse only for retries of the same logical request and body.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+    CorporateAccountId:
+      name: corporateAccountId
+      in: path
+      required: true
+      description: UUID of the CorporateAccount resource; distinct from the Corporate application ID.
+      schema:
+        type: string
+        format: uuid
 
   headers:
     X-Request-Id:
@@ -1073,6 +1486,226 @@ components:
           required: [requestId, page, pageSize, total]
       required: [data, meta]
 
+    CorporateO2CreateRequest:
+      type: object
+      additionalProperties: false
+      description: Exactly six Corporate Business Information fields; extra identity, ownership, status, authority or approval fields are rejected.
+      properties:
+        institutionName: { type: string, minLength: 1, maxLength: 255 }
+        dateOfIncorporation:
+          type: string
+          format: date
+          pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+        rcNumber: { type: string, minLength: 1, maxLength: 255 }
+        taxIdentificationNumber:
+          type: string
+          minLength: 1
+          maxLength: 256
+          writeOnly: true
+          description: Encrypted before persistence; never echoed, logged or returned in plaintext.
+        businessPhoneNumber: { type: string, minLength: 1, maxLength: 64 }
+        businessEmail: { type: string, format: email, maxLength: 254, description: Normalized to lowercase. }
+      required: [institutionName, dateOfIncorporation, rcNumber, taxIdentificationNumber, businessPhoneNumber, businessEmail]
+
+    CorporateO2CreateResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            corporateAccountId: { type: string, format: uuid }
+            applicationId: { type: string, format: uuid }
+            applicationStatus: { type: string, enum: [DRAFT] }
+            detailsVersion: { type: integer, enum: [1] }
+          required: [corporateAccountId, applicationId, applicationStatus, detailsVersion]
+        meta:
+          $ref: "#/components/schemas/Meta"
+      required: [data, meta]
+
+    CorporateApplicationStatus:
+      type: string
+      enum: [DRAFT, SUBMITTED, IN_REVIEW, INFO_REQUESTED, APPROVED, REJECTED]
+
+    CorporateDetailsRead:
+      type: object
+      description: Approved O2 details projection only. TIN masking is proportion-limited; TIN is null while the KMS/privacy activation gate is closed.
+      properties:
+        institutionName: { type: string }
+        dateOfIncorporation: { type: string, format: date }
+        rcNumber: { type: string }
+        businessPhoneNumber: { type: string }
+        businessEmail: { type: string, format: email }
+        taxIdentificationNumberMasked: { type: string, nullable: true, description: No plaintext. Values of 8 code points or fewer are fully masked; longer values reveal at most 25% of a suffix, capped at four code points. }
+        version: { type: integer, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required: [institutionName, dateOfIncorporation, rcNumber, businessPhoneNumber, businessEmail, taxIdentificationNumberMasked, version, createdAt, updatedAt]
+
+    CorporateOnboardingResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            corporateAccountId: { type: string, format: uuid }
+            applicationId: { type: string, format: uuid }
+            status: { $ref: "#/components/schemas/CorporateApplicationStatus" }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+            details: { $ref: "#/components/schemas/CorporateDetailsRead" }
+          required: [corporateAccountId, applicationId, status, createdAt, updatedAt, details]
+        meta:
+          $ref: "#/components/schemas/Meta"
+      required: [data, meta]
+
+    CorporateDetailsUpdateRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Partial patch over the six O2 Business Information fields with the same O2 structural limits. TIN is write-only and encrypted.
+      properties:
+        institutionName: { type: string, minLength: 1, maxLength: 255 }
+        dateOfIncorporation: { type: string, format: date, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        rcNumber: { type: string, minLength: 1, maxLength: 255 }
+        businessPhoneNumber: { type: string, minLength: 1, maxLength: 64 }
+        businessEmail: { type: string, format: email, minLength: 1, maxLength: 254 }
+        taxIdentificationNumber: { type: string, minLength: 1, maxLength: 256, writeOnly: true, description: Accepted only when privacy/KMS prerequisites are active; never echoed or logged. }
+
+    CorporateDraftUpdateResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            applicationId: { type: string, format: uuid }
+            corporateAccountId: { type: string, format: uuid }
+            status: { $ref: "#/components/schemas/CorporateApplicationStatus" }
+            details: { $ref: "#/components/schemas/CorporateDetailsRead" }
+          required: [applicationId, corporateAccountId, status, details]
+        meta: { $ref: "#/components/schemas/Meta" }
+      required: [data, meta]
+
+    CorporateApplicationDiscoveryItem:
+      type: object
+      properties:
+        corporateAccountId: { type: string, format: uuid }
+        applicationId: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/CorporateApplicationStatus" }
+        detailsVersion: { type: integer, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        accessVia: { type: string, enum: [INITIATING_APPLICANT] }
+      required: [corporateAccountId, applicationId, status, detailsVersion, createdAt, updatedAt, accessVia]
+
+    CorporateApplicationDiscoveryResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/CorporateApplicationDiscoveryItem" }
+        meta: { $ref: "#/components/schemas/Meta" }
+      required: [data, meta]
+
+    CorporateSnapshotFreshnessResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            applicationId: { type: string, format: uuid }
+            snapshotId: { type: string, format: uuid, nullable: true }
+            generation: { type: integer, minimum: 1, nullable: true }
+            isFresh: { type: boolean }
+            issues:
+              type: array
+              items:
+                type: string
+                enum: [SNAPSHOT_MISSING, ACCOUNT_KIND_CHANGED, CORPORATE_DETAILS_VERSION_CHANGED, JOINT_MEMBERSHIP_VERSION_CHANGED]
+          required: [applicationId, snapshotId, generation, isFresh, issues]
+        meta: { $ref: "#/components/schemas/Meta" }
+      required: [data, meta]
+
+    CorporateVerificationSnapshotTier:
+      type: object
+      properties:
+        requirementCount: { type: integer, minimum: 0 }
+        pendingCount: { type: integer, minimum: 0 }
+        unresolvedCount: { type: integer, minimum: 0 }
+        state: { type: string, enum: [NOT_ASSESSED, BLOCKED, INCOMPLETE] }
+      required: [requirementCount, pendingCount, unresolvedCount, state]
+
+    CorporateVerificationSnapshotResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            snapshotId: { type: string, format: uuid }
+            generation: { type: integer, minimum: 1 }
+            applicationId: { type: string, format: uuid }
+            accountKind: { type: string, enum: [CORPORATE] }
+            rulesetVersionId: { type: string, format: uuid }
+            bindingId: { type: string, format: uuid }
+            subjectCount: { type: integer, minimum: 0 }
+            resolvedSubjectCount: { type: integer, minimum: 0 }
+            unresolvedSubjectCount: { type: integer, minimum: 0 }
+            requirementCount: { type: integer, minimum: 0 }
+            pendingRequirementCount: { type: integer, minimum: 0 }
+            unresolvedRequirementCount: { type: integer, minimum: 0 }
+            tiers:
+              type: object
+              additionalProperties: { $ref: "#/components/schemas/CorporateVerificationSnapshotTier" }
+            submissionEligible: { type: boolean, enum: [false] }
+            idempotentReplay: { type: boolean }
+          required: [snapshotId, generation, applicationId, accountKind, rulesetVersionId, bindingId, subjectCount, resolvedSubjectCount, unresolvedSubjectCount, requirementCount, pendingRequirementCount, unresolvedRequirementCount, tiers, submissionEligible, idempotentReplay]
+        meta: { $ref: "#/components/schemas/Meta" }
+      required: [data, meta]
+
+    CorporateDetailsAmendment:
+      type: object
+      description: Safe immutable amendment metadata. No snapshots or actor identifiers are exposed.
+      properties:
+        version: { type: integer, minimum: 2 }
+        changedFieldNames:
+          type: array
+          items: { type: string, enum: [institutionName, dateOfIncorporation, rcNumber, businessPhoneNumber, businessEmail, taxIdentificationNumber] }
+        changedAt: { type: string, format: date-time }
+      required: [version, changedFieldNames, changedAt]
+
+    CorporateHistoryItem:
+      type: object
+      description: Permitted application lifecycle history only; actor and internal authorization fields are intentionally absent.
+      properties:
+        id: { type: string, format: uuid }
+        event: { type: string, enum: [CREATED] }
+        fromStatus:
+          type: string
+          nullable: true
+          enum: [DRAFT, SUBMITTED, IN_REVIEW, INFO_REQUESTED, APPROVED, REJECTED]
+        toStatus: { $ref: "#/components/schemas/CorporateApplicationStatus" }
+        createdAt: { type: string, format: date-time }
+      required: [id, event, fromStatus, toStatus, createdAt]
+
+    CorporateHistoryResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            corporateAccountId: { type: string, format: uuid }
+            applicationId: { type: string, format: uuid }
+            history:
+              type: array
+              items: { $ref: "#/components/schemas/CorporateHistoryItem" }
+            detailsAmendments:
+              type: array
+              description: Safe immutable amendment metadata only; before/after values, TIN ciphertext, and actor IDs are omitted.
+              items: { $ref: "#/components/schemas/CorporateDetailsAmendment" }
+          required: [corporateAccountId, applicationId, history, detailsAmendments]
+        meta:
+          $ref: "#/components/schemas/Meta"
+      required: [data, meta]
+
     Error:
       type: object
       description: |
@@ -1112,8 +1745,9 @@ components:
     ErrorCode:
       type: string
       description: |
-        Implemented error-code vocabulary (foundation + Phase 2B
-        authentication). The business catalogue arrives with later endpoints.
+        Implemented error-code vocabulary, including Corporate O2/O3 errors.
+        `FEATURE_UNAVAILABLE` is the fail-closed O2 activation-gate response;
+        `SERVICE_UNAVAILABLE` is a safe crypto/provider failure response.
       enum:
         # Foundation
         - VALIDATION_FAILED                 # 400 — request data failed validation; `fields` populated
@@ -1125,6 +1759,8 @@ components:
         - UNSUPPORTED_FILE_TYPE             # 415 — reserved for later document phases
         - RATE_LIMITED                      # 429 — endpoint throttled
         - INTERNAL_ERROR                    # 500 — unexpected; never leaks internals
+        - FEATURE_UNAVAILABLE               # 503 — Corporate O2 activation gate is closed
+        - SERVICE_UNAVAILABLE               # 503 — safe cryptographic/provider dependency failure
         # Authentication (Phase 2B)
         - INVALID_CREDENTIALS               # 401 — identical error for unknown email/wrong password
         - EMAIL_NOT_VERIFIED                # 403 — verification required before login
@@ -1234,9 +1870,14 @@ x-conventions:
       logic exists on this contract; `totalReturnMinor` stays `null`.
   throttling:
     description: |
-      Server-side fixed-window throttling on authentication-sensitive routes
-      (register/login/verify/resend/refresh/logout) via a replaceable limiter
-      port (in-memory MVP now; distributed store can replace it later).
+      Authentication-sensitive routes use server-side fixed-window throttling.
+      Corporate O2 additionally uses a post-authentication limit of 5 create
+      requests/hour/user. The current RATE_LIMITER is in-memory and process-local;
+      limits fragment across multiple backend instances and reset on process
+      restart. Until a shared/distributed adapter is implemented, production
+      must keep O2 on one instance or disable horizontal scaling for this route.
+      No separate O2 IP-keyed limit is currently configured; no global RC or
+      cross-user duplicate lookup is performed.
   open-decisions:
     description: |
       D-08 (application status/state-transition map) — OPEN.
