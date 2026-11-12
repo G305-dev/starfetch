@@ -43,8 +43,8 @@ export function EmailVerificationForm() {
     setVerifying(true);
     try {
       const result = await verifyEmail({ verificationId: verification.verificationId, code });
-      markVerificationSucceeded(result.maskedEmail ?? verification.maskedEmail);
-      router.push("/register/individual/verify-email/success");
+      markVerificationSucceeded(result.maskedEmail ?? verification.maskedEmail, verification.registrationType);
+      router.push(verification.registrationType === "CORPORATE" ? "/register/corporate/verify-email/success" : "/register/individual/verify-email/success");
     } catch (requestError) {
       setError(getSafeErrorMessage(requestError));
     } finally {
@@ -72,13 +72,15 @@ export function EmailVerificationForm() {
 
   if (initialising) return <section className="mx-auto grid min-h-[360px] w-full max-w-xl place-items-center text-center"><div><LoaderCircle size={30} className="mx-auto animate-spin text-star-700" aria-hidden="true" /><p className="mt-4 text-sm font-semibold text-star-muted">Preparing verification…</p></div></section>;
 
-  if (!verification) return <section className="mx-auto w-full max-w-xl text-center"><div className="rounded-2xl border border-star-200 bg-white p-7 shadow-card sm:p-10"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-star-100 text-star-700"><MailCheck size={28} strokeWidth={1.9} aria-hidden="true" /></div><h1 className="mt-6 font-display text-2xl font-bold tracking-[-0.04em] text-star-900">Start email verification</h1><p className="mx-auto mt-3 max-w-md text-sm leading-6 text-star-muted">Register your Individual Account first so we can securely verify the code for your email address.</p><Link href="/register/individual" className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-star-lime px-5 text-sm font-extrabold text-star-900 no-underline transition hover:bg-[#c7f238] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Register an Individual Account</Link></div></section>;
+  if (!verification) return <section className="mx-auto w-full max-w-xl text-center"><div className="rounded-2xl border border-star-200 bg-white p-7 shadow-card sm:p-10"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-star-100 text-star-700"><MailCheck size={28} strokeWidth={1.9} aria-hidden="true" /></div><h1 className="mt-6 font-display text-2xl font-bold tracking-[-0.04em] text-star-900">Start email verification</h1><p className="mx-auto mt-3 max-w-md text-sm leading-6 text-star-muted">Create an account first so we can securely verify the code for your email address.</p><Link href="/open-account" className="mt-7 inline-flex min-h-11 items-center justify-center rounded-lg bg-star-lime px-5 text-sm font-extrabold text-star-900 no-underline transition hover:bg-[#c7f238] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Choose an account type</Link></div></section>;
 
+  const isCorporateRegistration = verification.registrationType === "CORPORATE";
+  const applicantLabel = isCorporateRegistration ? "Corporate applicant" : "Individual account";
   return <section className="mx-auto w-full max-w-xl text-center">
     <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-star-100 text-star-700"><MailCheck size={28} strokeWidth={1.9} aria-hidden="true" /></div>
-    <p className="mt-6 text-[0.66rem] font-extrabold uppercase tracking-[0.2em] text-star-700">Individual account</p>
+    <p className="mt-6 text-[0.66rem] font-extrabold uppercase tracking-[0.2em] text-star-700">{applicantLabel}</p>
     <h1 className="mt-3 font-display text-[clamp(2rem,4vw,3rem)] font-bold tracking-[-0.045em] text-star-900">Verify your email</h1>
-    <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-star-muted">Enter the six-digit code sent to <strong className="font-extrabold text-star-900">{verification.maskedEmail}</strong>. The code is checked securely with Starfetch before you can continue.</p>
+    <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-star-muted">Enter the six-digit code sent to <strong className="font-extrabold text-star-900">{verification.maskedEmail}</strong>. The code is checked securely with Starfetch before you can {isCorporateRegistration ? "sign in to continue your Corporate application." : "continue."}</p>
     <div className="mx-auto mt-6 w-full max-w-[210px]" aria-label="Step 3 of 4"><p className="text-xs font-bold text-star-700">Step 3 of 4</p><div className="mt-2 flex items-center justify-center gap-1.5" aria-hidden="true">{[0, 1, 2, 3].map((step) => <span key={step} className={`h-1.5 rounded-full ${step <= 2 ? "w-8 bg-star-lime" : "w-1.5 bg-star-200"}`} />)}</div></div>
 
     <form noValidate onSubmit={handleSubmit} className="mt-9 rounded-2xl border border-star-200 bg-white p-6 text-left shadow-card sm:p-8">

@@ -112,12 +112,18 @@ export function getSafeErrorMessage(error: unknown) {
   return isApiError(error) ? error.message : safeMessages.UNEXPECTED_RESPONSE;
 }
 
+export type AuthUserRole = "INVESTOR" | "STAFF" | "ADMIN";
+
+/** Safe backend user projection. Corporate applicants are authenticated INVESTORs
+ * whose first/last names are deliberately empty strings because no Individual
+ * InvestorProfile is created for their registration path. */
 export type AuthUser = {
   id: string;
   firstName: string;
   lastName: string;
   email: string;
   emailVerified?: boolean;
+  role: AuthUserRole;
 };
 
 export type IndividualAccountProfile = {
@@ -224,13 +230,17 @@ export type CreatedJointInvitation = {
   status: "PENDING";
 };
 
-export type RegisterIndividualResponse = {
+export type RegisterResponse = {
   userId: string;
   verificationId: string;
   maskedEmail: string;
   emailVerified: false;
   nextAction: "VERIFY_EMAIL";
 };
+
+/** Retained name for the unchanged legacy Individual registration caller. */
+export type RegisterIndividualResponse = RegisterResponse;
+export type RegisterCorporateApplicantResponse = RegisterResponse;
 
 export type EmailVerificationResponse = {
   nextAction: "LOGIN";
@@ -429,16 +439,21 @@ function normaliseUser(payload: unknown): AuthUser {
   const data = unwrapPayload(payload);
   const user = isRecord(data.user) ? data.user : data;
   const id = readString(user, "id") ?? readString(user, "userId");
+  // Empty names are the approved SafeUser projection for a verified Corporate
+  // applicant without an Individual InvestorProfile. Do not manufacture names
+  // or force a profile lookup to make this session appear authenticated.
   const firstName = readString(user, "firstName");
   const lastName = readString(user, "lastName");
   const email = readString(user, "email");
-  if (!id || !firstName || !lastName || !email) throw new ApiError("UNEXPECTED_RESPONSE");
+  const role = user.role;
+  if (!id || firstName === undefined || lastName === undefined || !email || (role !== "INVESTOR" && role !== "STAFF" && role !== "ADMIN")) throw new ApiError("UNEXPECTED_RESPONSE");
   return {
     id,
     firstName,
     lastName,
     email,
     emailVerified: typeof user.emailVerified === "boolean" ? user.emailVerified : undefined,
+    role,
   };
 }
 
@@ -712,8 +727,8 @@ function jointPathSegment(id: string) {
   return encodeURIComponent(id);
 }
 
-export async function registerIndividual(input: { firstName: string; lastName: string; email: string; password: string }): Promise<RegisterIndividualResponse> {
-  const data = unwrapPayload(await request("/auth/register", { method: "POST", body: input }));
+function normaliseRegistrationResponse(payload: unknown): RegisterResponse {
+  const data = unwrapPayload(payload);
   const userId = readString(data, "userId");
   const verificationId = readString(data, "verificationId");
   // The canonical backend field is `email`; its value is already masked.
@@ -722,6 +737,17 @@ export async function registerIndividual(input: { firstName: string; lastName: s
   const nextAction = readString(data, "nextAction");
   if (!userId || !verificationId || !maskedEmail || emailVerified !== false || nextAction !== "VERIFY_EMAIL") throw new ApiError("UNEXPECTED_RESPONSE");
   return { userId, verificationId, maskedEmail, emailVerified: false, nextAction: "VERIFY_EMAIL" };
+}
+
+/** Legacy Individual registration remains unchanged: names are required and no registrationType is sent. */
+export async function registerIndividual(input: { firstName: string; lastName: string; email: string; password: string }): Promise<RegisterIndividualResponse> {
+  return normaliseRegistrationResponse(await request("/auth/register", { method: "POST", body: input }));
+}
+
+/** D-06 Revision 8 Corporate applicant registration. Confirm-password and names are frontend-only/omitted. */
+export async function registerCorporateApplicant(input: { email: string; password: string }): Promise<RegisterCorporateApplicantResponse> {
+  const body = { registrationType: "CORPORATE" as const, email: input.email, password: input.password };
+  return normaliseRegistrationResponse(await request("/auth/register", { method: "POST", body }));
 }
 
 export async function verifyEmail(input: { verificationId: string; code: string }): Promise<EmailVerificationResponse> {
@@ -739,7 +765,8 @@ export async function resendVerificationEmail(input: { verificationId: string })
   };
 }
 
-export async function loginIndividual(input: { email: string; password: string }) {
+/** Existing Investor authentication shared by Individual, Joint, and Corporate applicants. */
+export async function loginInvestor(input: { email: string; password: string }) {
   const payload = await request("/auth/login", { method: "POST", body: input });
   const data = unwrapPayload(payload);
   const accessToken = readString(data, "accessToken");
@@ -751,6 +778,9 @@ export async function loginIndividual(input: { email: string; password: string }
     throw error;
   }
 }
+
+/** Compatibility export for pre-Revision-8 callers. It is the same Investor login endpoint. */
+export const loginIndividual = loginInvestor;
 
 /** Shares a single refresh-token rotation across concurrent authenticated requests. */
 export async function refreshAccessToken() {
