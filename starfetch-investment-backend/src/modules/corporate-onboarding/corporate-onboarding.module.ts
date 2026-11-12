@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { KMSClient } from '@aws-sdk/client-kms';
+import { Redis } from '@upstash/redis';
 import { AuthModule } from '../auth/auth.module';
 import { VerificationRulesetsModule } from '../verification-rulesets/verification-rulesets.module';
 import { MonoVerificationModule } from '../verification-providers/mono/mono-verification.module';
@@ -20,6 +21,12 @@ import {
 import { CorporateO2ApplicationsController } from './corporate-o2-applications.controller';
 import { CorporateApplicationDiscoveryController, CorporateApplicationReadController } from './corporate-application-read.controller';
 import { CorporateApplicantGuard } from './guards/corporate-applicant.guard';
+import { CorporateO2RateLimitGuard } from './guards/corporate-o2-rate-limit.guard';
+import {
+  CORPORATE_O2_RATE_LIMITER,
+  CORPORATE_O2_REDIS_CLIENT,
+  UpstashCorporateO2RateLimiter,
+} from './rate-limit/corporate-o2-rate-limiter';
 import { CorporateApplicantContextService } from './services/corporate-applicant-context.service';
 import { CorporateApplicationAccessService } from './services/corporate-application-access.service';
 import { CorporateApplicationReadService } from './services/corporate-application-read.service';
@@ -46,6 +53,7 @@ import { CORPORATE_STAFF_REVIEW_AUTHORIZER, DenyAllCorporateStaffReviewAuthorize
     CorporateO2DraftService,
     CorporateO2AvailabilityService,
     CorporateO2ActivationGuard,
+    CorporateO2RateLimitGuard,
     CorporateTinReadService,
     CorporateStaffReviewService,
     CorporateInvestmentEligibilityService,
@@ -57,9 +65,46 @@ import { CORPORATE_STAFF_REVIEW_AUTHORIZER, DenyAllCorporateStaffReviewAuthorize
     { provide: CORPORATE_O2_HMAC_KEYRING, useClass: ConfigCorporateO2HmacKeyring },
     { provide: CORPORATE_TIN_ENCRYPTION_PROVIDER, useClass: AwsKmsCorporateTinEncryptionProvider },
     {
+      provide: CORPORATE_O2_REDIS_CLIENT,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const url = config.get<string>('corporate.o2.rateLimitRedisRestUrl');
+        const token = config.get<string>('corporate.o2.rateLimitRedisRestToken');
+        if (!url || !token) return undefined;
+        // Upstash Redis uses HTTPS; constructing the client does not connect.
+        // A command is issued only after the O2 activation/auth/CSRF guards pass.
+        return new Redis({
+          url,
+          token,
+          retry: false,
+          enableTelemetry: false,
+          signal: () => AbortSignal.timeout(1_500),
+        });
+      },
+    },
+    UpstashCorporateO2RateLimiter,
+    { provide: CORPORATE_O2_RATE_LIMITER, useExisting: UpstashCorporateO2RateLimiter },
+    {
       provide: KMSClient,
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => new KMSClient({ region: config.get<string>('corporate.o2.awsRegion') }),
+      useFactory: async (config: ConfigService) => {
+        const isVercel = config.get<boolean>('platform.isVercel') === true;
+        const roleArn = config.get<string>('corporate.o2.awsRoleArn');
+        let credentials;
+        if (isVercel && roleArn) {
+          // Import only on Vercel so local/test deployments keep the ordinary
+          // AWS SDK provider chain and never need a Vercel OIDC token.
+          const { awsCredentialsProvider } = await import('@vercel/oidc-aws-credentials-provider');
+          credentials = awsCredentialsProvider({ roleArn });
+        } else if (isVercel) {
+          // Fail closed rather than falling back to an ambient/static key on Vercel.
+          credentials = async () => { throw new Error('AWS_ROLE_ARN is required for Vercel KMS access.'); };
+        }
+        return new KMSClient({
+          region: config.get<string>('corporate.o2.awsRegion'),
+          ...(credentials ? { credentials } : {}),
+        });
+      },
     },
   ],
   exports: [

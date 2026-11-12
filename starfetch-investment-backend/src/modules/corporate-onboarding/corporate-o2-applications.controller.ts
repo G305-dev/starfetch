@@ -9,12 +9,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { KeyedRateLimit } from '../../common/rate-limit/keyed-rate-limit.decorator';
-import { KeyedRateLimitGuard } from '../../common/rate-limit/keyed-rate-limit.guard';
 import { CookieMutationGuard } from '../../common/security/cookie-mutation.guard';
 import { AuthenticatedRequest } from '../../common/types/auth-principal';
 import { AccessTokenGuard } from '../auth/guards/access-token.guard';
 import { CorporateApplicantGuard } from './guards/corporate-applicant.guard';
 import { CorporateO2ActivationGuard } from './services/corporate-o2-availability.service';
+import { CorporateO2RateLimitGuard } from './guards/corporate-o2-rate-limit.guard';
 import { CorporateO2CreateApplicationDto } from './dto/corporate-o2-create-application.input';
 import { CorporateO2DraftService } from './services/corporate-o2-draft.service';
 
@@ -35,7 +35,7 @@ export class CorporateO2ApplicationsController {
     AccessTokenGuard,
     CorporateApplicantGuard,
     CookieMutationGuard,
-    KeyedRateLimitGuard,
+    CorporateO2RateLimitGuard,
   )
   create(
     @Req() request: AuthenticatedRequest,

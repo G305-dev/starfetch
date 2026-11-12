@@ -68,6 +68,55 @@ describe('Phase 2B — authentication & identity (e2e, real PostgreSQL)', () => 
       expect(user?.authSessions).toHaveLength(0); // registration creates NO session
     });
 
+    it('registers a Corporate applicant without an InvestorProfile or elevated role', async () => {
+      const res = await request(t.server)
+        .post('/api/v1/auth/register')
+        .send({ registrationType: 'CORPORATE', email: 'corp-applicant@example.com', password: PASSWORD })
+        .expect(201);
+
+      expect(res.body.data.nextAction).toBe('VERIFY_EMAIL');
+      expect(res.body.data.accessToken).toBeUndefined();
+      expect(res.headers['set-cookie']).toBeUndefined();
+      const user = await t.prisma.user.findUnique({
+        where: { id: res.body.data.userId },
+        include: { investorProfile: true, emailVerificationChallenges: true, authSessions: true },
+      });
+      expect(user?.role).toBe('INVESTOR');
+      expect(user?.investorProfile).toBeNull();
+      expect(user?.emailVerifiedAt).toBeNull();
+      expect(user?.emailVerificationChallenges).toHaveLength(1);
+      expect(user?.authSessions).toHaveLength(0);
+
+      const code = t.mailer.latestFor('corp-applicant@example.com')?.code;
+      expect(code).toMatch(/^[0-9]{6}$/);
+      await request(t.server).post('/api/v1/auth/email/verify')
+        .send({ verificationId: res.body.data.verificationId, code }).expect(200);
+      const login = await request(t.server).post('/api/v1/auth/login')
+        .send({ email: 'corp-applicant@example.com', password: PASSWORD }).expect(200);
+      expect(login.body.data.user).toMatchObject({
+        role: 'INVESTOR', emailVerified: true, firstName: '', lastName: '',
+      });
+      expect(login.body.data.accessToken).toEqual(expect.any(String));
+
+      const me = await request(t.server).get('/api/v1/me')
+        .set('Authorization', `Bearer ${login.body.data.accessToken}`).expect(200);
+      expect(me.body.data).toMatchObject({ role: 'INVESTOR', firstName: '', lastName: '' });
+
+      const profile = await request(t.server).get('/api/v1/me/profile')
+        .set('Authorization', `Bearer ${login.body.data.accessToken}`).expect(404);
+      expect(profile.body.error.code).toBe('NOT_FOUND');
+    });
+
+    it('rejects caller-supplied roles and unknown registration types', async () => {
+      await request(t.server).post('/api/v1/auth/register')
+        .send({ registrationType: 'CORPORATE', role: 'ADMIN', email: 'role@example.com', password: PASSWORD })
+        .expect(400);
+      await request(t.server).post('/api/v1/auth/register')
+        .send({ registrationType: 'STAFF', email: 'type@example.com', password: PASSWORD })
+        .expect(400);
+      expect(await t.prisma.user.count()).toBe(0);
+    });
+
     it('stores only an Argon2id hash — never the plaintext password', async () => {
       const res = await registerUser(t, 'hash@example.com').expect(201);
       const user = await t.prisma.user.findUnique({ where: { id: res.body.data.userId } });

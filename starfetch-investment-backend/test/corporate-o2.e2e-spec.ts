@@ -13,6 +13,7 @@ import {
   TestCorporateTinEncryptionProvider,
 } from '../src/modules/corporate-onboarding/crypto/corporate-tin-encryption';
 import { CorporateApplicationReadService } from '../src/modules/corporate-onboarding/services/corporate-application-read.service';
+import { CORPORATE_O2_RATE_LIMITER } from '../src/modules/corporate-onboarding/rate-limit/corporate-o2-rate-limiter';
 import { TestApp, cleanDatabase, createTestApp } from './utils/test-app';
 
 const PATH = '/api/v1/corporate-accounts/applications';
@@ -50,6 +51,8 @@ describe('Corporate O2 DRAFT API (synthetic data, verified local PostgreSQL only
         { provide: CorporateO2AvailabilityService, useValue: activeGate },
         { provide: CORPORATE_O2_HMAC_KEYRING, useValue: testKeyring },
         { provide: CORPORATE_TIN_ENCRYPTION_PROVIDER, useValue: testEncryption },
+        // Isolated deterministic test port; never reaches Redis from E2E.
+        { provide: CORPORATE_O2_RATE_LIMITER, useValue: { consumeUser: jest.fn().mockResolvedValue({ allowed: true }) } },
       ],
     });
     accessTokens = t.app.get(AccessTokenService);

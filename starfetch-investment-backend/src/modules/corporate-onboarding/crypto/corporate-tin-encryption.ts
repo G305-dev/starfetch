@@ -47,6 +47,15 @@ function canonicalContext(context: Record<string, string>): Buffer {
   return Buffer.from(JSON.stringify(ordered), 'utf8');
 }
 
+function deploymentEnvironment(config: ConfigService): string {
+  // Vercel Preview functions commonly run with NODE_ENV=production. Only trust
+  // VERCEL_ENV when the platform marker is present; otherwise use NODE_ENV.
+  if (config.get<boolean>('platform.isVercel') === true) {
+    return config.get<string>('platform.vercelEnvironment') ?? 'development';
+  }
+  return config.get<string>('nodeEnv') ?? 'development';
+}
+
 function encryptAesGcm(plaintext: string, dataKey: Buffer, aad: Buffer) {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', dataKey, iv);
@@ -66,10 +75,14 @@ function failedClosed(): ServiceUnavailableException {
   return new ServiceUnavailableException(SERVICE_UNAVAILABLE);
 }
 
+function wipeBytes(value: Uint8Array | undefined): void {
+  value?.fill(0);
+}
+
 /**
  * Production adapter: AWS KMS GenerateDataKey( AES_256 ) + local AES-256-GCM.
- * AWS credentials are resolved only through the SDK's standard provider chain;
- * no access key or encryption key is embedded in this code.
+ * Vercel uses its OIDC-to-STS credential provider; non-Vercel deployments may
+ * use the AWS SDK default credential chain. No static AWS credential is embedded.
  */
 @Injectable()
 export class AwsKmsCorporateTinEncryptionProvider implements CorporateTinEncryptionProvider {
@@ -80,10 +93,11 @@ export class AwsKmsCorporateTinEncryptionProvider implements CorporateTinEncrypt
 
   async encrypt(plaintext: string, applicationId: string): Promise<EncryptedCorporateTin> {
     let dataKey: Buffer | undefined;
+    let kmsPlaintext: Uint8Array | undefined;
     try {
       const keyId = this.config.get<string>('corporate.o2.kmsKeyId');
       const keyVersion = this.config.get<string>('corporate.o2.kmsKeyVersion');
-      const environment = this.config.get<string>('nodeEnv') ?? 'development';
+      const environment = deploymentEnvironment(this.config);
       if (!keyId || !keyVersion || typeof plaintext !== 'string' || plaintext.length === 0) throw failedClosed();
       const context = encryptionContext(applicationId, environment);
       const generated = await this.kms.send(new GenerateDataKeyCommand({
@@ -91,10 +105,13 @@ export class AwsKmsCorporateTinEncryptionProvider implements CorporateTinEncrypt
         KeySpec: 'AES_256',
         EncryptionContext: context,
       }));
-      if (!generated.Plaintext || !generated.CiphertextBlob || generated.Plaintext.byteLength !== 32) {
+      kmsPlaintext = generated.Plaintext;
+      if (!kmsPlaintext || !generated.CiphertextBlob || kmsPlaintext.byteLength !== 32) {
         throw failedClosed();
       }
-      dataKey = Buffer.from(generated.Plaintext);
+      dataKey = Buffer.from(kmsPlaintext);
+      wipeBytes(kmsPlaintext);
+      kmsPlaintext = undefined;
       const encrypted = encryptAesGcm(plaintext, dataKey, canonicalContext(context));
       return {
         ciphertext: encrypted.ciphertext.toString('base64'),
@@ -109,23 +126,28 @@ export class AwsKmsCorporateTinEncryptionProvider implements CorporateTinEncrypt
     } catch {
       throw failedClosed();
     } finally {
+      wipeBytes(kmsPlaintext);
       dataKey?.fill(0);
     }
   }
 
   async decrypt(record: EncryptedCorporateTin, applicationId: string): Promise<Buffer> {
     let dataKey: Buffer | undefined;
+    let kmsPlaintext: Uint8Array | undefined;
     try {
       if (record.keyProvider !== 'AWS_KMS' || record.contextVersion !== CONTEXT_VERSION ||
           !record.keyId || !record.keyVersion) throw failedClosed();
-      const context = encryptionContext(applicationId, this.config.get<string>('nodeEnv') ?? 'development');
+      const context = encryptionContext(applicationId, deploymentEnvironment(this.config));
       const unwrapped = await this.kms.send(new DecryptCommand({
         KeyId: record.keyId,
         CiphertextBlob: Buffer.from(record.encryptedDataKey, 'base64'),
         EncryptionContext: context,
       }));
-      if (!unwrapped.Plaintext || unwrapped.Plaintext.byteLength !== 32) throw failedClosed();
-      dataKey = Buffer.from(unwrapped.Plaintext);
+      kmsPlaintext = unwrapped.Plaintext;
+      if (!kmsPlaintext || kmsPlaintext.byteLength !== 32) throw failedClosed();
+      dataKey = Buffer.from(kmsPlaintext);
+      wipeBytes(kmsPlaintext);
+      kmsPlaintext = undefined;
       return decryptAesGcm(
         Buffer.from(record.ciphertext, 'base64'),
         dataKey,
@@ -136,6 +158,7 @@ export class AwsKmsCorporateTinEncryptionProvider implements CorporateTinEncrypt
     } catch {
       throw failedClosed();
     } finally {
+      wipeBytes(kmsPlaintext);
       dataKey?.fill(0);
     }
   }

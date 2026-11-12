@@ -2,7 +2,7 @@ openapi: 3.0.3
 
 info:
   title: Starfetch Investment Limited — Platform API
-  version: 0.6.0
+  version: 0.6.1
   description: |
     Canonical API contract for the Starfetch platform (one API serving the public
     website, investor web portal, staff/admin portal, and the future Android/iOS
@@ -16,14 +16,26 @@ info:
     prerequisites, and staged snapshots do not imply verification or submission
     eligibility.
 
-    Individual and Joint contracts remain unchanged. Document upload, Mono
-    provider calls/webhooks, staff review, final compliance decisions and
-    investment eligibility/activation remain unavailable pending approved
-    policy, operational dependencies and coordinated D-06 change control.
+    Individual and Joint contracts remain unchanged. D-06 Revision 8 adds an
+    additive Corporate applicant registration variant to the existing auth
+    endpoint; legacy Individual registration remains the default. The
+    revision is implementation-backed and recorded for David/Emmanuel
+    coordination before client adoption; it does not introduce a Corporate
+    authentication role. Document upload, Mono provider calls/webhooks, staff
+    review, final compliance decisions and investment eligibility/activation
+    remain unavailable pending approved policy, operational dependencies and
+    coordinated D-06 change control.
 
     Change control: no unilateral breaking changes; breaking changes require a
-    coordinated version/change decision by David and Emmanuel.
-  x-status: PHASE-2D-PLUS-CORPORATE-O2-O4-OWNER-READS-SNAPSHOT-STAGING
+    coordinated version/change decision by David and Emmanuel. D-06 Revision 8
+    is a non-breaking, additive contract amendment; generated-client operationId
+    `registerInvestor` is retained for compatibility.
+  x-status: PHASE-2D-PLUS-CORPORATE-O2-O4-OWNER-READS-SNAPSHOT-STAGING-D06-REV8
+  x-d06-change-record:
+    revision: 8
+    date: 2026-10-22
+    classification: additive-non-breaking
+    coordination: pending-frontend-mobile-review-before-client-adoption
   contact:
     name: Starfetch Engineering (David — backend; Emmanuel — frontend/mobile)
 
@@ -76,17 +88,28 @@ paths:
       tags:
         - Auth
       operationId: registerInvestor
-      summary: Register an investor account
+      summary: Register an Individual or Corporate applicant
       description: |
-        Creates **User + InvestorProfile + EmailVerificationChallenge**
-        atomically (single transaction) with role `INVESTOR`. Registration
-        NEVER issues a session, access token or refresh credential and NEVER
-        marks the email verified — the client proceeds to email verification.
+        D-06 Revision 8 extends the existing registration contract additively.
+        All registrations atomically create a role-`INVESTOR` User and an
+        EmailVerificationChallenge. An Individual registration also creates an
+        InvestorProfile; a Corporate registration intentionally does not.
+        Registration NEVER issues a session, access token or refresh credential
+        and NEVER marks the email verified — the client proceeds to email
+        verification. The legacy operationId `registerInvestor` is retained
+        so generated clients are not renamed by this additive change.
 
-        Field contract (D-06 v1 baseline): exactly `firstName`, `lastName`,
-        `email`, `password`. `confirmPassword` is frontend-only; any additional
-        field (including `confirmPassword` or `phone`) is rejected by the
-        global validation pipeline.
+        Request variants:
+        - Omitted `registrationType` means `INDIVIDUAL` for existing clients;
+          `firstName`, `lastName`, `email`, and `password` are required.
+        - Explicit `registrationType: "INDIVIDUAL"` has the same required fields.
+        - `registrationType: "CORPORATE"` requires `email` and `password`;
+          `firstName` and `lastName` are optional, validated if supplied, and
+          are not persisted to an InvestorProfile. Corporate applicants should
+          omit them unless a coordinated client form requires them.
+        No caller-selected authentication role is accepted. `confirmPassword`
+        is frontend-only; other unknown fields (including `phone` and `role`)
+        are rejected by the global validation pipeline.
 
         Duplicate policy: `email` is stored in display form; uniqueness is
         enforced on `normalizedEmail` (trim + lowercase). Duplicate
@@ -257,6 +280,8 @@ paths:
         HttpOnly `Set-Cookie` (`sf_refresh`; `__Host-sf_refresh` where the
         host-prefixed name is valid) and a readable signed CSRF cookie
         (`sf_csrf`). The refresh credential NEVER appears in the JSON body.
+        A Corporate applicant without an `InvestorProfile` can authenticate
+        normally; its SafeUser `firstName` and `lastName` values are empty strings.
       requestBody:
         required: true
         content:
@@ -824,7 +849,10 @@ paths:
       description: |
         Requires `Authorization: Bearer <access-token>`. Returns the approved
         safe projection only — never password hashes, `normalizedEmail`,
-        session/token hashes, verification verifiers or internal secrets.
+        session/token hashes, verification verifiers or internal secrets. For
+        a Corporate applicant registered without an `InvestorProfile`,
+        `firstName` and `lastName` are empty strings; this is a normal safe-user
+        projection and does not invalidate authentication or Corporate O2 access.
       security:
         - bearerAuth: []
       responses:
@@ -867,7 +895,10 @@ paths:
         request parameters. `email` is read-only, sourced from the User
         record. The projection NEVER includes password hashes,
         `normalizedEmail`, session/token data, verification verifiers, or any
-        internal field.
+        internal field. Corporate applicants registered without an
+        `InvestorProfile` remain authenticated but receive `404 NOT_FOUND`
+        from this profile-specific route; it does not create an Individual
+        profile implicitly.
       security:
         - bearerAuth: []
       responses:
@@ -929,7 +960,9 @@ paths:
         local/international format; explicit `null` clears it). **`email` is
         NOT editable through this endpoint** — it is not part of the schema
         and is rejected as an unknown field. No other profile/KYC fields
-        exist on this surface.
+        exist on this surface. A Corporate applicant without an
+        `InvestorProfile` receives `404 NOT_FOUND`; this update route does not
+        create an Individual profile.
       security:
         - bearerAuth: []
       requestBody:
@@ -1192,31 +1225,75 @@ components:
         - meta
 
     RegisterRequest:
+      description: |
+        D-06 Revision 8 registration variants. Omitted registrationType is the
+        backward-compatible Individual request; Corporate is an explicit
+        alternative and never selects an authentication role.
+      oneOf:
+        - $ref: "#/components/schemas/RegisterIndividualRequestLegacy"
+        - $ref: "#/components/schemas/RegisterIndividualRequest"
+        - $ref: "#/components/schemas/RegisterCorporateRequest"
+
+    RegisterIndividualRequestLegacy:
       type: object
       additionalProperties: false
+      description: Legacy Individual request; omission of registrationType defaults to INDIVIDUAL.
       properties:
-        firstName:
-          type: string
-          minLength: 1
-          maxLength: 60
-        lastName:
-          type: string
-          minLength: 1
-          maxLength: 60
-        email:
-          type: string
-          format: email
-          maxLength: 320
+        firstName: { type: string, minLength: 1, maxLength: 60 }
+        lastName: { type: string, minLength: 1, maxLength: 60 }
+        email: { type: string, format: email, maxLength: 320 }
         password:
           type: string
           minLength: 8
           maxLength: 128
           description: Passphrase-friendly — NO composition rules (no required symbols/case/digits).
-      required:
-        - firstName
-        - lastName
-        - email
-        - password
+      required: [firstName, lastName, email, password]
+
+    RegisterIndividualRequest:
+      type: object
+      additionalProperties: false
+      description: Explicit Individual request; persists an InvestorProfile.
+      properties:
+        registrationType:
+          type: string
+          enum: [INDIVIDUAL]
+          description: Explicitly select the legacy Individual registration path.
+        firstName: { type: string, minLength: 1, maxLength: 60 }
+        lastName: { type: string, minLength: 1, maxLength: 60 }
+        email: { type: string, format: email, maxLength: 320 }
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: Passphrase-friendly — NO composition rules (no required symbols/case/digits).
+      required: [registrationType, firstName, lastName, email, password]
+
+    RegisterCorporateRequest:
+      type: object
+      additionalProperties: false
+      description: Corporate applicant registration; does not create an InvestorProfile.
+      properties:
+        registrationType:
+          type: string
+          enum: [CORPORATE]
+          description: Selects the Corporate applicant path, not a UserRole.
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Optional; validated if supplied and not persisted to an InvestorProfile.
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Optional; validated if supplied and not persisted to an InvestorProfile.
+        email: { type: string, format: email, maxLength: 320 }
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: Passphrase-friendly — NO composition rules (no required symbols/case/digits).
+      required: [registrationType, email, password]
 
     RegisterResponse:
       type: object
@@ -1291,11 +1368,18 @@ components:
 
     SafeUser:
       type: object
-      description: Public projection — never includes hashes or normalizedEmail.
+      description: |
+        Public projection — never includes hashes or normalizedEmail. For a
+        Corporate applicant account without an InvestorProfile, firstName and
+        lastName are empty strings; the user remains authenticated normally.
       properties:
         id: { type: string, format: uuid }
-        firstName: { type: string }
-        lastName: { type: string }
+        firstName:
+          type: string
+          description: Empty string when the account has no InvestorProfile (Corporate registration).
+        lastName:
+          type: string
+          description: Empty string when the account has no InvestorProfile (Corporate registration).
         email: { type: string }
         emailVerified: { type: boolean }
         role: { type: string, enum: [INVESTOR, STAFF, ADMIN] }
