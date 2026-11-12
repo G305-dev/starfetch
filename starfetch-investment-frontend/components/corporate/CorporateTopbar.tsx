@@ -9,7 +9,9 @@ function initials(firstName?: string, lastName?: string) {
 
 export function CorporateTopbar({ sectionLabel = "Overview" }: { sectionLabel?: string }) {
   const { status, user } = useAuth();
-  const name = status === "authenticated" && user ? `${user.firstName} ${user.lastName}`.trim() : "Corporate applicant";
+  const safeUserName = status === "authenticated" && user ? `${user.firstName} ${user.lastName}`.trim() : "";
+  // Empty SafeUser names are intentional for profileless Corporate applicants.
+  const name = safeUserName || "Corporate applicant";
 
   return (
     <header className="sticky top-0 z-40 flex min-h-[62px] items-center justify-between border-b border-star-200 bg-white/95 px-5 backdrop-blur-sm sm:px-8 lg:px-9" aria-label="Corporate portal header">

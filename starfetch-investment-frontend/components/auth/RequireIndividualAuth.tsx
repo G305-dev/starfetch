@@ -5,7 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
 import { useAuth } from "./AuthProvider";
 
-export function RequireIndividualAuth({ children }: { children: ReactNode }) {
+/** Requires an authenticated backend session. It does not query or require an Individual InvestorProfile. */
+export function RequireInvestorAuth({ children }: { children: ReactNode }) {
   const { status } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
@@ -18,3 +19,6 @@ export function RequireIndividualAuth({ children }: { children: ReactNode }) {
   if (status === "unauthenticated") return null;
   return <>{children}</>;
 }
+
+/** Legacy alias retained for existing Individual and Joint route imports. */
+export const RequireIndividualAuth = RequireInvestorAuth;

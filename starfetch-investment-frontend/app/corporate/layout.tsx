@@ -1,6 +1,6 @@
-import { RequireIndividualAuth } from "@/components/auth/RequireIndividualAuth";
+import { RequireInvestorAuth } from "@/components/auth/RequireIndividualAuth";
 
-/** Corporate views require the existing authenticated Investor session. */
+/** Corporate views require an authenticated backend session, not an Individual profile. */
 export default function CorporateLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <RequireIndividualAuth>{children}</RequireIndividualAuth>;
+  return <RequireInvestorAuth>{children}</RequireInvestorAuth>;
 }

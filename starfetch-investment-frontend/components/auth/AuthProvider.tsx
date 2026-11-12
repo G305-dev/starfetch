@@ -7,7 +7,7 @@ import {
   clearAccessToken,
   getCurrentUser,
   type AuthUser,
-  loginIndividual,
+  loginInvestor,
   logoutSession,
   refreshAccessToken,
   setAccessToken,
@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("loading");
 
     try {
-      const result = await loginIndividual({ email, password });
+      const result = await loginInvestor({ email, password });
       if (operation !== operationRef.current) throw new ApiError("UNAUTHENTICATED");
       setAccessToken(result.accessToken);
       const currentUser = result.user ?? await getCurrentUser();

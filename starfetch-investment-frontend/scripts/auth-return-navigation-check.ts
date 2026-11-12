@@ -43,4 +43,4 @@ if (jointSignInNext !== "/register/joint" || getSafeReturnPath(jointSignInNext) 
   throw new Error("Joint registration explanation actions do not preserve safe registration navigation");
 }
 
-console.log("PASS — safe post-login return navigation, including the verified-Investor Corporate preparation route, and Joint registration entry actions accept internal paths and reject external, malformed, encoded, and auth-loop redirects");
+console.log("PASS — safe post-login return navigation, including the Corporate applicant preparation route, and Joint registration entry actions accept internal paths and reject external, malformed, encoded, and auth-loop redirects");
