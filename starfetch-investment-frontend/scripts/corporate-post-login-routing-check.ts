@@ -26,11 +26,11 @@ assert(
 );
 
 assert(
-  signIn.includes('safeNextPath === "/corporate/dashboard" || safeNextPath === "/register/corporate"')
-    && signIn.includes('accountType === "corporate" ? "/corporate/dashboard"')
-    && signIn.includes('router.replace(corporateApplicantLogin ? "/corporate/dashboard" : safeNextPath ?? defaultDestination)')
+  signIn.includes('safeNextPath?.startsWith("/corporate/") || safeNextPath === "/register/corporate"')
+    && signIn.includes('const corporateDestination = safeNextPath?.startsWith("/corporate/") ? safeNextPath : "/corporate/dashboard";')
+    && signIn.includes('router.replace(accountType === "corporate" ? corporateDestination : safeNextPath ?? defaultDestination);')
     && !signIn.includes('accountType === "corporate" ? "/register/corporate"'),
-  "Corporate sign-in must default to /corporate/dashboard and normalise the legacy registration return path without a redirect loop",
+  "Corporate sign-in must default to /corporate/dashboard, preserve protected Corporate return routes, and normalise the legacy registration path without a redirect loop",
 );
 
 assert(

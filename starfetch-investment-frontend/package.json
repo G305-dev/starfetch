@@ -19,6 +19,7 @@
     "test:corporate-api": "node scripts/run-typescript-check.cjs scripts/corporate-api-contract-check.ts",
     "test:corporate-registration": "node scripts/run-typescript-check.cjs scripts/corporate-applicant-registration-check.ts",
     "test:corporate-post-login-routing": "node scripts/run-typescript-check.cjs scripts/corporate-post-login-routing-check.ts",
+    "test:general-corporate-login": "node scripts/run-typescript-check.cjs scripts/general-corporate-login-check.ts",
     "test:about-profile-cards": "node scripts/run-typescript-check.cjs scripts/about-profile-cards-check.ts",
     "test:market-widgets": "node scripts/run-typescript-check.cjs scripts/market-widgets-check.ts"
   },
