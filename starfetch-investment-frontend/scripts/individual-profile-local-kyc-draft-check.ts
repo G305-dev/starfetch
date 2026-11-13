@@ -28,6 +28,14 @@ assert(
     && source.includes("not submitted, saved, verified or retained"),
   "Requested KYC fields must remain an explicitly bounded in-memory draft",
 );
+assert(
+  source.includes('value={profile.firstName} readOnly aria-readonly="true"')
+    && source.includes('value={profile.lastName} readOnly aria-readonly="true"')
+    && source.includes("Your name is managed by your account and cannot be changed here.")
+    && !source.includes("setProfile({ ...profile, firstName:")
+    && !source.includes("setProfile({ ...profile, lastName:"),
+  "Individual first and last names must be account-managed read-only fields",
+);
 const saveStart = source.indexOf("const savedProfile = await updateMyProfile({");
 const saveEnd = source.indexOf("});", saveStart) + 3;
 const saveCall = source.slice(saveStart, saveEnd);
@@ -44,4 +52,4 @@ assert(
   "Sensitive local KYC draft details must not be persisted or logged by the browser",
 );
 
-console.log("PASS — Individual profile includes the requested local KYC draft fields and ID-type options without persisting, logging, or transmitting unapproved sensitive data");
+console.log("PASS — Individual profile keeps account-managed names read-only and includes the requested local KYC draft fields without persisting, logging, or transmitting unapproved sensitive data");

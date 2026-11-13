@@ -18,11 +18,11 @@ for (const text of ["Source of Funds and Wealth", "AML/CFT", "Salary / employmen
   assert(draft.includes(text), `Missing required source-of-funds draft content: ${text}`);
 }
 assert(
-  draft.includes('type="checkbox"')
+  !draft.includes("Use this current-page draft to review the source of funds for a future approved workflow.")
+    && draft.includes('type="checkbox"')
     && draft.includes("emptySourceOfFundsDraft")
-    && draft.includes("not submitted, stored, screened, assessed, or retained")
     && !/(?:window\.)?(?:localStorage|sessionStorage)\s*[.[]|fetch\(|updateMyProfile|console\.(log|info|debug)/i.test(draft),
-  "Source-of-funds data must remain a current-page-only draft with no browser persistence, API write, AML/CFT screening, or logging",
+  "The requested Source of Funds explanatory copy must be removed while the data remains a current-page-only draft with no browser persistence, API write, AML/CFT screening, or logging",
 );
 assert(
   profile.includes("SourceOfFundsDraft")
@@ -31,4 +31,4 @@ assert(
   "The Source of Funds and Wealth form must replace the unavailable Employment and Source of Funds card in Personal Information",
 );
 
-console.log("PASS — Individual Profile includes the requested local Source of Funds and Wealth draft without persisting, transmitting, screening, assessing, or verifying AML/CFT information");
+console.log("PASS — Individual Profile includes the requested local Source of Funds and Wealth draft without the removed explanatory copy, and without persisting, transmitting, screening, assessing, or verifying AML/CFT information");

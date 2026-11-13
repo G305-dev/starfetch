@@ -26,7 +26,8 @@ const requiredCopy = [
   "Moderate",
   "Aggressive",
   "Investment horizon",
-  "< 1 year",
+  "180 days",
+  "365 days",
   "1–3 years",
   "3–5 years",
   "5 years +",
@@ -42,6 +43,7 @@ const requiredCopy = [
   "Investment restrictions or exclusions (if any)",
 ];
 for (const text of requiredCopy) assert(draft.includes(text), `Investment objective/risk draft is missing: ${text}`);
+assert(!draft.includes("< 1 year"), "Investment horizon must not offer the removed less-than-one-year option");
 assert(
   draft.includes('type="radio"')
     && draft.includes("emptyInvestmentObjectiveRiskDraft")
@@ -57,4 +59,4 @@ assert(
   "The new investment objective/risk section must replace the unavailable Identity Verification and Investment Risk Profile cards in the Individual profile",
 );
 
-console.log("PASS — Individual Profile renders the requested local Investment Objective and Risk Profile section without persisting, transmitting, assessing, or verifying investor suitability data");
+console.log("PASS — Individual Profile renders the requested local Investment Objective and Risk Profile section with 180-day and 365-day horizons, without persisting, transmitting, assessing, or verifying investor suitability data");
