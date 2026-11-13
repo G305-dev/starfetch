@@ -36,7 +36,7 @@ export function Footer() {
           <p>RC 7402697 · Incorporated in Nigeria under CAMA 2020.</p>
           <p className="mt-2">Registered with the Securities and Exchange Commission, Nigeria as a Fund/Portfolio Manager.</p>
           <p className="mt-2 max-w-5xl">Investing involves risk, including the possible loss of principal. Past performance is not a reliable indicator of future results. Nothing on this website constitutes investment, legal or tax advice, an offer, or a solicitation to buy or sell any security.</p>
-          <p id="market-data-notice" className="mt-2 max-w-5xl">Equity prices shown on our home page are supplied by TradingView, a licensed redistributor of Nigerian Exchange data. Prices may be delayed and are shown for information only — they are not an offer, a recommendation, or an indication of the performance of any Starfetch product.</p>
+          <p id="market-data-notice" className="mt-2 max-w-5xl">Selected global market data on our home page is supplied through TradingView widgets. Data availability and delays vary by instrument; Nigerian Exchange (NGX) prices are not displayed through these widgets. Information is provided for general awareness only — it is not an offer, a recommendation, or an indication of the performance of any Starfetch product.</p>
           <p className="mt-2">© 2026 Starfetch Investment Limited. All rights reserved.</p>
         </div>
       </div>

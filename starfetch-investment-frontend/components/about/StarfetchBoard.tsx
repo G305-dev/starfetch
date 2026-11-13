@@ -1,10 +1,16 @@
 import { PeopleSection, type PeopleProfile } from "./PeopleSection";
 
+/** Only approved Board records are rendered; no placeholder directors are shown. */
 const boardMembers: PeopleProfile[] = [
-  { name: "Toluwani Adeseri", role: "Co founder", image: "/images/executive-portrait-1.jpg", alt: "Toluwani Adeseri, Co founder of Starfetch", position: "object-center" },
-  { name: "Name to be provided", role: "Role to be provided", image: "/images/executive-portrait-2.png", alt: "Professional portrait provided for the Starfetch Board section", position: "object-center" },
-  { name: "Name to be provided", role: "Role to be provided", image: "/images/executive-placeholder.svg", alt: "Neutral Starfetch Board member profile placeholder", position: "object-center" },
-  { name: "Name to be provided", role: "Role to be provided", image: "/images/executive-placeholder.svg", alt: "Neutral Starfetch Board member profile placeholder", position: "object-center" },
+  {
+    name: "Toluwani Adeseri",
+    role: "Co founder",
+    image: "/images/toluwani-adeseri.png",
+    alt: "Toluwani Adeseri, Co founder of Starfetch",
+    position: "object-center",
+    biography: "A strategic finance and investment leader who has built his career where capital markets meet balance-sheet discipline. He drives portfolio strategy, treasury and execution with the conviction that consistent, well-managed returns are the product of process, not chance — bringing rigour, discipline and a relentless client focus to every mandate. Track record spanning KPMG, Page Asset Management, Renaissance Capital, among others.",
+    qualifications: ["CFA Charterholder", "ACA (ICAN)", "BSc Accounting", "Executive MBA"],
+  },
 ];
 
 export function StarfetchBoard() {
