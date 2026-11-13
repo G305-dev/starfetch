@@ -11,6 +11,7 @@ import {
   TestCorporateTinEncryptionProvider,
 } from '../src/modules/corporate-onboarding/crypto/corporate-tin-encryption';
 import { CorporateO2AvailabilityService } from '../src/modules/corporate-onboarding/services/corporate-o2-availability.service';
+import { CORPORATE_O2_RATE_LIMITER } from '../src/modules/corporate-onboarding/rate-limit/corporate-o2-rate-limiter';
 import { ApplicationRulesetBindingService } from '../src/modules/verification-rulesets/services/application-ruleset-binding.service';
 import { VerificationRulesetDraftService } from '../src/modules/verification-rulesets/services/verification-ruleset-draft.service';
 import { VERIFICATION_RULESET_AUTHORING_AUTHORIZER } from '../src/modules/verification-rulesets/security/ruleset-authoring-authorizer';
@@ -47,6 +48,7 @@ describe('Corporate O4 draft amendments (synthetic data, isolated PostgreSQL)', 
     t = await createTestApp({
       providerOverrides: [
         { provide: CorporateO2AvailabilityService, useValue: activeGate },
+        { provide: CORPORATE_O2_RATE_LIMITER, useValue: { consumeUser: jest.fn().mockResolvedValue({ allowed: true }) } },
         { provide: CORPORATE_O2_HMAC_KEYRING, useValue: keyring },
         { provide: CORPORATE_TIN_ENCRYPTION_PROVIDER, useValue: encryption },
         { provide: VERIFICATION_RULESET_AUTHORING_AUTHORIZER, useValue: testAuthoringAuthorizer },

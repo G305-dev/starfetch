@@ -9,6 +9,7 @@ import {
   TestCorporateTinEncryptionProvider,
 } from '../src/modules/corporate-onboarding/crypto/corporate-tin-encryption';
 import { CorporateO2AvailabilityService } from '../src/modules/corporate-onboarding/services/corporate-o2-availability.service';
+import { CORPORATE_O2_RATE_LIMITER } from '../src/modules/corporate-onboarding/rate-limit/corporate-o2-rate-limiter';
 import { TestApp, cleanDatabase, createTestApp } from './utils/test-app';
 
 const O2_PATH = '/api/v1/corporate-accounts/applications';
@@ -39,6 +40,7 @@ describe('Corporate O3/O11 owner-scoped reads (synthetic data, isolated PostgreS
     t = await createTestApp({
       providerOverrides: [
         { provide: CorporateO2AvailabilityService, useValue: activeGate },
+        { provide: CORPORATE_O2_RATE_LIMITER, useValue: { consumeUser: jest.fn().mockResolvedValue({ allowed: true }) } },
         { provide: CORPORATE_O2_HMAC_KEYRING, useValue: testKeyring },
         { provide: CORPORATE_TIN_ENCRYPTION_PROVIDER, useValue: testEncryption },
       ],
