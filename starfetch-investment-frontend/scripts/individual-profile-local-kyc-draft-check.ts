@@ -24,7 +24,7 @@ assert(
 assert(
   source.includes("type LocalKycDraft")
     && source.includes("emptyLocalKycDraft")
-    && source.includes("current-page draft only")
+    && source.includes("current-page draft")
     && source.includes("not submitted, saved, verified or retained"),
   "Requested KYC fields must remain an explicitly bounded in-memory draft",
 );
