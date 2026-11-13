@@ -1,10 +1,3 @@
-export const marketTickerItems = [
-  { label: "NGX — All Share Index", value: "—", detail: "Market index" },
-  { label: "USD/NGN", value: "—", detail: "Official rate" },
-  { label: "Treasury Bills", value: "—", detail: "Average yield" },
-  { label: "FGN Bonds", value: "—", detail: "Average yield" },
-];
-
 export const services = [
   {
     id: "service-fixed-note",
@@ -31,8 +24,6 @@ export const services = [
     alt: "Two professionals reviewing a contract and laptop together before an investment decision",
   },
 ];
-
-export const marketEquities = ["Access Holdings", "MTN Nigeria", "BUA Foods"];
 
 export const whoWeArePoints = [
   {
