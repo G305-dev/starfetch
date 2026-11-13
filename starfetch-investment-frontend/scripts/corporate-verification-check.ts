@@ -13,6 +13,7 @@ const profile = read("components/corporate/CorporateProfileContent.tsx");
 const onboarding = read("components/auth/CorporateOnboardingFlow.tsx");
 const documents = read("components/corporate/CorporateDocumentsContent.tsx");
 const investments = read("components/corporate/CorporateInvestmentsContent.tsx");
+const navigation = read("components/corporate/corporate-dashboard-data.ts");
 
 function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
 
@@ -38,6 +39,8 @@ assert(workspace.includes("requestError.code === \"CONFLICT\"") && workspace.inc
 assert(workspace.includes("getCorporateSnapshotFreshness") && verification.includes("SnapshotFreshness") && verification.includes("not Mono verification, document completion, submission permission, compliance approval or investment eligibility") && verification.includes("Snapshot regeneration is not offered"), "Read-only technical snapshot freshness must remain accurately bounded");
 assert(verification.includes("application lifecycle status does not prove verification evidence") && verification.includes("Corporate investors cannot approve their own applications") && verification.includes("Safe metadata only. Previous values, TIN/envelope data and actor information are not exposed."), "Three-tier independence or safe history boundaries are missing");
 assert(!dashboard.includes("Corporate account discovery unavailable") && dashboard.includes("owner-scoped discovery API") && !profile.includes("owner-scoped account-discovery API has not been approved"), "Dashboard/profile must describe approved discovery accurately");
+assert(!navigation.includes('label: "Settings"') && !navigation.includes('href: "/corporate/settings"'), "Corporate Settings must not be exposed as a Corporate account navigation tab");
+assert(navigation.includes('label: "Products", href: "/corporate/products", icon: PackageOpen') && !navigation.includes('label: "Documents", href: "/corporate/documents"'), "Corporate navigation must expose Products instead of the Documents tab");
 assert(!documents.includes('type="file"') && !documents.includes("UploadPanel") && !documents.includes("setTimeout"), "Document upload must remain unavailable without an approved ruleset");
 assert(investments.includes("Create investment unavailable") && investments.includes("Investment creation and funding remain restricted"), "Restricted investment actions are not safely unavailable");
 assert(onboarding.includes("createCorporateApplication(toCorporateDraftInput(data), requestKey)") && onboarding.includes("setData(initialCorporateApplicationData)") && onboarding.includes("setIdempotencyKey(null)") && onboarding.includes("[status, user?.id]"), "O2 form-sensitive state must continue to clear after success and session changes");

@@ -3,7 +3,7 @@ import {
   Building2,
   FileText,
   Landmark,
-  Settings,
+  PackageOpen,
   ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -15,9 +15,8 @@ export const corporateSidebarNavigation: CorporateSidebarNavigationItem[] = [
   { label: "Overview", href: "/corporate/dashboard", icon: Landmark },
   { label: "Investments", href: "/corporate/investments", icon: BarChart3 },
   { label: "Transactions", href: "/corporate/transactions", icon: FileText },
-  { label: "Documents", href: "/corporate/documents", icon: FileText },
+  { label: "Products", href: "/corporate/products", icon: PackageOpen },
   { label: "Company Profile", href: "/corporate/profile", icon: Building2 },
-  { label: "Settings", href: "/corporate/settings", icon: Settings },
 ];
 
 /**

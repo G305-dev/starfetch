@@ -9,5 +9,5 @@ export const metadata: Metadata = {
 };
 
 export default function JointProductsPage() {
-  return <div className="min-h-screen bg-[#f7f9f8] lg:pl-[270px]"><JointSidebar /><div className="min-w-0"><JointHeader /><main className="mx-auto w-full max-w-[1600px] px-5 py-8 sm:px-8 lg:px-8 xl:px-10"><ProductsContent fixedNoteHref="/joint/products/fixed-note" /></main></div></div>;
+  return <div className="min-h-screen bg-[#f7f9f8] lg:pl-[270px]"><JointSidebar /><div className="min-w-0"><JointHeader /><main className="mx-auto w-full max-w-[1600px] px-5 py-8 sm:px-8 lg:px-8 xl:px-10"><ProductsContent fixedNoteHref="/joint/products/fixed-note" showAvailabilityNotice={false} showIndividualInvestNowActions={false} /></main></div></div>;
 }
