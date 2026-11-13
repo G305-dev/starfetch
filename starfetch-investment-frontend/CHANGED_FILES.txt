@@ -1,0 +1,9 @@
+Frontend source and tests
+- components/auth/SignInForm.tsx
+- scripts/corporate-applicant-registration-check.ts
+- scripts/corporate-post-login-routing-check.ts
+- scripts/general-corporate-login-check.ts (new)
+- package.json
+
+Delivery document
+- Starfetch_General_Business_Corporate_Login_Completion_Report.md
