@@ -18,8 +18,22 @@ for (const label of requestedLabels) {
 assert(
   source.includes('const idCardTypes = ["", "Passport", "PVC", "Driver’s License", "NIN"]')
     && source.includes("Select ID card type")
-    && source.includes("<select"),
-  "ID card type must provide the approved Passport, PVC, Driver’s License, and NIN dropdown options",
+    && source.includes("localKycDraft.idCardType ?")
+    && source.includes("Upload {localKycDraft.idCardType}")
+    && source.includes('type="file"')
+    && source.includes('accept=".pdf,image/jpeg,image/png"')
+    && source.includes("idDocumentSelected")
+    && source.includes('if (!localKycDraft.idDocumentSelected) return "Select an ID document file to continue.";')
+    && source.includes("not uploaded, sent, or stored by the portal"),
+  "Selecting an approved ID card type must reveal a current-page-only document upload form without uploading or storing the file",
+);
+assert(
+  source.includes('value={localKycDraft.gender}')
+    && source.includes("Select gender")
+    && source.includes('value="male"')
+    && source.includes('value="female"')
+    && !source.includes('placeholder="Enter gender"'),
+  "Gender must be selected from the approved Male and Female dropdown options",
 );
 assert(
   source.includes("type LocalKycDraft")
@@ -44,12 +58,12 @@ assert(
     && saveCall.includes("firstName: profile.firstName.trim()")
     && saveCall.includes("lastName: profile.lastName.trim()")
     && saveCall.includes("phone: profile.phone?.trim() || null")
-    && !/(dateOfBirth|gender|nationality|residentialAddress|stateOfResidence|idCardType|occupation)/.test(saveCall),
-  "Local KYC draft fields must not be sent through the current approved profile update contract",
+    && !/(dateOfBirth|gender|nationality|residentialAddress|stateOfResidence|idCardType|idDocumentSelected|occupation)/.test(saveCall),
+  "Local KYC draft fields and the selected ID-document state must not be sent through the current approved profile update contract",
 );
 assert(
   !/(?:window\.)?(?:localStorage|sessionStorage)\s*[.[]|console\.(log|info|debug)/i.test(source),
   "Sensitive local KYC draft details must not be persisted or logged by the browser",
 );
 
-console.log("PASS — Individual profile keeps account-managed names read-only and includes the requested local KYC draft fields without persisting, logging, or transmitting unapproved sensitive data");
+console.log("PASS — Individual profile keeps account-managed names read-only, provides Gender and conditional ID-document controls, and keeps local KYC data/files out of browser persistence and API submissions");
