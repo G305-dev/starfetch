@@ -39,17 +39,19 @@ async function run() {
   const registrationForm = read("components/auth/CorporateApplicantRegistrationForm.tsx");
   const entry = read("components/auth/CorporateRegistrationEntry.tsx");
   const signIn = read("components/auth/SignInForm.tsx");
+  const verificationSuccess = read("components/auth/EmailVerificationSuccess.tsx");
   const verification = read("lib/auth/verification-flow.ts");
   const onboarding = read("components/auth/CorporateOnboardingFlow.tsx");
   const corporateLayout = read("app/corporate/layout.tsx");
   assert(registrationForm.includes("registerCorporateApplicant({ email, password })") && client.includes('const body = { registrationType: "CORPORATE" as const, email: input.email, password: input.password }') && registrationForm.includes('router.push("/register/corporate/verify-email")'), "Corporate registration form must use the exact client payload and begin email verification");
-  assert(entry.includes("status === \"authenticated\"") && entry.includes("CorporateApplicantRegistrationForm") && entry.includes("CorporateOnboardingFlow"), "Corporate route must register an unauthenticated visitor and continue onboarding only after authentication");
-  assert(signIn.includes("corporateApplicantLoginType") && signIn.includes("/register/corporate/verify-email") && signIn.includes("Log In to Continue Corporate Registration") && !signIn.includes("Use an existing verified Individual or Joint Investor"), "Corporate login routing must use the normal Investor session and not require an existing Individual/Joint account");
+  assert(entry.includes("status === \"authenticated\"") && entry.includes("CorporateApplicantRegistrationForm") && entry.includes('router.replace("/corporate/dashboard")') && !entry.includes("CorporateOnboardingFlow"), "Corporate route must register an unauthenticated visitor and redirect an authenticated applicant to the protected dashboard without forcing O2");
+  assert(signIn.includes("corporateApplicantLoginType") && signIn.includes("/register/corporate/verify-email") && signIn.includes('accountType === "corporate" ? "/corporate/dashboard"') && signIn.includes('router.replace(corporateApplicantLogin ? "/corporate/dashboard" : safeNextPath ?? defaultDestination)') && signIn.includes("Log In to Corporate Applicant Dashboard") && !signIn.includes("Use an existing verified Individual or Joint Investor"), "Corporate login routing must use the normal Investor session, normalise the legacy registration path to the dashboard, and not require an existing Individual/Joint account");
+  assert(verificationSuccess.includes('"/login?next=%2Fcorporate%2Fdashboard"') && !verificationSuccess.includes('"/login?next=%2Fregister%2Fcorporate"'), "Corporate verification success must return through login to the protected Corporate dashboard");
   assert(verification.includes('registrationType: RegistrationJourney') && verification.includes("Routing/presentation state only") && onboarding.includes("authenticated owner-scoped Corporate application discovery API") && corporateLayout.includes("RequireInvestorAuth"), "Verification routing, returning Corporate discovery, and authenticated Corporate dashboard boundaries are missing");
   assert(!/(?:window\.)?(?:localStorage)\s*[.[]|console\.(log|info|debug)/i.test(registrationForm + entry + signIn + onboarding), "Corporate credentials and application data must not be logged or persisted in local storage");
 
   globalThis.fetch = originalFetch;
-  console.log("PASS — Corporate applicant registration uses the v0.6.1 exact request, profileless INVESTOR login, verified continuation route and protected onboarding/dashboard boundaries while Individual registration remains unchanged");
+  console.log("PASS — Corporate applicant registration uses the v0.6.1 exact request, profileless INVESTOR login, verified dashboard continuation and protected applicant/dashboard boundaries while Individual registration remains unchanged");
 }
 
 void run().catch((error: unknown) => { globalThis.fetch = originalFetch; throw error; });

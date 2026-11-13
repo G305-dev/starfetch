@@ -33,7 +33,8 @@ for (const required of [
 
 assert(team.includes("max-w-[920px]") && team.includes("h-[58px]") && team.includes("max-w-[125px]") && !team.includes("The management team is supported by an experienced and professional advisory board."), "Institution tiles must use the smaller clear logo treatment and omit the removed supporting text");
 assert(!team.includes("Name to be provided") && !team.includes("executive-placeholder") && !board.includes("Name to be provided") && !board.includes("executive-placeholder"), "Board/Leadership sections must not create or retain placeholder people");
-assert(board.includes("Board of Directors") && board.includes("Toluwani Adeseri") && board.includes("Co founder") && board.includes("biography"), "The separate Board section and its approved record must remain");
+assert(peopleSection.includes("showBiographies && person.biography"), "The shared profile renderer must be able to suppress biography copy for an approved section without affecting Leadership biographies");
+assert(board.includes("Board of Directors") && board.includes("Sylvia Igwe-Okparaeke") && board.includes("Toluwani Adeseri") && board.includes("Co founder") && board.includes("showBiographies={false}") && !board.includes("biography"), "The separate Board section must include the two approved people and intentionally omit descriptions after their designation");
 assert(about.includes("<StarfetchBoard />") && about.includes("<Team />"), "About Us must preserve both Board and Leadership sections");
 
 for (const asset of [
