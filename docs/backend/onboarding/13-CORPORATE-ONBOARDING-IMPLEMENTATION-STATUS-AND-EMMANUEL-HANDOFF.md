@@ -5,7 +5,7 @@
 
 ## Implemented in this repository
 
-The earlier O2/O3/O11 implementation is covered by `10-D06-CORPORATE-O2-ADDENDUM.md`. The additional O4 surface is formally recorded in `12-D06-CORPORATE-O4-OWNER-SCOPED-DRAFT-AMENDMENT-AND-SNAPSHOT-STAGING.md` and canonical OpenAPI v0.6.0.
+The earlier O2/O3/O11 implementation is covered by `10-D06-CORPORATE-O2-ADDENDUM.md`. The additional O4 surface is formally recorded in `12-D06-CORPORATE-O4-OWNER-SCOPED-DRAFT-AMENDMENT-AND-SNAPSHOT-STAGING.md`. D-06 Revision 8 (`15-D06-CORPORATE-APPLICANT-REGISTRATION-ADDENDUM.md`) is a separate additive auth-registration amendment in canonical OpenAPI v0.6.1; David/Emmanuel coordination is pending before frontend/mobile adoption.
 
 - **O2**: authenticated owner-bound Corporate DRAFT creation from the original six fields, idempotent receipt, HMAC fingerprint/key digests, encrypted TIN envelope, and fail-closed privacy/KMS gate. O2 remains unavailable by default until its explicit operational/privacy gates pass.
 - **O3/O11**: initiator-only details/status and safe history reads using explicit CorporateAccount IDs, generic non-owner 404s, and a masked-or-null TIN projection. History now includes safe immutable amendment metadata only.
@@ -17,7 +17,7 @@ The earlier O2/O3/O11 implementation is covered by `10-D06-CORPORATE-O2-ADDENDUM
 
 ### Emmanuel contract handoff
 
-Use `docs/api/openapi.yaml` v0.6.0 as the canonical API schema and the two D-06 addenda for operational semantics. In particular:
+Use `docs/api/openapi.yaml` v0.6.1 as the canonical API schema and the D-06 addenda for operational semantics. Review D-06 Revision 8 before client adoption: Corporate registration requires email/password, omits the InvestorProfile, returns blank name fields from auth SafeUser responses, and receives the existing safe 404 from Individual profile routes. In particular:
 
 ```http
 PATCH /api/v1/corporate-accounts/{corporateAccountId}/onboarding/draft

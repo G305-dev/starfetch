@@ -5,6 +5,10 @@ export default () => {
   return {
     nodeEnv,
     productionLike,
+    platform: {
+      isVercel: process.env.VERCEL === '1',
+      vercelEnvironment: process.env.VERCEL_ENV,
+    },
     port: parseInt(process.env.PORT ?? '4000', 10),
     api: {
       prefix: process.env.API_PREFIX ?? 'api/v1',
@@ -63,9 +67,13 @@ export default () => {
         retentionApproved: process.env.CORPORATE_O2_RETENTION_APPROVED === 'true',
         kmsKeyId: process.env.CORPORATE_O2_KMS_KEY_ID,
         kmsKeyVersion: process.env.CORPORATE_O2_KMS_KEY_VERSION,
+        awsRoleArn: process.env.AWS_ROLE_ARN,
         awsRegion: process.env.AWS_REGION,
         hmacActiveVersion: process.env.CORPORATE_O2_HMAC_ACTIVE_KEY_VERSION,
         hmacKeysJson: process.env.CORPORATE_O2_HMAC_KEYS_JSON,
+        rateLimitRedisRestUrl: process.env.CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL,
+        rateLimitRedisRestToken: process.env.CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN,
+        rateLimitHmacSecret: process.env.CORPORATE_O2_RATE_LIMIT_HMAC_SECRET,
       },
       mono: {
         enabled: process.env.MONO_PROVE_ENABLED === 'true',

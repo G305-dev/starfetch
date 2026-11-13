@@ -29,11 +29,12 @@ describe('Corporate TIN envelope encryption', () => {
   });
 
   it('uses KMS GenerateDataKey and Decrypt with the exact application-bound encryption context', async () => {
-    const dataKey = Buffer.alloc(32, 0x31);
+    const generatedDataKey = Buffer.alloc(32, 0x31);
+    const decryptedDataKey = Buffer.alloc(32, 0x31);
     const kms = {
       send: jest.fn()
-        .mockResolvedValueOnce({ Plaintext: dataKey, CiphertextBlob: Buffer.from('synthetic-wrapped-key'), KeyId: 'arn:aws:kms:synthetic:key/versioned' })
-        .mockResolvedValueOnce({ Plaintext: dataKey }),
+        .mockResolvedValueOnce({ Plaintext: generatedDataKey, CiphertextBlob: Buffer.from('synthetic-wrapped-key'), KeyId: 'arn:aws:kms:synthetic:key/versioned' })
+        .mockResolvedValueOnce({ Plaintext: decryptedDataKey }),
     };
     const config = { get: (key: string) => ({
       'corporate.o2.kmsKeyId': 'arn:aws:kms:synthetic:key/current',
@@ -61,6 +62,34 @@ describe('Corporate TIN envelope encryption', () => {
     expect(kms.send.mock.calls[1][0].input).toMatchObject({ KeyId: record.keyId });
     expect(result.toString('utf8')).toBe(SYNTHETIC_TIN);
     result.fill(0);
+    expect(generatedDataKey.every((byte) => byte === 0)).toBe(true);
+    expect(decryptedDataKey.every((byte) => byte === 0)).toBe(true);
+  });
+
+  it('binds Vercel Preview envelopes to VERCEL_ENV instead of production NODE_ENV', async () => {
+    const generatedDataKey = Buffer.alloc(32, 0x32);
+    const decryptedDataKey = Buffer.alloc(32, 0x32);
+    const kms = {
+      send: jest.fn()
+        .mockResolvedValueOnce({ Plaintext: generatedDataKey, CiphertextBlob: Buffer.from('synthetic-preview-wrapped-key'), KeyId: 'arn:aws:kms:synthetic:key/preview' })
+        .mockResolvedValueOnce({ Plaintext: decryptedDataKey }),
+    };
+    const config = { get: (key: string) => ({
+      'corporate.o2.kmsKeyId': 'arn:aws:kms:synthetic:key/preview',
+      'corporate.o2.kmsKeyVersion': 'preview-key-v1',
+      'platform.isVercel': true,
+      'platform.vercelEnvironment': 'preview',
+      nodeEnv: 'production',
+    }[key]) };
+    const provider = new AwsKmsCorporateTinEncryptionProvider(config as any, kms as any);
+    const record = await provider.encrypt(SYNTHETIC_TIN, APPLICATION_ID);
+    expect(kms.send.mock.calls[0][0].input.EncryptionContext.environment).toBe('preview');
+    const plaintext = await provider.decrypt(record, APPLICATION_ID);
+    expect(kms.send.mock.calls[1][0].input.EncryptionContext.environment).toBe('preview');
+    expect(plaintext.toString('utf8')).toBe(SYNTHETIC_TIN);
+    plaintext.fill(0);
+    expect(generatedDataKey.every((byte) => byte === 0)).toBe(true);
+    expect(decryptedDataKey.every((byte) => byte === 0)).toBe(true);
   });
 
   it('fails closed when KMS is unavailable or the configured key is missing', async () => {

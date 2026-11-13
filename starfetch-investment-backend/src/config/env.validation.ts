@@ -11,6 +11,10 @@ export interface ValidatedEnv {
   EMAIL_VERIFICATION_HMAC_SECRET: string;
   JOINT_INVITATION_TTL_HOURS?: string;
   JOINT_INVITATIONS_URL?: string;
+  AWS_ROLE_ARN?: string;
+  CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL?: string;
+  CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN?: string;
+  CORPORATE_O2_RATE_LIMIT_HMAC_SECRET?: string;
 }
 
 const MIN_SECRET_LENGTH = 32;
@@ -70,12 +74,33 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
       if (booleanSetting(errors, name, value, false) !== true) errors.push(`${name} must be true before Corporate O2 can be enabled.`);
     }
     const awsRegion = stringOrUndefined(raw.AWS_REGION);
+    const awsRoleArn = stringOrUndefined(raw.AWS_ROLE_ARN);
+    const isVercel = raw.VERCEL === '1';
+    const vercelEnvironment = stringOrUndefined(raw.VERCEL_ENV);
     const kmsKeyId = stringOrUndefined(raw.CORPORATE_O2_KMS_KEY_ID);
     const kmsKeyVersion = stringOrUndefined(raw.CORPORATE_O2_KMS_KEY_VERSION);
     if (!awsRegion || !/^[a-z]{2}(-gov)?-[a-z]+-\d$/.test(awsRegion)) errors.push('AWS_REGION is required and must be a valid region when Corporate O2 is enabled.');
+    if (isVercel && vercelEnvironment !== 'production') errors.push('Corporate O2 may only be enabled in Vercel Production; Preview and Development are disabled to prevent cross-environment writes.');
+    if (isVercel && !awsRoleArn) errors.push('AWS_ROLE_ARN is required for Vercel OIDC when Corporate O2 is enabled.');
+    if (stringOrUndefined(raw.AWS_ACCESS_KEY_ID) || stringOrUndefined(raw.AWS_SECRET_ACCESS_KEY)) errors.push('Long-lived AWS access-key environment variables are not allowed when Corporate O2 is enabled; use Vercel OIDC or a workload role.');
+    if (awsRoleArn && !/^arn:(?:aws|aws-us-gov|aws-cn):iam::\d{12}:role\/[A-Za-z0-9+=,.@_/-]{1,512}$/.test(awsRoleArn)) errors.push('AWS_ROLE_ARN must be a valid IAM role ARN when provided.');
     if (!kmsKeyId || /\s/.test(kmsKeyId)) errors.push('CORPORATE_O2_KMS_KEY_ID is required when Corporate O2 is enabled.');
     if (!kmsKeyVersion || !/^[A-Za-z0-9._-]{1,64}$/.test(kmsKeyVersion)) errors.push('CORPORATE_O2_KMS_KEY_VERSION is required when Corporate O2 is enabled.');
     validateCorporateO2HmacKeyring(errors, raw.CORPORATE_O2_HMAC_ACTIVE_KEY_VERSION, raw.CORPORATE_O2_HMAC_KEYS_JSON);
+
+    const redisUrl = stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL);
+    const redisToken = stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN);
+    const rateLimitHmacSecret = stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_HMAC_SECRET);
+    let validRedisUrl = false;
+    try {
+      const parsed = redisUrl ? new URL(redisUrl) : undefined;
+      validRedisUrl = Boolean(parsed && parsed.protocol === 'https:' && !parsed.username && !parsed.password && !parsed.search && !parsed.hash);
+    } catch {
+      validRedisUrl = false;
+    }
+    if (!validRedisUrl) errors.push('CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL must be a valid HTTPS Redis REST endpoint without embedded credentials or query parameters.');
+    if (!redisToken || redisToken.length < 16) errors.push('CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN is required when Corporate O2 is enabled.');
+    if (!isValidBase64Secret(rateLimitHmacSecret)) errors.push('CORPORATE_O2_RATE_LIMIT_HMAC_SECRET must be base64 for at least 32 random bytes.');
   }
 
   // Mono Prove is sandbox-only in this implementation. No provider request is
@@ -209,6 +234,10 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
     EMAIL_VERIFICATION_HMAC_SECRET: emailVerificationHmacSecret!,
     JOINT_INVITATION_TTL_HOURS: stringOrUndefined(raw.JOINT_INVITATION_TTL_HOURS),
     JOINT_INVITATIONS_URL: urlRaw,
+    AWS_ROLE_ARN: stringOrUndefined(raw.AWS_ROLE_ARN),
+    CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL: stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL),
+    CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN: stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN),
+    CORPORATE_O2_RATE_LIMIT_HMAC_SECRET: stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_HMAC_SECRET),
   };
 }
 
@@ -241,6 +270,13 @@ function validateMonoRedirect(
 
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function isValidBase64Secret(value: string | undefined): boolean {
+  if (!value) return false;
+  const decoded = Buffer.from(value, 'base64');
+  return decoded.length >= 32 &&
+    decoded.toString('base64').replace(/=+$/, '') === value.replace(/=+$/, '');
 }
 
 function booleanSetting(errors: string[], name: string, value: unknown, defaultValue: boolean): boolean {

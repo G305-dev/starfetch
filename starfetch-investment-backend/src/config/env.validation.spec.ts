@@ -3,6 +3,13 @@ import { validateEnv } from './env.validation';
 const DB = 'postgresql://user:pw@localhost:5432/db';
 const STRONG = 's'.repeat(48);
 
+// Reserved synthetic test values: validation only; never exported or connected to.
+const TEST_O2_REDIS_CONFIG = {
+  CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL: 'https://redis.example.invalid',
+  CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN: 'test-only-not-a-redis-credential',
+  CORPORATE_O2_RATE_LIMIT_HMAC_SECRET: Buffer.alloc(32, 0x48).toString('base64'),
+};
+
 function base(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     DATABASE_URL: DB,
@@ -81,10 +88,11 @@ describe('validateEnv (fail-fast, fail-secure)', () => {
       .toThrow(/CORPORATE_O2_LAWFUL_BASIS_APPROVED/);
   });
 
-  it('accepts the O2 switch only with explicit approvals, KMS key and dedicated versioned HMAC keys', () => {
+  it('accepts non-Vercel O2 with a workload credential chain and no AWS_ROLE_ARN', () => {
     const hmacKey = Buffer.alloc(32, 0x44).toString('base64');
     expect(() => validateEnv(base({
       CORPORATE_O2_ENABLED: 'true',
+      ...TEST_O2_REDIS_CONFIG,
       CORPORATE_O2_LAWFUL_BASIS_APPROVED: 'true',
       CORPORATE_O2_PRIVACY_NOTICE_APPROVED: 'true',
       CORPORATE_O2_RETENTION_APPROVED: 'true',
@@ -94,17 +102,76 @@ describe('validateEnv (fail-fast, fail-secure)', () => {
       CORPORATE_O2_HMAC_ACTIVE_KEY_VERSION: 'hmac-v1',
       CORPORATE_O2_HMAC_KEYS_JSON: JSON.stringify({ 'hmac-v1': hmacKey }),
     }))).not.toThrow();
-    expect(() => validateEnv(base({
+  });
+
+  it('requires HTTPS Redis REST endpoint, non-empty token, and a 32-byte rate-limit HMAC secret for O2', () => {
+    const hmacKey = Buffer.alloc(32, 0x49).toString('base64');
+    const validO2 = {
       CORPORATE_O2_ENABLED: 'true',
+      ...TEST_O2_REDIS_CONFIG,
       CORPORATE_O2_LAWFUL_BASIS_APPROVED: 'true',
       CORPORATE_O2_PRIVACY_NOTICE_APPROVED: 'true',
       CORPORATE_O2_RETENTION_APPROVED: 'true',
-      CORPORATE_O2_KMS_KEY_ID: 'synthetic',
+      CORPORATE_O2_KMS_KEY_ID: 'arn:aws:kms:eu-west-1:000000000000:key/synthetic-test-key',
       CORPORATE_O2_KMS_KEY_VERSION: 'kms-v1',
       AWS_REGION: 'eu-west-1',
       CORPORATE_O2_HMAC_ACTIVE_KEY_VERSION: 'hmac-v1',
-      CORPORATE_O2_HMAC_KEYS_JSON: '{"hmac-v1":"short"}',
-    }))).toThrow(/CORPORATE_O2_HMAC_KEYS_JSON/);
+      CORPORATE_O2_HMAC_KEYS_JSON: JSON.stringify({ 'hmac-v1': hmacKey }),
+    };
+    expect(() => validateEnv(base(validO2))).not.toThrow();
+    expect(() => validateEnv(base({ ...validO2, CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL: 'http://redis.example.invalid' })))
+      .toThrow(/valid HTTPS Redis REST endpoint/);
+    expect(() => validateEnv(base({ ...validO2, CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN: '' })))
+      .toThrow(/REDIS_REST_TOKEN/);
+    expect(() => validateEnv(base({ ...validO2, CORPORATE_O2_RATE_LIMIT_HMAC_SECRET: Buffer.alloc(16, 1).toString('base64') })))
+      .toThrow(/RATE_LIMIT_HMAC_SECRET/);
+  });
+
+  it('rejects long-lived AWS access-key environment credentials when O2 is enabled', () => {
+    const hmacKey = Buffer.alloc(32, 0x46).toString('base64');
+    expect(() => validateEnv(base({
+      CORPORATE_O2_ENABLED: 'true',
+      ...TEST_O2_REDIS_CONFIG,
+      CORPORATE_O2_LAWFUL_BASIS_APPROVED: 'true',
+      CORPORATE_O2_PRIVACY_NOTICE_APPROVED: 'true',
+      CORPORATE_O2_RETENTION_APPROVED: 'true',
+      CORPORATE_O2_KMS_KEY_ID: 'arn:aws:kms:eu-west-1:000000000000:key/synthetic-test-key',
+      CORPORATE_O2_KMS_KEY_VERSION: 'kms-v1',
+      AWS_REGION: 'eu-west-1',
+      CORPORATE_O2_HMAC_ACTIVE_KEY_VERSION: 'hmac-v1',
+      CORPORATE_O2_HMAC_KEYS_JSON: JSON.stringify({ 'hmac-v1': hmacKey }),
+      AWS_ACCESS_KEY_ID: 'synthetic-static-access-key',
+    }))).toThrow(/Long-lived AWS access-key/);
+  });
+
+  it('requires a valid AWS role ARN and Production-only VERCEL_ENV for Vercel O2', () => {
+    const hmacKey = Buffer.alloc(32, 0x45).toString('base64');
+    const vercelBase = {
+      VERCEL: '1',
+      VERCEL_ENV: 'production',
+      CORPORATE_O2_ENABLED: 'true',
+      ...TEST_O2_REDIS_CONFIG,
+      CORPORATE_O2_LAWFUL_BASIS_APPROVED: 'true',
+      CORPORATE_O2_PRIVACY_NOTICE_APPROVED: 'true',
+      CORPORATE_O2_RETENTION_APPROVED: 'true',
+      CORPORATE_O2_KMS_KEY_ID: 'arn:aws:kms:eu-west-1:000000000000:key/synthetic-test-key',
+      CORPORATE_O2_KMS_KEY_VERSION: 'kms-v1',
+      AWS_REGION: 'eu-west-1',
+      CORPORATE_O2_HMAC_ACTIVE_KEY_VERSION: 'hmac-v1',
+      CORPORATE_O2_HMAC_KEYS_JSON: JSON.stringify({ 'hmac-v1': hmacKey }),
+    };
+    expect(() => validateEnv(base({ ...vercelBase,
+      AWS_ROLE_ARN: 'arn:aws:iam::000000000000:role/starfetch-corporate-o2-vercel',
+    }))).not.toThrow();
+    expect(() => validateEnv(base(vercelBase))).toThrow(/AWS_ROLE_ARN/);
+    expect(() => validateEnv(base({ ...vercelBase, AWS_ROLE_ARN: 'not-an-arn' }))).toThrow(/AWS_ROLE_ARN/);
+    expect(() => validateEnv(base({ ...vercelBase, VERCEL_ENV: 'preview',
+      AWS_ROLE_ARN: 'arn:aws:iam::000000000000:role/starfetch-corporate-o2-vercel',
+    }))).toThrow(/only be enabled in Vercel Production/);
+  });
+
+  it('does not require or use AWS_ROLE_ARN while Corporate O2 is disabled', () => {
+    expect(() => validateEnv(base({ AWS_ROLE_ARN: 'not-an-arn' }))).not.toThrow();
   });
 
   it('keeps Mono Prove disabled by default and refuses live activation in this sandbox-only change', () => {

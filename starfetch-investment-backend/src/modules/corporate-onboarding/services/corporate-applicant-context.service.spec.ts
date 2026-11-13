@@ -9,7 +9,7 @@ const principal: AuthPrincipal = {
 };
 
 describe('CorporateApplicantContextService', () => {
-  it('uses the authenticated principal and current verified INVESTOR database row', async () => {
+  it('authorizes a verified Corporate applicant without requiring an InvestorProfile', async () => {
     const prisma = {
       user: {
         findUnique: jest.fn().mockResolvedValue({
