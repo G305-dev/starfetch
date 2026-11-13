@@ -24,8 +24,8 @@ assert(
     && !/(?:window\.)?(?:localStorage|sessionStorage)\s*[.[]|fetch\(|updateMyProfile|console\.(log|info|debug)/i.test(draft),
   "PEP declaration must remain a current-page-only draft with no browser persistence, API write, screening, or logging",
 );
-const personalInformationFormStart = profile.indexOf("<form onSubmit={saveProfile}");
-const pepMount = profile.indexOf("<PepDeclarationDraft value={localPepDeclarationDraft} onChange={setLocalPepDeclarationDraft} />");
+const personalInformationFormStart = profile.indexOf("<form onSubmit={savePersonalInformation}");
+const pepMount = profile.indexOf("<PepDeclarationDraft value={localPepDeclarationDraft}");
 const personalInformationFormEnd = profile.indexOf("</form>", pepMount);
 assert(
   profile.includes("PepDeclarationDraft")
