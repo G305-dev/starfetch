@@ -19,11 +19,12 @@ for (const label of ["Bank Details", "Bank name", "Account number (NUBAN)", "Acc
 }
 assert(!/branch|sort code/i.test(draft), "Branch / sort code must not be present in the Individual Bank Details draft");
 assert(
-  draft.includes("Do not enter a BVN number")
+  !draft.includes("For a future approved withdrawals and distributions workflow")
+    && !draft.includes("These details are not submitted, stored, validated, or retained after you leave or refresh this page.")
+    && !draft.includes("Do not enter a BVN number")
     && draft.includes("type BankDetailsDraftValue")
-    && draft.includes("not submitted, stored, validated, or retained")
     && !/(?:window\.)?(?:localStorage|sessionStorage)\s*[.[]|fetch\(|updateMyProfile|console\.(log|info|debug)/i.test(draft),
-  "Bank details must remain a bounded local draft without storing, logging, or transmitting bank/BVN data",
+  "The requested Bank Details explanatory copy must be removed while the draft remains local-only with no browser persistence, API write, or logging",
 );
 assert(
   profile.includes("BankDetailsDraft")
@@ -32,4 +33,4 @@ assert(
   "The Bank Details draft must replace the unavailable Bank Details profile card",
 );
 
-console.log("PASS — Individual Profile renders the requested local Bank Details draft without Branch/sort code and without persisting, logging, validating, or transmitting bank/BVN data");
+console.log("PASS — Individual Profile renders the requested local Bank Details fields without the removed explanatory copy or Branch/sort code, and without persisting, logging, validating, or transmitting bank/BVN data");

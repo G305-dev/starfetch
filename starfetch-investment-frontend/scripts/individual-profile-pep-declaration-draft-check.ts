@@ -24,11 +24,17 @@ assert(
     && !/(?:window\.)?(?:localStorage|sessionStorage)\s*[.[]|fetch\(|updateMyProfile|console\.(log|info|debug)/i.test(draft),
   "PEP declaration must remain a current-page-only draft with no browser persistence, API write, screening, or logging",
 );
+const personalInformationFormStart = profile.indexOf("<form onSubmit={saveProfile}");
+const pepMount = profile.indexOf("<PepDeclarationDraft value={localPepDeclarationDraft} onChange={setLocalPepDeclarationDraft} />");
+const personalInformationFormEnd = profile.indexOf("</form>", pepMount);
 assert(
   profile.includes("PepDeclarationDraft")
     && profile.includes("setLocalPepDeclarationDraft")
+    && personalInformationFormStart >= 0
+    && pepMount > personalInformationFormStart
+    && personalInformationFormEnd > pepMount
     && !profile.includes('title: "PEP Declaration"'),
-  "The PEP declaration form must replace the unavailable PEP Declaration card in Personal Information",
+  "The PEP declaration form must be mounted inside Personal Information rather than an unavailable standalone PEP card",
 );
 
-console.log("PASS — Individual Profile includes the requested local PEP declaration draft without persisting, transmitting, screening, assessing, or verifying the declaration");
+console.log("PASS — Individual Profile includes the requested local PEP declaration inside Personal Information without persisting, transmitting, screening, assessing, or verifying the declaration");
