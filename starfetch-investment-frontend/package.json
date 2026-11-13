@@ -20,6 +20,13 @@
     "test:corporate-registration": "node scripts/run-typescript-check.cjs scripts/corporate-applicant-registration-check.ts",
     "test:corporate-post-login-routing": "node scripts/run-typescript-check.cjs scripts/corporate-post-login-routing-check.ts",
     "test:general-corporate-login": "node scripts/run-typescript-check.cjs scripts/general-corporate-login-check.ts",
+    "test:kyc-dashboard-prompt": "node scripts/run-typescript-check.cjs scripts/kyc-dashboard-prompt-check.ts",
+    "test:individual-profile-local-kyc": "node scripts/run-typescript-check.cjs scripts/individual-profile-local-kyc-draft-check.ts",
+    "test:investment-objective-risk-profile": "node scripts/run-typescript-check.cjs scripts/investment-objective-risk-profile-draft-check.ts",
+    "test:individual-profile-bank-details": "node scripts/run-typescript-check.cjs scripts/individual-profile-bank-details-draft-check.ts",
+    "test:individual-profile-pep-declaration": "node scripts/run-typescript-check.cjs scripts/individual-profile-pep-declaration-draft-check.ts",
+    "test:individual-profile-source-of-funds": "node scripts/run-typescript-check.cjs scripts/individual-profile-source-of-funds-draft-check.ts",
+    "test:individual-products-invest-now": "node scripts/run-typescript-check.cjs scripts/individual-products-invest-now-check.ts",
     "test:about-profile-cards": "node scripts/run-typescript-check.cjs scripts/about-profile-cards-check.ts",
     "test:market-widgets": "node scripts/run-typescript-check.cjs scripts/market-widgets-check.ts"
   },
