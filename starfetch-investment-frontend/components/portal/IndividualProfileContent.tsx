@@ -20,6 +20,7 @@ type LocalKycDraft = {
   residentialAddress: string;
   stateOfResidence: string;
   idCardType: string;
+  idDocumentSelected: boolean;
   occupation: string;
 };
 
@@ -47,6 +48,7 @@ function emptyLocalKycDraft(): LocalKycDraft {
     residentialAddress: "",
     stateOfResidence: "",
     idCardType: "",
+    idDocumentSelected: false,
     occupation: "",
   };
 }
@@ -200,7 +202,8 @@ export function IndividualProfileContent() {
     ];
     const missingField = requiredKycFields.find(([, value]) => !value.trim());
     if (missingField) return `Complete your ${missingField[0]} to continue.`;
-    if (!localPepDeclarationDraft.applicantPepStatus) return "Select Applicant — Yes or Applicant — No in the PEP Declaration to continue.";
+    if (!localKycDraft.idDocumentSelected) return "Select an ID document file to continue.";
+    if (!localPepDeclarationDraft.applicantPepStatus) return "Select Yes or No in the PEP Declaration to continue.";
     if (localPepDeclarationDraft.applicantPepStatus === "yes" && !localPepDeclarationDraft.details.trim()) {
       return "Provide the requested PEP details to continue.";
     }
@@ -375,13 +378,24 @@ export function IndividualProfileContent() {
                 <p className="mt-1 text-sm leading-6 text-star-muted">Complete every field below to continue to the next current-page section. These current-page draft details are not submitted, saved, verified or retained when you leave or refresh this page.</p>
                 <div className="mt-5 grid gap-4 sm:grid-cols-2">
                   <label className="block"><span className="text-sm font-extrabold text-star-900">Date of birth</span><input type="date" autoComplete="bday" value={localKycDraft.dateOfBirth} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, dateOfBirth: event.target.value })); resetCompletionFrom(1); }} className={`mt-2 ${inputClassName()}`} /></label>
-                  <label className="block"><span className="text-sm font-extrabold text-star-900">Gender</span><input type="text" autoComplete="sex" value={localKycDraft.gender} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, gender: event.target.value })); resetCompletionFrom(1); }} placeholder="Enter gender" className={`mt-2 ${inputClassName()}`} /></label>
+                  <label className="block"><span className="text-sm font-extrabold text-star-900">Gender</span><select autoComplete="sex" value={localKycDraft.gender} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, gender: event.target.value })); resetCompletionFrom(1); }} className={`mt-2 ${inputClassName()}`}><option value="">Select gender</option><option value="male">Male</option><option value="female">Female</option></select></label>
                   <label className="block"><span className="text-sm font-extrabold text-star-900">Nationality</span><input type="text" autoComplete="country-name" value={localKycDraft.nationality} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, nationality: event.target.value })); resetCompletionFrom(1); }} placeholder="Enter nationality" className={`mt-2 ${inputClassName()}`} /></label>
                   <label className="block"><span className="text-sm font-extrabold text-star-900">State of residence</span><input type="text" autoComplete="address-level1" value={localKycDraft.stateOfResidence} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, stateOfResidence: event.target.value })); resetCompletionFrom(1); }} placeholder="Enter state of residence" className={`mt-2 ${inputClassName()}`} /></label>
                   <label className="block sm:col-span-2"><span className="text-sm font-extrabold text-star-900">Residential address</span><textarea rows={3} autoComplete="street-address" value={localKycDraft.residentialAddress} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, residentialAddress: event.target.value })); resetCompletionFrom(1); }} placeholder="Enter residential address" className={`mt-2 ${inputClassName()} py-3`} /></label>
-                  <label className="block"><span className="text-sm font-extrabold text-star-900">ID card type</span><select value={localKycDraft.idCardType} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, idCardType: event.target.value })); resetCompletionFrom(1); }} className={`mt-2 ${inputClassName()}`}><option value="">Select ID card type</option>{idCardTypes.slice(1).map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+                  <label className="block"><span className="text-sm font-extrabold text-star-900">ID card type</span><select value={localKycDraft.idCardType} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, idCardType: event.target.value, idDocumentSelected: false })); resetCompletionFrom(1); }} className={`mt-2 ${inputClassName()}`}><option value="">Select ID card type</option>{idCardTypes.slice(1).map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
                   <label className="block"><span className="text-sm font-extrabold text-star-900">Occupation</span><input type="text" autoComplete="organization-title" value={localKycDraft.occupation} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, occupation: event.target.value })); resetCompletionFrom(1); }} placeholder="Enter occupation" className={`mt-2 ${inputClassName()}`} /></label>
                 </div>
+                {localKycDraft.idCardType ? (
+                  <section className="mt-5 rounded-lg border border-star-200 bg-star-50 p-4" aria-labelledby="id-document-upload-heading">
+                    <h4 id="id-document-upload-heading" className="text-sm font-extrabold text-star-900">Upload {localKycDraft.idCardType}</h4>
+                    <p className="mt-1 text-sm leading-6 text-star-muted">Choose your {localKycDraft.idCardType} document to complete this current-page section.</p>
+                    <label className="mt-4 block">
+                      <span className="text-sm font-extrabold text-star-900">ID document</span>
+                      <input type="file" accept=".pdf,image/jpeg,image/png" onChange={(event) => { setLocalKycDraft((current) => ({ ...current, idDocumentSelected: Boolean(event.target.files?.length) })); resetCompletionFrom(1); }} className="mt-2 block w-full text-sm text-star-700 file:mr-4 file:rounded-md file:border-0 file:bg-star-700 file:px-3.5 file:py-2 file:text-sm file:font-extrabold file:text-white hover:file:bg-star-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700" />
+                      <span className="mt-2 block text-xs leading-5 text-star-muted">This file remains in the browser control for this page only. It is not uploaded, sent, or stored by the portal.</span>
+                    </label>
+                  </section>
+                ) : null}
               </div>
 
               <PepDeclarationDraft value={localPepDeclarationDraft} onChange={(next) => { setLocalPepDeclarationDraft(next); resetCompletionFrom(1); }} />

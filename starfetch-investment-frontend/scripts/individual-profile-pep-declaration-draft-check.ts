@@ -14,15 +14,17 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-for (const text of ["Politically Exposed Person (PEP) Declaration", "within the last 12 months", "Applicant — Yes", "Applicant — No", "If yes, give details (name, position, country, period held)"]) {
+for (const text of ["Politically Exposed Person (PEP) Declaration", "within the last 12 months", "Yes</label>", "No</label>", "If yes, give details (name, position, country, period held)"]) {
   assert(draft.includes(text), `Missing required PEP declaration content: ${text}`);
 }
 assert(
   draft.includes('type="radio"')
     && draft.includes("emptyPepDeclarationDraft")
-    && draft.includes("not submitted, stored, screened, assessed, or retained")
+    && !draft.includes("Applicant — Yes")
+    && !draft.includes("Applicant — No")
+    && !draft.includes("This declaration is not submitted, stored, screened, assessed, or retained after you leave or refresh this page because an approved compliance workflow is not available.")
     && !/(?:window\.)?(?:localStorage|sessionStorage)\s*[.[]|fetch\(|updateMyProfile|console\.(log|info|debug)/i.test(draft),
-  "PEP declaration must remain a current-page-only draft with no browser persistence, API write, screening, or logging",
+  "PEP declaration must use the requested Yes/No labels and remove the requested explanatory text without adding persistence, API writes, screening, or logging",
 );
 const personalInformationFormStart = profile.indexOf("<form onSubmit={savePersonalInformation}");
 const pepMount = profile.indexOf("<PepDeclarationDraft value={localPepDeclarationDraft}");
@@ -37,4 +39,4 @@ assert(
   "The PEP declaration form must be mounted inside Personal Information rather than an unavailable standalone PEP card",
 );
 
-console.log("PASS — Individual Profile includes the requested local PEP declaration inside Personal Information without persisting, transmitting, screening, assessing, or verifying the declaration");
+console.log("PASS — Individual Profile includes the local PEP declaration inside Personal Information with the requested Yes/No labels and without the removed explanatory text");
