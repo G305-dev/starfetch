@@ -1,9 +1,9 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IndividualKycDocumentScanStatus, IndividualKycDocumentStatus, IndividualKycEventActorKind, IndividualKycProfileEventKind, IndividualKycProfileStatus } from '@prisma/client';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
-import { IndividualKycDocumentStorage } from './individual-kyc-document-ports';
+import { INDIVIDUAL_KYC_DOCUMENT_STORAGE, IndividualKycDocumentStorage } from './individual-kyc-document-ports';
 import { canonicalJson } from './individual-kyc-worker-auth';
 
 export interface KycWorkerScanResult {
@@ -24,7 +24,7 @@ export class IndividualKycWorkerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
-    private readonly storage: IndividualKycDocumentStorage,
+    @Inject(INDIVIDUAL_KYC_DOCUMENT_STORAGE) private readonly storage: IndividualKycDocumentStorage,
   ) {}
 
   async claimNext(workerId: string) {
