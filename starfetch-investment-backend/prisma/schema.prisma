@@ -70,6 +70,76 @@ enum OnboardingApplicationHistoryEvent {
   REJECTED
 }
 
+enum IndividualKycProfileStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  INFO_REQUIRED
+  APPROVED
+  REJECTED
+}
+
+enum IndividualKycSectionStatus {
+  NOT_STARTED
+  DRAFT
+  COMPLETE
+}
+
+enum IndividualKycIdDocumentType {
+  PASSPORT
+  PVC
+  DRIVERS_LICENSE
+  NIN
+}
+
+enum IndividualKycDocumentStatus {
+  PENDING_UPLOAD
+  PENDING_SCAN
+  UPLOADED
+  REPLACED
+  REMOVED
+}
+
+enum IndividualKycDocumentScanStatus {
+  PENDING
+  CLEAN
+  REJECTED
+  FAILED
+}
+
+enum IndividualKycProfileEventKind {
+  SECTION_SAVED
+  ID_DOCUMENT_UPLOAD_INTENT_CREATED
+  ID_DOCUMENT_SCAN_QUEUED
+  ID_DOCUMENT_SCAN_CLEAN
+  ID_DOCUMENT_SCAN_REJECTED
+  ID_DOCUMENT_CLEANUP
+  SUBMITTED
+  REVIEW_STARTED
+  INFORMATION_REQUESTED
+  DECISION_RECORDED
+  APPROVED
+  REJECTED
+}
+
+enum IndividualKycSection {
+  PERSONAL
+  INVESTMENT
+  SOURCE_OF_FUNDS
+  BANK
+}
+
+enum IndividualKycEncryptionProvider {
+  AWS_KMS
+  TEST_AES_GCM
+}
+
+enum IndividualKycEventActorKind {
+  APPLICANT
+  SCANNER_WORKER
+  RETENTION_WORKER
+}
+
 /// Ruleset publication is intentionally separate from approval authority.
 /// There is no default published version and no publication service in C1.3.
 enum VerificationRulesetLifecycle {
@@ -209,6 +279,9 @@ model User {
   uploadedVerificationDocuments        VerificationDocument[]                   @relation("VerificationDocumentUploader")
   verificationDocumentEvents           VerificationDocumentEvent[]              @relation("VerificationDocumentEventActor")
   staffReviewEvents                    ApplicationStaffReviewEvent[]            @relation("StaffReviewActor")
+  individualKycDocumentsOwned           IndividualKycDocument[]                   @relation("IndividualKycDocumentOwner")
+  individualKycProfileEvents            IndividualKycProfileEvent[]                @relation("IndividualKycProfileEventActor")
+  approvedIndividualKycProfiles         IndividualKycProfile[]                      @relation("IndividualKycProfileApprover")
 
   @@map("users")
 }
@@ -224,8 +297,110 @@ model InvestorProfile {
   phone     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  individualKycProfile IndividualKycProfile? @relation("IndividualKycOwnerProfile")
 
   @@map("investor_profiles")
+}
+
+/// Individual KYC draft. All applicant-entered section answers (including PEP
+/// and bank data) are stored together as an authenticated-encrypted envelope;
+/// only owner/status/version and section state remain queryable in plaintext.
+model IndividualKycProfile {
+  id                         String                       @id @default(uuid()) @db.Uuid
+  investorUserId             String                       @unique @db.Uuid
+  status                     IndividualKycProfileStatus   @default(DRAFT)
+  personalSectionStatus      IndividualKycSectionStatus   @default(NOT_STARTED)
+  investmentSectionStatus    IndividualKycSectionStatus   @default(NOT_STARTED)
+  sourceOfFundsSectionStatus IndividualKycSectionStatus   @default(NOT_STARTED)
+  bankSectionStatus          IndividualKycSectionStatus   @default(NOT_STARTED)
+  encryptedPayload           String?                      @db.Text
+  payloadIv                  String?                      @db.VarChar(32)
+  payloadAuthTag             String?                      @db.VarChar(32)
+  encryptedDataKey           String?                      @db.Text
+  encryptionKeyProvider      IndividualKycEncryptionProvider?
+  encryptionKeyId            String?                      @db.Text
+  encryptionKeyVersion       String?                      @db.VarChar(64)
+  encryptionContextVersion   Int?
+  version                    Int                          @default(0)
+  submittedAt                DateTime?                    @db.Timestamp(3)
+  approvedAt                 DateTime?                    @db.Timestamp(3)
+  approvedByUserId           String?                      @db.Uuid
+  createdAt                  DateTime                     @default(now()) @db.Timestamp(3)
+  updatedAt                  DateTime                     @updatedAt @db.Timestamp(3)
+
+  investor   InvestorProfile            @relation("IndividualKycOwnerProfile", fields: [investorUserId], references: [userId], onDelete: Restrict)
+  approvedBy User?                      @relation("IndividualKycProfileApprover", fields: [approvedByUserId], references: [id], onDelete: Restrict)
+  documents  IndividualKycDocument[]
+  events     IndividualKycProfileEvent[]
+
+  @@unique([id, investorUserId], map: "individual_kyc_profiles_id_owner_key")
+  @@map("individual_kyc_profiles")
+}
+
+/// Metadata only; object bytes remain in private encrypted storage. A matching
+/// document is usable only after a real scanner records CLEAN.
+model IndividualKycDocument {
+  id                         String                         @id @default(uuid()) @db.Uuid
+  kycProfileId               String                         @db.Uuid
+  investorUserId             String                         @db.Uuid
+  documentType               IndividualKycIdDocumentType
+  storageKey                 String                         @unique @db.VarChar(256)
+  originalFilename           String                         @db.VarChar(128)
+  contentType                String                         @db.VarChar(120)
+  sizeBytes                  BigInt
+  expectedChecksumSha256     String?                        @db.VarChar(44)
+  storageObjectVersionId     String?                        @db.VarChar(256)
+  status                     IndividualKycDocumentStatus    @default(PENDING_UPLOAD)
+  scanStatus                 IndividualKycDocumentScanStatus @default(PENDING)
+  scannerVersion             String?                        @db.VarChar(64)
+  scanCompletedAt            DateTime?                      @db.Timestamp(3)
+  scanSha256                 String?                        @db.VarChar(44)
+  scanAttestationDigest      String?                        @db.VarChar(64)
+  scanRequestedAt            DateTime?                      @db.Timestamp(3)
+  scanClaimedAt              DateTime?                      @db.Timestamp(3)
+  scanLeaseExpiresAt         DateTime?                      @db.Timestamp(3)
+  scanWorkerId               String?                        @db.VarChar(80)
+  scanJobTokenHash            String?                        @db.VarChar(64)
+  scanAttemptCount            Int                            @default(0)
+  uploadExpiresAt            DateTime                       @db.Timestamp(3)
+  uploadedAt                 DateTime?                      @db.Timestamp(3)
+  retentionExpiresAt         DateTime?                      @db.Timestamp(3)
+  objectDeletedAt            DateTime?                      @db.Timestamp(3)
+  createdAt                  DateTime                       @default(now()) @db.Timestamp(3)
+  updatedAt                  DateTime                       @updatedAt @db.Timestamp(3)
+
+  kycProfile IndividualKycProfile @relation(fields: [kycProfileId, investorUserId], references: [id, investorUserId], onDelete: Restrict)
+  owner      User                 @relation("IndividualKycDocumentOwner", fields: [investorUserId], references: [id], onDelete: Restrict)
+  events     IndividualKycProfileEvent[]
+
+  @@unique([id, kycProfileId], map: "individual_kyc_documents_id_profile_key")
+  @@index([investorUserId, status, scanStatus])
+  @@index([status, scanLeaseExpiresAt, scanRequestedAt])
+  @@index([status, retentionExpiresAt])
+  @@index([kycProfileId, documentType, status, scanStatus], map: "individual_kyc_documents_profile_type_status_scan_idx")
+  @@map("individual_kyc_documents")
+}
+
+/// Append-only audit without KYC values, documents, or staff notes.
+model IndividualKycProfileEvent {
+  id                 String                          @id @default(uuid()) @db.Uuid
+  kycProfileId       String                          @db.Uuid
+  actorUserId        String?                         @db.Uuid
+  actorKind          IndividualKycEventActorKind      @default(APPLICANT)
+  actorReference     String?                         @db.VarChar(128)
+  eventKind          IndividualKycProfileEventKind
+  section            IndividualKycSection?
+  profileVersion     Int
+  relatedDocumentId  String?                         @db.Uuid
+  occurredAt         DateTime                        @default(now()) @db.Timestamp(3)
+
+  kycProfile IndividualKycProfile  @relation(fields: [kycProfileId], references: [id], onDelete: Restrict)
+  actor      User?                 @relation("IndividualKycProfileEventActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  document   IndividualKycDocument? @relation(fields: [relatedDocumentId, kycProfileId], references: [id, kycProfileId], onDelete: Restrict)
+
+  @@unique([kycProfileId, profileVersion], map: "individual_kyc_profile_events_version_key")
+  @@index([kycProfileId, occurredAt])
+  @@map("individual_kyc_profile_events")
 }
 
 /// Phase 2D — investor dashboard read models. Money is ALWAYS stored in minor
@@ -1037,4 +1212,16 @@ model ApplicationStaffReviewEvent {
   @@index([applicationId, occurredAt])
   @@index([snapshotId, eventKind])
   @@map("application_staff_review_events")
+}
+
+/// One-time anti-replay nonce for authenticated scanner-worker API requests.
+model IndividualKycWorkerRequestNonce {
+  id        String   @id @default(uuid()) @db.Uuid
+  nonceHash String   @unique @db.VarChar(64)
+  workerId  String   @db.VarChar(80)
+  expiresAt DateTime @db.Timestamp(3)
+  createdAt DateTime @default(now()) @db.Timestamp(3)
+
+  @@index([expiresAt])
+  @@map("individual_kyc_worker_request_nonces")
 }
