@@ -12,6 +12,27 @@ export interface ValidatedEnv {
   JOINT_INVITATION_TTL_HOURS?: string;
   JOINT_INVITATIONS_URL?: string;
   AWS_ROLE_ARN?: string;
+  INDIVIDUAL_KYC_KMS_KEY_ID?: string;
+  INDIVIDUAL_KYC_KMS_KEY_VERSION?: string;
+  INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED: boolean;
+  INDIVIDUAL_KYC_S3_STORAGE_ENABLED: boolean;
+  INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED: boolean;
+  INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED: boolean;
+  INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED: boolean;
+  INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED: boolean;
+  INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED: boolean;
+  INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED: boolean;
+  INDIVIDUAL_KYC_SCANNER_RESIDENCY_APPROVED: boolean;
+  INDIVIDUAL_KYC_S3_ENDPOINT?: string;
+  INDIVIDUAL_KYC_S3_BUCKET?: string;
+  INDIVIDUAL_KYC_S3_REGION?: string;
+  INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE?: string;
+  INDIVIDUAL_KYC_S3_FORCE_PATH_STYLE?: string;
+  INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE?: string;
+  INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE?: string;
+  INDIVIDUAL_KYC_STORAGE_RETENTION_DAYS?: string;
+  INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE?: string;
+  INDIVIDUAL_KYC_WORKER_HMAC_KEY?: string;
   CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL?: string;
   CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN?: string;
   CORPORATE_O2_RATE_LIMIT_HMAC_SECRET?: string;
@@ -219,6 +240,82 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
     errors.push('JOINT_INVITATIONS_URL is required in staging/production (invitation links must target the real app).');
   }
 
+  // Individual KYC payload encryption uses a dedicated KMS key identifier.
+  // Leave it optional so the app can boot safely; writes fail closed until both
+  // values are configured. Never fall back to the Corporate O2/TIN key.
+  const individualKycDataResidencyApproved = booleanSetting(errors, 'INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED', raw.INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED, false);
+  const individualKycKmsKeyId = stringOrUndefined(raw.INDIVIDUAL_KYC_KMS_KEY_ID);
+  const individualKycKmsKeyVersion = stringOrUndefined(raw.INDIVIDUAL_KYC_KMS_KEY_VERSION);
+  if (Boolean(individualKycKmsKeyId) !== Boolean(individualKycKmsKeyVersion)) {
+    errors.push('INDIVIDUAL_KYC_KMS_KEY_ID and INDIVIDUAL_KYC_KMS_KEY_VERSION must be configured together.');
+  }
+  if (individualKycKmsKeyId && !/^(?:arn:(?:aws|aws-us-gov|aws-cn):kms:[a-z0-9-]+:\d{12}:(?:key|alias)\/[A-Za-z0-9/_-]+|[A-Za-z0-9-]{16,128}|alias\/[A-Za-z0-9/_-]+)$/.test(individualKycKmsKeyId)) {
+    errors.push('INDIVIDUAL_KYC_KMS_KEY_ID must be a KMS key ID, key ARN, or alias.');
+  }
+  if (individualKycKmsKeyVersion && !/^[A-Za-z0-9._-]{1,64}$/.test(individualKycKmsKeyVersion)) {
+    errors.push('INDIVIDUAL_KYC_KMS_KEY_VERSION must be a version token of at most 64 safe characters.');
+  }
+  if (individualKycDataResidencyApproved) {
+    const kycRegion = stringOrUndefined(raw.AWS_REGION);
+    const kycRoleArn = stringOrUndefined(raw.AWS_ROLE_ARN);
+    if (!individualKycKmsKeyId || !individualKycKmsKeyVersion) errors.push('A dedicated Individual KYC KMS key ID and version are required when data-residency approval is enabled.');
+    if (!kycRegion || !/^[a-z]{2}(-gov)?-[a-z]+-\d$/.test(kycRegion)) errors.push('AWS_REGION must be explicitly configured for approved Individual KYC encryption.');
+    if (raw.VERCEL === '1' && !kycRoleArn) errors.push('AWS_ROLE_ARN is required for Individual KYC KMS access through Vercel OIDC.');
+    if (kycRoleArn && !/^arn:(?:aws|aws-us-gov|aws-cn):iam::\d{12}:role\/[A-Za-z0-9+=,.@_/-]{1,512}$/.test(kycRoleArn)) errors.push('AWS_ROLE_ARN must be a valid IAM role ARN when Individual KYC encryption is enabled.');
+    if (stringOrUndefined(raw.AWS_ACCESS_KEY_ID) || stringOrUndefined(raw.AWS_SECRET_ACCESS_KEY)) errors.push('Static AWS access-key environment variables are not allowed for Individual KYC; use Vercel OIDC or a workload role.');
+  }
+
+  const individualKycS3StorageEnabled = booleanSetting(errors, 'INDIVIDUAL_KYC_S3_STORAGE_ENABLED', raw.INDIVIDUAL_KYC_S3_STORAGE_ENABLED, false);
+  const individualKycDocumentUploadEnabled = booleanSetting(errors, 'INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED', raw.INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED, false);
+  const individualKycScannerWorkerEnabled = booleanSetting(errors, 'INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED', raw.INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED, false);
+  const storageResidencyApproved = booleanSetting(errors, 'INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED', raw.INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED, false);
+  const privateBucketApproved = booleanSetting(errors, 'INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED', raw.INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED, false);
+  const tlsPolicyApproved = booleanSetting(errors, 'INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED', raw.INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED, false);
+  const retentionApproved = booleanSetting(errors, 'INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED', raw.INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED, false);
+  const scannerResidencyApproved = booleanSetting(errors, 'INDIVIDUAL_KYC_SCANNER_RESIDENCY_APPROVED', raw.INDIVIDUAL_KYC_SCANNER_RESIDENCY_APPROVED, false);
+  const s3Endpoint = stringOrUndefined(raw.INDIVIDUAL_KYC_S3_ENDPOINT);
+  const s3Bucket = stringOrUndefined(raw.INDIVIDUAL_KYC_S3_BUCKET);
+  const s3Region = stringOrUndefined(raw.INDIVIDUAL_KYC_S3_REGION);
+  const s3CredentialReference = stringOrUndefined(raw.INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE);
+  const storageApprovalReference = stringOrUndefined(raw.INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE);
+  const retentionApprovalReference = stringOrUndefined(raw.INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE);
+  const scannerApprovalReference = stringOrUndefined(raw.INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE);
+  const retentionDaysRaw = stringOrUndefined(raw.INDIVIDUAL_KYC_STORAGE_RETENTION_DAYS);
+  const workerHmacKey = stringOrUndefined(raw.INDIVIDUAL_KYC_WORKER_HMAC_KEY);
+  const forcePathStyle = booleanSetting(errors, 'INDIVIDUAL_KYC_S3_FORCE_PATH_STYLE', raw.INDIVIDUAL_KYC_S3_FORCE_PATH_STYLE, true);
+
+  if (individualKycDocumentUploadEnabled && (!individualKycS3StorageEnabled || !individualKycScannerWorkerEnabled)) {
+    errors.push('INDIVIDUAL_KYC_S3_STORAGE_ENABLED and INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED must both be true before document uploads can be enabled.');
+  }
+  if (individualKycS3StorageEnabled || individualKycDocumentUploadEnabled || individualKycScannerWorkerEnabled) {
+    if (!individualKycDataResidencyApproved) errors.push('INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED must be explicitly approved before enabling KYC document infrastructure.');
+    if (!storageResidencyApproved || !storageApprovalReference) errors.push('Storage country/region and transfer approval plus INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE are required.');
+    if (!privateBucketApproved) errors.push('INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED must confirm private-bucket/access policy review.');
+    if (!tlsPolicyApproved) errors.push('INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED must confirm TLS-only provider/bucket policy.');
+    if (!retentionApproved || !retentionApprovalReference) errors.push('Approved retention policy and INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE are required.');
+    if (!scannerResidencyApproved || !scannerApprovalReference) errors.push('Approved Nigerian scanner location and INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE are required.');
+    if (!s3Endpoint) errors.push('INDIVIDUAL_KYC_S3_ENDPOINT must be explicitly configured; no provider/location is selected by default.');
+    else {
+      try {
+        const endpoint = new URL(s3Endpoint);
+        if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) errors.push('INDIVIDUAL_KYC_S3_ENDPOINT must be HTTPS without credentials, query or fragment.');
+        if (productionLike && ['localhost', '127.0.0.1', '::1', '[::1]'].includes(endpoint.hostname.toLowerCase())) errors.push('A production KYC storage endpoint cannot be loopback.');
+      } catch { errors.push('INDIVIDUAL_KYC_S3_ENDPOINT must be a valid HTTPS URL.'); }
+    }
+    if (!s3Bucket || !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(s3Bucket) || s3Bucket.includes('..')) errors.push('INDIVIDUAL_KYC_S3_BUCKET must be explicitly configured with a valid bucket name.');
+    if (!s3Region || !/^[A-Za-z0-9._-]{1,64}$/.test(s3Region)) errors.push('INDIVIDUAL_KYC_S3_REGION must be explicitly configured (it is a signing region, not residency evidence).');
+    if (s3CredentialReference !== 'workload-identity' && !(s3CredentialReference && /^file:\/run\/secrets\/[A-Za-z0-9._/-]{1,160}$/.test(s3CredentialReference) && !s3CredentialReference.includes('..'))) {
+      errors.push('INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE must be workload-identity or a /run/secrets/ mounted-provider-credential reference; never put credentials in environment values.');
+    }
+    if (raw.VERCEL === '1' && s3CredentialReference?.startsWith('file:')) errors.push('Mounted S3 credential files cannot be used on Vercel; use approved OIDC workload identity or a Nigerian signer deployment.');
+    if (!isValidBase64Secret(workerHmacKey)) errors.push('INDIVIDUAL_KYC_WORKER_HMAC_KEY must be base64 for at least 32 random bytes.');
+    if (stringOrUndefined(raw.AWS_ACCESS_KEY_ID) || stringOrUndefined(raw.AWS_SECRET_ACCESS_KEY)) errors.push('Static AWS access-key environment credentials are not allowed for Individual KYC; use workload identity.');
+    if (!storageApprovalReference || storageApprovalReference.length > 128 || !/^[A-Za-z0-9._:/-]+$/.test(storageApprovalReference)) errors.push('INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE must be an approved non-secret reference.');
+    if (!retentionApprovalReference || retentionApprovalReference.length > 128 || !/^[A-Za-z0-9._:/-]+$/.test(retentionApprovalReference)) errors.push('INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE must be an approved non-secret reference.');
+    if (!scannerApprovalReference || scannerApprovalReference.length > 128 || !/^[A-Za-z0-9._:/-]+$/.test(scannerApprovalReference)) errors.push('INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE must be an approved non-secret reference.');
+    if (!retentionDaysRaw || !/^\d{1,4}$/.test(retentionDaysRaw) || Number(retentionDaysRaw) < 1 || Number(retentionDaysRaw) > 3650) errors.push('INDIVIDUAL_KYC_STORAGE_RETENTION_DAYS must be explicitly approved between 1 and 3650 days.');
+  }
+
   if (errors.length > 0) {
     throw new Error(`Environment validation failed: ${errors.join(' ')}`);
   }
@@ -235,6 +332,27 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
     JOINT_INVITATION_TTL_HOURS: stringOrUndefined(raw.JOINT_INVITATION_TTL_HOURS),
     JOINT_INVITATIONS_URL: urlRaw,
     AWS_ROLE_ARN: stringOrUndefined(raw.AWS_ROLE_ARN),
+    INDIVIDUAL_KYC_KMS_KEY_ID: individualKycKmsKeyId,
+    INDIVIDUAL_KYC_KMS_KEY_VERSION: individualKycKmsKeyVersion,
+    INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED: individualKycDataResidencyApproved,
+    INDIVIDUAL_KYC_S3_STORAGE_ENABLED: individualKycS3StorageEnabled,
+    INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED: individualKycDocumentUploadEnabled,
+    INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED: individualKycScannerWorkerEnabled,
+    INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED: storageResidencyApproved,
+    INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED: privateBucketApproved,
+    INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED: tlsPolicyApproved,
+    INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED: retentionApproved,
+    INDIVIDUAL_KYC_SCANNER_RESIDENCY_APPROVED: scannerResidencyApproved,
+    INDIVIDUAL_KYC_S3_ENDPOINT: s3Endpoint,
+    INDIVIDUAL_KYC_S3_BUCKET: s3Bucket,
+    INDIVIDUAL_KYC_S3_REGION: s3Region,
+    INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE: s3CredentialReference,
+    INDIVIDUAL_KYC_S3_FORCE_PATH_STYLE: String(forcePathStyle),
+    INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE: storageApprovalReference,
+    INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE: retentionApprovalReference,
+    INDIVIDUAL_KYC_STORAGE_RETENTION_DAYS: retentionDaysRaw,
+    INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE: scannerApprovalReference,
+    INDIVIDUAL_KYC_WORKER_HMAC_KEY: workerHmacKey,
     CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL: stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL),
     CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN: stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN),
     CORPORATE_O2_RATE_LIMIT_HMAC_SECRET: stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_HMAC_SECRET),
