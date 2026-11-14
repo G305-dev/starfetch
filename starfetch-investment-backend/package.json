@@ -22,11 +22,13 @@
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
-    "prisma:migrate:dev": "prisma migrate dev"
+    "prisma:migrate:dev": "prisma migrate dev",
+    "smoke:kyc-s3-oidc": "node scripts/individual-kyc-s3-oidc-smoke.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "3.1164.0",
     "@aws-sdk/client-s3": "^3.1169.0",
+    "@aws-sdk/client-sts": "^3.1169.0",
     "@aws-sdk/credential-provider-node": "^3.972.97",
     "@aws-sdk/s3-request-presigner": "^3.1169.0",
     "@nestjs/common": "^10.4.15",
