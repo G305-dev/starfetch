@@ -120,6 +120,9 @@ import { CORPORATE_STAFF_REVIEW_AUTHORIZER, DenyAllCorporateStaffReviewAuthorize
     CorporateStaffReviewService,
     CorporateInvestmentEligibilityService,
     CorporateMonoLookupVerificationService,
+    // Shared AWS KMS transport only. Consumers must use a purpose-specific key,
+    // encryption context and ciphertext envelope; Corporate TIN key settings are not exported.
+    KMSClient,
   ],
 })
 export class CorporateOnboardingModule {}

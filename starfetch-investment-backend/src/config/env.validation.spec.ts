@@ -239,6 +239,20 @@ describe('validateEnv (fail-fast, fail-secure)', () => {
     }
   });
 
+  it('keeps Individual KYC region approval off by default and requires dedicated key/workload identity when enabled', () => {
+    expect(validateEnv(base({})).INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED).toBe(false);
+    expect(() => validateEnv(base({ INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED: 'true' }))).toThrow(/dedicated Individual KYC KMS key/);
+    const approved = base({
+      INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED: 'true',
+      INDIVIDUAL_KYC_KMS_KEY_ID: '0123456789abcdef0123456789abcdef',
+      INDIVIDUAL_KYC_KMS_KEY_VERSION: 'v1',
+      AWS_REGION: 'eu-west-1',
+    });
+    expect(validateEnv(approved).INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED).toBe(true);
+    expect(() => validateEnv({ ...approved, AWS_SECRET_ACCESS_KEY: 'synthetic-not-a-secret' })).toThrow(/Static AWS access-key/);
+    expect(() => validateEnv({ ...approved, VERCEL: '1' })).toThrow(/AWS_ROLE_ARN is required/);
+  });
+
   it('JOINT_INVITATIONS_URL: http localhost is fine in DEVELOPMENT only; HTTPS+set required in production', () => {
     expect(
       validateEnv(base({ NODE_ENV: 'development', JOINT_INVITATIONS_URL: 'http://localhost:3000/login' }))
@@ -272,4 +286,45 @@ describe('validateEnv (fail-fast, fail-secure)', () => {
       ),
     ).not.toThrow();
   });
+
+  it('keeps all document-storage and scanner gates disabled unless explicitly approved', () => {
+    const env = validateEnv(base({}));
+    expect(env.INDIVIDUAL_KYC_S3_STORAGE_ENABLED).toBe(false);
+    expect(env.INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED).toBe(false);
+    expect(env.INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED).toBe(false);
+    expect(() => validateEnv(base({ INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED: 'true' }))).toThrow(/must both be true/);
+  });
+
+  it('accepts explicit non-secret provider references only after every data/residency/retention gate', () => {
+    const hmac = Buffer.alloc(32, 0x71).toString('base64');
+    const approved = base({
+      INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED: 'true',
+      INDIVIDUAL_KYC_KMS_KEY_ID: '0123456789abcdef0123456789abcdef',
+      INDIVIDUAL_KYC_KMS_KEY_VERSION: 'kms-test-v1',
+      AWS_REGION: 'eu-west-1',
+      INDIVIDUAL_KYC_S3_STORAGE_ENABLED: 'true',
+      INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED: 'true',
+      INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED: 'true',
+      INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED: 'true',
+      INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED: 'true',
+      INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED: 'true',
+      INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED: 'true',
+      INDIVIDUAL_KYC_SCANNER_RESIDENCY_APPROVED: 'true',
+      INDIVIDUAL_KYC_S3_ENDPOINT: 'https://s3.example.invalid',
+      INDIVIDUAL_KYC_S3_BUCKET: 'synthetic-kyc-test',
+      INDIVIDUAL_KYC_S3_REGION: 'test-signing-region',
+      INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE: 'file:/run/secrets/provider-test.json',
+      INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE: 'decision:storage-test',
+      INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE: 'decision:retention-test',
+      INDIVIDUAL_KYC_STORAGE_RETENTION_DAYS: '90',
+      INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE: 'decision:scanner-test',
+      INDIVIDUAL_KYC_WORKER_HMAC_KEY: hmac,
+    });
+    expect(validateEnv(approved).INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED).toBe(true);
+    expect(() => validateEnv({ ...approved, INDIVIDUAL_KYC_S3_ENDPOINT: 'http://s3.example.invalid' })).toThrow(/must be HTTPS/);
+    expect(() => validateEnv({ ...approved, INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE: 'access=secret' })).toThrow(/CREDENTIAL_REFERENCE/);
+    expect(() => validateEnv({ ...approved, INDIVIDUAL_KYC_STORAGE_RETENTION_DAYS: undefined })).toThrow(/RETENTION_DAYS/);
+    expect(() => validateEnv({ ...approved, AWS_ACCESS_KEY_ID: 'synthetic-static-key' })).toThrow(/Static AWS access-key/);
+  });
+
 });

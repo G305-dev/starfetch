@@ -1,0 +1,48 @@
+# Build the dedicated scanner-worker image. Deploy it only in an approved
+# Nigerian processing environment; this image must not be used by Vercel.
+FROM node:20-bookworm-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY prisma ./prisma
+COPY src ./src
+COPY tsconfig.json tsconfig.build.json nest-cli.json ./
+ARG DATABASE_URL=postgresql://build-only:build-only@127.0.0.1:5432/build_only
+ENV DATABASE_URL=${DATABASE_URL}
+RUN npx prisma generate && npm run build
+
+FROM node:20-bookworm-slim AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends clamav-daemon clamav-freshclam gosu ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /var/lib/clamav /run/clamav \
+  && chown -R clamav:clamav /var/lib/clamav /run/clamav
+RUN printf '%s\n' \
+  'Foreground yes' \
+  'User clamav' \
+  'DatabaseDirectory /var/lib/clamav' \
+  'LocalSocket /run/clamav/clamd.ctl' \
+  'LocalSocketMode 660' \
+  'TCPSocket 3310' \
+  'TCPAddr 127.0.0.1' \
+  'MaxThreads 4' \
+  'StreamMaxLength 12M' \
+  'MaxFileSize 12M' \
+  'MaxScanSize 12M' \
+  'LogTime yes' \
+  'LogFile /dev/stderr' \
+  'LogFileMaxSize 0' > /etc/clamav/clamd.conf \
+  && printf '%s\n' \
+  'DatabaseOwner clamav' \
+  'DatabaseDirectory /var/lib/clamav' \
+  'Foreground yes' > /etc/clamav/freshclam.conf
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/package.json ./package.json
+COPY scripts/individual-kyc-scanner-entrypoint.sh /usr/local/bin/individual-kyc-scanner-entrypoint
+RUN chmod 0755 /usr/local/bin/individual-kyc-scanner-entrypoint
+# No clamd port is published; clamd is loopback-only. Only the worker polls the
+# authenticated API and reads its exact private object version.
+ENTRYPOINT ["/usr/local/bin/individual-kyc-scanner-entrypoint"]
