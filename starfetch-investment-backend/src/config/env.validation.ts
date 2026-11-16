@@ -28,9 +28,6 @@ export interface ValidatedEnv {
   INDIVIDUAL_KYC_S3_REGION?: string;
   INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE?: string;
   INDIVIDUAL_KYC_S3_FORCE_PATH_STYLE?: string;
-  INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE?: string;
-  INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE?: string;
-  INDIVIDUAL_KYC_STORAGE_RETENTION_DAYS?: string;
   INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE?: string;
   INDIVIDUAL_KYC_WORKER_HMAC_KEY?: string;
   CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL?: string;
@@ -278,10 +275,7 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
   const s3Bucket = stringOrUndefined(raw.INDIVIDUAL_KYC_S3_BUCKET);
   const s3Region = stringOrUndefined(raw.INDIVIDUAL_KYC_S3_REGION);
   const s3CredentialReference = stringOrUndefined(raw.INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE);
-  const storageApprovalReference = stringOrUndefined(raw.INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE);
-  const retentionApprovalReference = stringOrUndefined(raw.INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE);
   const scannerApprovalReference = stringOrUndefined(raw.INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE);
-  const retentionDaysRaw = stringOrUndefined(raw.INDIVIDUAL_KYC_STORAGE_RETENTION_DAYS);
   const workerHmacKey = stringOrUndefined(raw.INDIVIDUAL_KYC_WORKER_HMAC_KEY);
   const forcePathStyle = booleanSetting(errors, 'INDIVIDUAL_KYC_S3_FORCE_PATH_STYLE', raw.INDIVIDUAL_KYC_S3_FORCE_PATH_STYLE, true);
 
@@ -290,10 +284,10 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
   }
   if (individualKycS3StorageEnabled || individualKycDocumentUploadEnabled) {
     if (!individualKycDataResidencyApproved) errors.push('INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED must be explicitly approved before enabling KYC document infrastructure.');
-    if (!storageResidencyApproved || !storageApprovalReference) errors.push('Storage country/region and transfer approval plus INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE are required.');
+    if (!storageResidencyApproved) errors.push('INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED must confirm the approved storage country/region and transfer assessment.');
     if (!privateBucketApproved) errors.push('INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED must confirm private-bucket/access policy review.');
     if (!tlsPolicyApproved) errors.push('INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED must confirm TLS-only provider/bucket policy.');
-    if (!retentionApproved || !retentionApprovalReference) errors.push('Approved retention policy and INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE are required.');
+    if (!retentionApproved) errors.push('INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED must confirm the internal finite document-retention policy.');
     if (!s3Endpoint) errors.push('INDIVIDUAL_KYC_S3_ENDPOINT must be explicitly configured; no provider/location is selected by default.');
     else {
       try {
@@ -309,9 +303,6 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
     }
     if (raw.VERCEL === '1' && s3CredentialReference?.startsWith('file:')) errors.push('Mounted S3 credential files cannot be used on Vercel; use approved OIDC workload identity or a Nigerian signer deployment.');
     if (stringOrUndefined(raw.AWS_ACCESS_KEY_ID) || stringOrUndefined(raw.AWS_SECRET_ACCESS_KEY)) errors.push('Static AWS access-key environment credentials are not allowed for Individual KYC; use workload identity.');
-    if (!storageApprovalReference || storageApprovalReference.length > 128 || !/^[A-Za-z0-9._:/-]+$/.test(storageApprovalReference)) errors.push('INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE must be an approved non-secret reference.');
-    if (!retentionApprovalReference || retentionApprovalReference.length > 128 || !/^[A-Za-z0-9._:/-]+$/.test(retentionApprovalReference)) errors.push('INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE must be an approved non-secret reference.');
-    if (!retentionDaysRaw || !/^\d{1,4}$/.test(retentionDaysRaw) || Number(retentionDaysRaw) < 1 || Number(retentionDaysRaw) > 3650) errors.push('INDIVIDUAL_KYC_STORAGE_RETENTION_DAYS must be explicitly approved between 1 and 3650 days.');
   }
 
   if (errors.length > 0) {
@@ -346,9 +337,6 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
     INDIVIDUAL_KYC_S3_REGION: s3Region,
     INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE: s3CredentialReference,
     INDIVIDUAL_KYC_S3_FORCE_PATH_STYLE: String(forcePathStyle),
-    INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE: storageApprovalReference,
-    INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE: retentionApprovalReference,
-    INDIVIDUAL_KYC_STORAGE_RETENTION_DAYS: retentionDaysRaw,
     INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE: scannerApprovalReference,
     INDIVIDUAL_KYC_WORKER_HMAC_KEY: workerHmacKey,
     CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL: stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL),

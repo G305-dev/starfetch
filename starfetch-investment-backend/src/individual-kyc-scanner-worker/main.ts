@@ -15,8 +15,7 @@ async function bootstrap(): Promise<void> {
       e.INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED !== 'true' ||
       e.INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED !== 'true' ||
       e.INDIVIDUAL_KYC_SCANNER_RESIDENCY_APPROVED !== 'true' ||
-      !e.INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE ||
-      !e.INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE)) {
+      !e.INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE)) {
     throw new Error('Scanner worker is not configured with explicit Nigerian residency and security approvals.');
   }
   const apiBaseUrl = required(e.INDIVIDUAL_KYC_WORKER_API_BASE_URL);
