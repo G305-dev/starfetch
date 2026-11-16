@@ -14,7 +14,7 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-for (const text of ["Politically Exposed Person (PEP) Declaration", "within the last 12 months", "Yes</label>", "No</label>", "If yes, provide full name, position, country and period held"]) {
+for (const text of ["Politically Exposed Person (PEP) Declaration", "within the last 12 months", "Yes</label>", "No</label>", "If yes, give details (name, position, country, period held)"]) {
   assert(draft.includes(text), `Missing required PEP declaration content: ${text}`);
 }
 assert(
@@ -23,14 +23,8 @@ assert(
     && !draft.includes("Applicant — Yes")
     && !draft.includes("Applicant — No")
     && !draft.includes("This declaration is not submitted, stored, screened, assessed, or retained after you leave or refresh this page because an approved compliance workflow is not available.")
-    && draft.includes("value.fullName")
-    && draft.includes("value.position")
-    && draft.includes("value.country")
-    && draft.includes("value.periodHeld")
-    && !/(?:window\.)?(?:localStorage|sessionStorage)\s*[.[]|console\.(log|info|debug)/i.test(draft)
-    && profile.includes("pepDetails: {")
-    && profile.includes("saveIndividualKycPersonal"),
-  "PEP declaration uses structured fields and is saved only through the encrypted Individual KYC section API, without browser persistence or logging",
+    && !/(?:window\.)?(?:localStorage|sessionStorage)\s*[.[]|fetch\(|updateMyProfile|console\.(log|info|debug)/i.test(draft),
+  "PEP declaration must use the requested Yes/No labels and remove the requested explanatory text without adding persistence, API writes, screening, or logging",
 );
 const personalInformationFormStart = profile.indexOf("<form onSubmit={savePersonalInformation}");
 const pepMount = profile.indexOf("<PepDeclarationDraft value={localPepDeclarationDraft}");
@@ -45,4 +39,4 @@ assert(
   "The PEP declaration form must be mounted inside Personal Information rather than an unavailable standalone PEP card",
 );
 
-console.log("PASS — Individual Profile includes structured PEP data inside Personal Information and persists it through the versioned KYC API without browser storage");
+console.log("PASS — Individual Profile includes the local PEP declaration inside Personal Information with the requested Yes/No labels and without the removed explanatory text");

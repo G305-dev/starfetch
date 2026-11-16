@@ -1,16 +1,7 @@
-import configuration from './configuration';
-import { INDIVIDUAL_KYC_DOCUMENT_RETENTION_DAYS } from './document-retention-policy';
 import { validateEnv } from './env.validation';
 
 const DB = 'postgresql://user:pw@localhost:5432/db';
 const STRONG = 's'.repeat(48);
-
-// Reserved synthetic test values: validation only; never exported or connected to.
-const TEST_O2_REDIS_CONFIG = {
-  CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL: 'https://redis.example.invalid',
-  CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN: 'test-only-not-a-redis-credential',
-  CORPORATE_O2_RATE_LIMIT_HMAC_SECRET: Buffer.alloc(32, 0x48).toString('base64'),
-};
 
 function base(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -79,138 +70,6 @@ describe('validateEnv (fail-fast, fail-secure)', () => {
     expect(() => validateEnv(base({ PORT: '99999' }))).toThrow(/PORT/);
   });
 
-  it('keeps Corporate O2 disabled by default in production and requires all activation prerequisites', () => {
-    const productionBase = base({
-      NODE_ENV: 'production',
-      SMTP_HOST: 'smtp.internal',
-      JOINT_INVITATIONS_URL: 'https://app.starfetch.example/login',
-    });
-    expect(() => validateEnv(productionBase)).not.toThrow();
-    expect(() => validateEnv({ ...productionBase, CORPORATE_O2_ENABLED: 'true' }))
-      .toThrow(/CORPORATE_O2_LAWFUL_BASIS_APPROVED/);
-  });
-
-  it('accepts non-Vercel O2 with a workload credential chain and no AWS_ROLE_ARN', () => {
-    const hmacKey = Buffer.alloc(32, 0x44).toString('base64');
-    expect(() => validateEnv(base({
-      CORPORATE_O2_ENABLED: 'true',
-      ...TEST_O2_REDIS_CONFIG,
-      CORPORATE_O2_LAWFUL_BASIS_APPROVED: 'true',
-      CORPORATE_O2_PRIVACY_NOTICE_APPROVED: 'true',
-      CORPORATE_O2_RETENTION_APPROVED: 'true',
-      CORPORATE_O2_KMS_KEY_ID: 'arn:aws:kms:eu-west-1:000000000000:key/synthetic-test-key',
-      CORPORATE_O2_KMS_KEY_VERSION: 'kms-v1',
-      AWS_REGION: 'eu-west-1',
-      CORPORATE_O2_HMAC_ACTIVE_KEY_VERSION: 'hmac-v1',
-      CORPORATE_O2_HMAC_KEYS_JSON: JSON.stringify({ 'hmac-v1': hmacKey }),
-    }))).not.toThrow();
-  });
-
-  it('requires HTTPS Redis REST endpoint, non-empty token, and a 32-byte rate-limit HMAC secret for O2', () => {
-    const hmacKey = Buffer.alloc(32, 0x49).toString('base64');
-    const validO2 = {
-      CORPORATE_O2_ENABLED: 'true',
-      ...TEST_O2_REDIS_CONFIG,
-      CORPORATE_O2_LAWFUL_BASIS_APPROVED: 'true',
-      CORPORATE_O2_PRIVACY_NOTICE_APPROVED: 'true',
-      CORPORATE_O2_RETENTION_APPROVED: 'true',
-      CORPORATE_O2_KMS_KEY_ID: 'arn:aws:kms:eu-west-1:000000000000:key/synthetic-test-key',
-      CORPORATE_O2_KMS_KEY_VERSION: 'kms-v1',
-      AWS_REGION: 'eu-west-1',
-      CORPORATE_O2_HMAC_ACTIVE_KEY_VERSION: 'hmac-v1',
-      CORPORATE_O2_HMAC_KEYS_JSON: JSON.stringify({ 'hmac-v1': hmacKey }),
-    };
-    expect(() => validateEnv(base(validO2))).not.toThrow();
-    expect(() => validateEnv(base({ ...validO2, CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL: 'http://redis.example.invalid' })))
-      .toThrow(/valid HTTPS Redis REST endpoint/);
-    expect(() => validateEnv(base({ ...validO2, CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN: '' })))
-      .toThrow(/REDIS_REST_TOKEN/);
-    expect(() => validateEnv(base({ ...validO2, CORPORATE_O2_RATE_LIMIT_HMAC_SECRET: Buffer.alloc(16, 1).toString('base64') })))
-      .toThrow(/RATE_LIMIT_HMAC_SECRET/);
-  });
-
-  it('rejects long-lived AWS access-key environment credentials when O2 is enabled', () => {
-    const hmacKey = Buffer.alloc(32, 0x46).toString('base64');
-    expect(() => validateEnv(base({
-      CORPORATE_O2_ENABLED: 'true',
-      ...TEST_O2_REDIS_CONFIG,
-      CORPORATE_O2_LAWFUL_BASIS_APPROVED: 'true',
-      CORPORATE_O2_PRIVACY_NOTICE_APPROVED: 'true',
-      CORPORATE_O2_RETENTION_APPROVED: 'true',
-      CORPORATE_O2_KMS_KEY_ID: 'arn:aws:kms:eu-west-1:000000000000:key/synthetic-test-key',
-      CORPORATE_O2_KMS_KEY_VERSION: 'kms-v1',
-      AWS_REGION: 'eu-west-1',
-      CORPORATE_O2_HMAC_ACTIVE_KEY_VERSION: 'hmac-v1',
-      CORPORATE_O2_HMAC_KEYS_JSON: JSON.stringify({ 'hmac-v1': hmacKey }),
-      AWS_ACCESS_KEY_ID: 'synthetic-static-access-key',
-    }))).toThrow(/Long-lived AWS access-key/);
-  });
-
-  it('requires a valid AWS role ARN and Production-only VERCEL_ENV for Vercel O2', () => {
-    const hmacKey = Buffer.alloc(32, 0x45).toString('base64');
-    const vercelBase = {
-      VERCEL: '1',
-      VERCEL_ENV: 'production',
-      CORPORATE_O2_ENABLED: 'true',
-      ...TEST_O2_REDIS_CONFIG,
-      CORPORATE_O2_LAWFUL_BASIS_APPROVED: 'true',
-      CORPORATE_O2_PRIVACY_NOTICE_APPROVED: 'true',
-      CORPORATE_O2_RETENTION_APPROVED: 'true',
-      CORPORATE_O2_KMS_KEY_ID: 'arn:aws:kms:eu-west-1:000000000000:key/synthetic-test-key',
-      CORPORATE_O2_KMS_KEY_VERSION: 'kms-v1',
-      AWS_REGION: 'eu-west-1',
-      CORPORATE_O2_HMAC_ACTIVE_KEY_VERSION: 'hmac-v1',
-      CORPORATE_O2_HMAC_KEYS_JSON: JSON.stringify({ 'hmac-v1': hmacKey }),
-    };
-    expect(() => validateEnv(base({ ...vercelBase,
-      AWS_ROLE_ARN: 'arn:aws:iam::000000000000:role/starfetch-corporate-o2-vercel',
-    }))).not.toThrow();
-    expect(() => validateEnv(base(vercelBase))).toThrow(/AWS_ROLE_ARN/);
-    expect(() => validateEnv(base({ ...vercelBase, AWS_ROLE_ARN: 'not-an-arn' }))).toThrow(/AWS_ROLE_ARN/);
-    expect(() => validateEnv(base({ ...vercelBase, VERCEL_ENV: 'preview',
-      AWS_ROLE_ARN: 'arn:aws:iam::000000000000:role/starfetch-corporate-o2-vercel',
-    }))).toThrow(/only be enabled in Vercel Production/);
-  });
-
-  it('does not require or use AWS_ROLE_ARN while Corporate O2 is disabled', () => {
-    expect(() => validateEnv(base({ AWS_ROLE_ARN: 'not-an-arn' }))).not.toThrow();
-  });
-
-  it('keeps Mono Prove disabled by default and refuses live activation in this sandbox-only change', () => {
-    expect(() => validateEnv(base({ MONO_PROVE_ENVIRONMENT: 'live' }))).not.toThrow();
-    expect(() => validateEnv(base({
-      MONO_PROVE_ENABLED: 'true',
-      MONO_PROVE_ENVIRONMENT: 'live',
-    }))).toThrow(/MONO_PROVE_ENVIRONMENT must be explicitly set to sandbox/);
-  });
-
-  it('requires independent consent/privacy/legal gates, server-only credentials, and an allowlisted sandbox redirect', () => {
-    const sandboxMono = {
-      MONO_PROVE_ENABLED: 'true',
-      MONO_PROVE_ENVIRONMENT: 'sandbox',
-      MONO_PROVE_LAWFUL_BASIS_APPROVED: 'true',
-      MONO_PROVE_PRIVACY_NOTICE_APPROVED: 'true',
-      MONO_PROVE_CONSENT_TEXT_APPROVED: 'true',
-      MONO_PROVE_CONSENT_TEXT_VERSION: 'approved-v1',
-      MONO_PROVE_CONSENT_TEXT_SHA256: 'a'.repeat(64),
-      MONO_PROVE_PRIVACY_NOTICE_VERSION: 'privacy-v1',
-      MONO_PROVE_LAWFUL_BASIS_VERSION: 'basis-v1',
-      VERIFICATION_OPERATION_HMAC_ACTIVE_KEY_VERSION: 'verify-hmac-v1',
-      VERIFICATION_OPERATION_HMAC_KEYS_JSON: JSON.stringify({ 'verify-hmac-v1': Buffer.alloc(32, 7).toString('base64') }),
-      MONO_SEC_KEY: 'synthetic-sandbox-secret-not-a-credential',
-      MONO_WEBHOOK_SECRET: 'synthetic-sandbox-webhook-not-a-credential',
-      MONO_PROVE_REDIRECT_URL: 'https://app.starfetch.example/corporate/verify',
-      CORS_ORIGINS: 'https://app.starfetch.example',
-    };
-    expect(() => validateEnv(base(sandboxMono))).not.toThrow();
-    expect(() => validateEnv(base({ ...sandboxMono, MONO_PROVE_CONSENT_TEXT_APPROVED: 'false' })))
-      .toThrow(/MONO_PROVE_CONSENT_TEXT_APPROVED/);
-    expect(() => validateEnv(base({ ...sandboxMono, CORS_ORIGINS: 'https://other.example' })))
-      .toThrow(/CORS_ORIGINS/);
-    expect(() => validateEnv(base({ ...sandboxMono, MONO_PROVE_REDIRECT_URL: 'http://app.starfetch.example/callback', NODE_ENV: 'production', SMTP_HOST: 'smtp.internal', JOINT_INVITATIONS_URL: 'https://app.starfetch.example/login' })))
-      .toThrow(/HTTPS/);
-  });
-
   // ── Phase 3B — joint invitation configuration (Step-4 corrections) ────────
 
   it('JOINT_INVITATION_TTL_HOURS: rejects zero/negative/NaN/Infinity/unbounded values', () => {
@@ -239,20 +98,6 @@ describe('validateEnv (fail-fast, fail-secure)', () => {
     ]) {
       expect(() => validateEnv(base({ JOINT_INVITATIONS_URL: bad }))).toThrow(/JOINT_INVITATIONS_URL/);
     }
-  });
-
-  it('keeps Individual KYC region approval off by default and requires dedicated key/workload identity when enabled', () => {
-    expect(validateEnv(base({})).INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED).toBe(false);
-    expect(() => validateEnv(base({ INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED: 'true' }))).toThrow(/dedicated Individual KYC KMS key/);
-    const approved = base({
-      INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED: 'true',
-      INDIVIDUAL_KYC_KMS_KEY_ID: '0123456789abcdef0123456789abcdef',
-      INDIVIDUAL_KYC_KMS_KEY_VERSION: 'v1',
-      AWS_REGION: 'eu-west-1',
-    });
-    expect(validateEnv(approved).INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED).toBe(true);
-    expect(() => validateEnv({ ...approved, AWS_SECRET_ACCESS_KEY: 'synthetic-not-a-secret' })).toThrow(/Static AWS access-key/);
-    expect(() => validateEnv({ ...approved, VERCEL: '1' })).toThrow(/AWS_ROLE_ARN is required/);
   });
 
   it('JOINT_INVITATIONS_URL: http localhost is fine in DEVELOPMENT only; HTTPS+set required in production', () => {
@@ -288,40 +133,4 @@ describe('validateEnv (fail-fast, fail-secure)', () => {
       ),
     ).not.toThrow();
   });
-
-  it('keeps storage disabled by default and rejects upload enablement without private storage approval', () => {
-    const env = validateEnv(base({}));
-    expect(env.INDIVIDUAL_KYC_S3_STORAGE_ENABLED).toBe(false);
-    expect(env.INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED).toBe(false);
-    expect(env.INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED).toBe(false);
-    expect(() => validateEnv(base({ INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED: 'true' }))).toThrow(/S3_STORAGE_ENABLED must be true/);
-  });
-
-  it('accepts approved private storage without any malware-scanner approvals or worker credentials', () => {
-    const approved = base({
-      INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED: 'true',
-      INDIVIDUAL_KYC_KMS_KEY_ID: '0123456789abcdef0123456789abcdef',
-      INDIVIDUAL_KYC_KMS_KEY_VERSION: 'kms-test-v1',
-      AWS_REGION: 'eu-west-1',
-      INDIVIDUAL_KYC_S3_STORAGE_ENABLED: 'true',
-      INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED: 'true',
-      INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED: 'true',
-      INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED: 'true',
-      INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED: 'true',
-      INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED: 'true',
-      INDIVIDUAL_KYC_S3_ENDPOINT: 'https://s3.example.invalid',
-      INDIVIDUAL_KYC_S3_BUCKET: 'synthetic-kyc-test',
-      INDIVIDUAL_KYC_S3_REGION: 'test-signing-region',
-      INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE: 'file:/run/secrets/provider-test.json',
-    });
-    const validated = validateEnv(approved);
-    expect(validated.INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED).toBe(true);
-    expect(validated.INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED).toBe(false);
-    expect(() => validateEnv({ ...approved, INDIVIDUAL_KYC_S3_ENDPOINT: 'http://s3.example.invalid' })).toThrow(/must be HTTPS/);
-    expect(() => validateEnv({ ...approved, INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE: 'access=secret' })).toThrow(/CREDENTIAL_REFERENCE/);
-    expect(() => validateEnv({ ...approved, AWS_ACCESS_KEY_ID: 'synthetic-static-key' })).toThrow(/Static AWS access-key/);
-    expect(configuration().individualKyc.s3.retentionDays).toBe(INDIVIDUAL_KYC_DOCUMENT_RETENTION_DAYS);
-    expect(INDIVIDUAL_KYC_DOCUMENT_RETENTION_DAYS).toBeGreaterThan(0);
-  });
-
 });

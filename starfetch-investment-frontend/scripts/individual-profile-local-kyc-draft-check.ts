@@ -6,7 +6,6 @@ import type { IndividualAccountProfile } from "../lib/api/client";
 type _IndividualAccountProfile = IndividualAccountProfile;
 
 const source = readFileSync(resolve(process.cwd(), "components/portal/IndividualProfileContent.tsx"), "utf8");
-const api = readFileSync(resolve(process.cwd(), "lib/api/client.ts"), "utf8");
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -23,11 +22,10 @@ assert(
     && source.includes("Upload {localKycDraft.idCardType}")
     && source.includes('type="file"')
     && source.includes('accept=".pdf,image/jpeg,image/png"')
-    && source.includes("createIndividualKycUploadIntent")
-    && source.includes("completeIndividualKycDocument")
-    && source.includes("credentials: \"omit\"")
-    && source.includes("the API keeps uploads disabled until operational approvals are complete"),
-  "Selecting an ID type must expose the authenticated guarded upload-intent flow and keep the pending-scan limitation clear",
+    && source.includes("idDocumentSelected")
+    && source.includes('if (!localKycDraft.idDocumentSelected) return "Select an ID document file to continue.";')
+    && source.includes("not uploaded, sent, or stored by the portal"),
+  "Selecting an approved ID card type must reveal a current-page-only document upload form without uploading or storing the file",
 );
 assert(
   source.includes('value={localKycDraft.gender}')
@@ -40,10 +38,9 @@ assert(
 assert(
   source.includes("type LocalKycDraft")
     && source.includes("emptyLocalKycDraft")
-    && source.includes("remain page-only until their approved option catalogues are available")
-    && source.includes("Saved KYC status")
-    && source.includes("saveIndividualKycPersonal"),
-  "Personal data must use the encrypted KYC API, status must be server sourced, and remaining sections stay drafts until their catalogues are approved",
+    && source.includes("current-page draft")
+    && source.includes("not submitted, saved, verified or retained"),
+  "Requested KYC fields must remain an explicitly bounded in-memory draft",
 );
 assert(
   source.includes('value={profile.firstName} readOnly aria-readonly="true"')
@@ -65,16 +62,8 @@ assert(
   "Local KYC draft fields and the selected ID-document state must not be sent through the current approved profile update contract",
 );
 assert(
-  api.includes('authenticatedRequest("/me/kyc-profile")')
-    && api.includes('authenticatedRequest("/me/kyc-profile/personal", {')
-    && api.includes("attemptHeaders: csrfHeaders")
-    && api.includes('authenticatedMutation("/me/kyc-profile/id-document/upload-intent", input)')
-    && api.includes("/id-document/${encodeURIComponent(documentId)}/complete"),
-  "KYC reads and mutations must use the authenticated same-origin API client and its CSRF-protected routes",
-);
-assert(
   !/(?:window\.)?(?:localStorage|sessionStorage)\s*[.[]|console\.(log|info|debug)/i.test(source),
   "Sensitive local KYC draft details must not be persisted or logged by the browser",
 );
 
-console.log("PASS — Individual profile saves personal KYC through the encrypted versioned API, reads server status, and uses authenticated upload intents without treating pending scans as verified");
+console.log("PASS — Individual profile keeps account-managed names read-only, provides Gender and conditional ID-document controls, and keeps local KYC data/files out of browser persistence and API submissions");

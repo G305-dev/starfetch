@@ -7,11 +7,6 @@ import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { JointModule } from './modules/joint/joint.module';
 import { MeModule } from './modules/me/me.module';
-import { CorporateOnboardingModule } from './modules/corporate-onboarding/corporate-onboarding.module';
-import { VerificationRulesetsModule } from './modules/verification-rulesets/verification-rulesets.module';
-import { MonoVerificationModule } from './modules/verification-providers/mono/mono-verification.module';
-import { VerificationDocumentsModule } from './modules/verification-documents/verification-documents.module';
-import { IndividualKycModule } from './modules/individual-kyc/individual-kyc.module';
 
 @Module({
   imports: [
@@ -26,11 +21,6 @@ import { IndividualKycModule } from './modules/individual-kyc/individual-kyc.mod
     AuthModule,
     MeModule,
     JointModule,
-    CorporateOnboardingModule,
-    VerificationRulesetsModule,
-    MonoVerificationModule,
-    VerificationDocumentsModule,
-    IndividualKycModule,
   ],
 })
 export class AppModule {}
