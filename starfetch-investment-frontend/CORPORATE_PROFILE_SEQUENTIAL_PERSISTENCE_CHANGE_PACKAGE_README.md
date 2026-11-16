@@ -1,7 +1,7 @@
-# Corporate Profile Sequential Persistence — Change Package
+# Corporate Profile Sequential Persistence — Earlier Change Package (Superseded)
 
 **Date:** 22 October 2026  
-**Status:** Frontend implementation aligned to a proposed backend contract; backend work remains with Segun.
+**Status:** Superseded by `CORPORATE_PROFILE_LOCAL_ONLY_CHANGE_PACKAGE_README.md`. The current Corporate Profile UI is a page-memory-only preview and does not read or save profile data to the backend. This earlier package describes a proposed future integration only.
 
 ## Included changes
 
