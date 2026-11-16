@@ -19,3 +19,6 @@ coverage/
 .DS_Store
 .idea/
 .vscode/
+
+.vercel/
+scripts/Starfetch_Corporate_O2_Preflight.mjs

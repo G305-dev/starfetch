@@ -56,10 +56,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
         code = explicit.code ?? ERROR_CODES.VALIDATION_FAILED;
         fields = toFieldErrors(exception);
         message = 'One or more fields require attention.';
-      } else if (status < HttpStatus.INTERNAL_SERVER_ERROR) {
+      } else if (
+        status < HttpStatus.INTERNAL_SERVER_ERROR ||
+        (status === HttpStatus.SERVICE_UNAVAILABLE &&
+          (explicit.code === ERROR_CODES.FEATURE_UNAVAILABLE || explicit.code === ERROR_CODES.SERVICE_UNAVAILABLE))
+      ) {
+        // Only explicitly curated, generic 503 messages are exposed; provider
+        // and database internals remain logged/hidden.
         message = explicit.message ?? safeClientMessage(exception);
       }
-      // 5xx responses keep the generic message — internals are logged, never sent.
+      // Other 5xx responses keep the generic message — internals are never sent.
     }
 
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {

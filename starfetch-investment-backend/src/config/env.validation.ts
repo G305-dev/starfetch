@@ -11,6 +11,28 @@ export interface ValidatedEnv {
   EMAIL_VERIFICATION_HMAC_SECRET: string;
   JOINT_INVITATION_TTL_HOURS?: string;
   JOINT_INVITATIONS_URL?: string;
+  AWS_ROLE_ARN?: string;
+  INDIVIDUAL_KYC_KMS_KEY_ID?: string;
+  INDIVIDUAL_KYC_KMS_KEY_VERSION?: string;
+  INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED: boolean;
+  INDIVIDUAL_KYC_S3_STORAGE_ENABLED: boolean;
+  INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED: boolean;
+  INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED: boolean;
+  INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED: boolean;
+  INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED: boolean;
+  INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED: boolean;
+  INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED: boolean;
+  INDIVIDUAL_KYC_SCANNER_RESIDENCY_APPROVED: boolean;
+  INDIVIDUAL_KYC_S3_ENDPOINT?: string;
+  INDIVIDUAL_KYC_S3_BUCKET?: string;
+  INDIVIDUAL_KYC_S3_REGION?: string;
+  INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE?: string;
+  INDIVIDUAL_KYC_S3_FORCE_PATH_STYLE?: string;
+  INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE?: string;
+  INDIVIDUAL_KYC_WORKER_HMAC_KEY?: string;
+  CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL?: string;
+  CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN?: string;
+  CORPORATE_O2_RATE_LIMIT_HMAC_SECRET?: string;
 }
 
 const MIN_SECRET_LENGTH = 32;
@@ -55,6 +77,117 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
   checkSecret(errors, 'JWT_ACCESS_SECRET', jwtAccessSecret, productionLike);
   checkSecret(errors, 'CSRF_HMAC_SECRET', csrfHmacSecret, productionLike);
   checkSecret(errors, 'EMAIL_VERIFICATION_HMAC_SECRET', emailVerificationHmacSecret, productionLike);
+
+  // Corporate O2 remains unavailable unless the explicit feature switch,
+  // KMS envelope key, separate versioned HMAC keyring, and privacy approvals
+  // are all configured. Defaults never enable the route.
+  const corporateO2Enabled = booleanSetting(errors, 'CORPORATE_O2_ENABLED', raw.CORPORATE_O2_ENABLED, false);
+  if (corporateO2Enabled) {
+    const approvals = [
+      ['CORPORATE_O2_LAWFUL_BASIS_APPROVED', raw.CORPORATE_O2_LAWFUL_BASIS_APPROVED],
+      ['CORPORATE_O2_PRIVACY_NOTICE_APPROVED', raw.CORPORATE_O2_PRIVACY_NOTICE_APPROVED],
+      ['CORPORATE_O2_RETENTION_APPROVED', raw.CORPORATE_O2_RETENTION_APPROVED],
+    ] as const;
+    for (const [name, value] of approvals) {
+      if (booleanSetting(errors, name, value, false) !== true) errors.push(`${name} must be true before Corporate O2 can be enabled.`);
+    }
+    const awsRegion = stringOrUndefined(raw.AWS_REGION);
+    const awsRoleArn = stringOrUndefined(raw.AWS_ROLE_ARN);
+    const isVercel = raw.VERCEL === '1';
+    const vercelEnvironment = stringOrUndefined(raw.VERCEL_ENV);
+    const kmsKeyId = stringOrUndefined(raw.CORPORATE_O2_KMS_KEY_ID);
+    const kmsKeyVersion = stringOrUndefined(raw.CORPORATE_O2_KMS_KEY_VERSION);
+    if (!awsRegion || !/^[a-z]{2}(-gov)?-[a-z]+-\d$/.test(awsRegion)) errors.push('AWS_REGION is required and must be a valid region when Corporate O2 is enabled.');
+    if (isVercel && vercelEnvironment !== 'production') errors.push('Corporate O2 may only be enabled in Vercel Production; Preview and Development are disabled to prevent cross-environment writes.');
+    if (isVercel && !awsRoleArn) errors.push('AWS_ROLE_ARN is required for Vercel OIDC when Corporate O2 is enabled.');
+    if (stringOrUndefined(raw.AWS_ACCESS_KEY_ID) || stringOrUndefined(raw.AWS_SECRET_ACCESS_KEY)) errors.push('Long-lived AWS access-key environment variables are not allowed when Corporate O2 is enabled; use Vercel OIDC or a workload role.');
+    if (awsRoleArn && !/^arn:(?:aws|aws-us-gov|aws-cn):iam::\d{12}:role\/[A-Za-z0-9+=,.@_/-]{1,512}$/.test(awsRoleArn)) errors.push('AWS_ROLE_ARN must be a valid IAM role ARN when provided.');
+    if (!kmsKeyId || /\s/.test(kmsKeyId)) errors.push('CORPORATE_O2_KMS_KEY_ID is required when Corporate O2 is enabled.');
+    if (!kmsKeyVersion || !/^[A-Za-z0-9._-]{1,64}$/.test(kmsKeyVersion)) errors.push('CORPORATE_O2_KMS_KEY_VERSION is required when Corporate O2 is enabled.');
+    validateCorporateO2HmacKeyring(errors, raw.CORPORATE_O2_HMAC_ACTIVE_KEY_VERSION, raw.CORPORATE_O2_HMAC_KEYS_JSON);
+
+    const redisUrl = stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL);
+    const redisToken = stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN);
+    const rateLimitHmacSecret = stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_HMAC_SECRET);
+    let validRedisUrl = false;
+    try {
+      const parsed = redisUrl ? new URL(redisUrl) : undefined;
+      validRedisUrl = Boolean(parsed && parsed.protocol === 'https:' && !parsed.username && !parsed.password && !parsed.search && !parsed.hash);
+    } catch {
+      validRedisUrl = false;
+    }
+    if (!validRedisUrl) errors.push('CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL must be a valid HTTPS Redis REST endpoint without embedded credentials or query parameters.');
+    if (!redisToken || redisToken.length < 16) errors.push('CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN is required when Corporate O2 is enabled.');
+    if (!isValidBase64Secret(rateLimitHmacSecret)) errors.push('CORPORATE_O2_RATE_LIMIT_HMAC_SECRET must be base64 for at least 32 random bytes.');
+  }
+
+  // Mono Prove is sandbox-only in this implementation. No provider request is
+  // possible without explicit enablement, separate vendor credentials, approved
+  // legal/privacy/consent gates, and an allowlisted redirect origin. Live mode
+  // is rejected even if somebody sets the feature flag.
+  const monoProveEnabled = booleanSetting(errors, 'MONO_PROVE_ENABLED', raw.MONO_PROVE_ENABLED, false);
+  const explicitMonoEnvironment = stringOrUndefined(raw.MONO_PROVE_ENVIRONMENT);
+  const monoEnvironment = explicitMonoEnvironment ?? 'sandbox';
+  if (!['sandbox', 'live'].includes(monoEnvironment)) errors.push('MONO_PROVE_ENVIRONMENT must be sandbox or live.');
+  if (monoProveEnabled) {
+    if (explicitMonoEnvironment !== 'sandbox') errors.push('MONO_PROVE_ENVIRONMENT must be explicitly set to sandbox; live Mono Prove is not enabled by this change.');
+    if (nodeEnv === 'production') errors.push('MONO_PROVE_ENABLED must remain false in production for this sandbox-only implementation.');
+    for (const [name, value] of [
+      ['MONO_PROVE_LAWFUL_BASIS_APPROVED', raw.MONO_PROVE_LAWFUL_BASIS_APPROVED],
+      ['MONO_PROVE_PRIVACY_NOTICE_APPROVED', raw.MONO_PROVE_PRIVACY_NOTICE_APPROVED],
+      ['MONO_PROVE_CONSENT_TEXT_APPROVED', raw.MONO_PROVE_CONSENT_TEXT_APPROVED],
+    ] as const) {
+      if (booleanSetting(errors, name, value, false) !== true) errors.push(`${name} must be true before Mono Prove can be enabled.`);
+    }
+    const consentVersion = stringOrUndefined(raw.MONO_PROVE_CONSENT_TEXT_VERSION);
+    const privacyVersion = stringOrUndefined(raw.MONO_PROVE_PRIVACY_NOTICE_VERSION);
+    const lawfulBasisVersion = stringOrUndefined(raw.MONO_PROVE_LAWFUL_BASIS_VERSION);
+    const consentTextHash = stringOrUndefined(raw.MONO_PROVE_CONSENT_TEXT_SHA256);
+    if (!consentVersion || !/^[A-Za-z0-9._-]{1,64}$/.test(consentVersion)) errors.push('MONO_PROVE_CONSENT_TEXT_VERSION is required when Mono Prove is enabled.');
+    if (!consentTextHash || !/^[0-9a-f]{64}$/.test(consentTextHash)) errors.push('MONO_PROVE_CONSENT_TEXT_SHA256 must be the approved consent text SHA-256 when Mono Prove is enabled.');
+    if (!privacyVersion || !/^[A-Za-z0-9._-]{1,64}$/.test(privacyVersion)) errors.push('MONO_PROVE_PRIVACY_NOTICE_VERSION is required when Mono Prove is enabled.');
+    if (!lawfulBasisVersion || !/^[A-Za-z0-9._-]{1,64}$/.test(lawfulBasisVersion)) errors.push('MONO_PROVE_LAWFUL_BASIS_VERSION is required when Mono Prove is enabled.');
+    const monoSecret = stringOrUndefined(raw.MONO_SEC_KEY);
+    const webhookSecret = stringOrUndefined(raw.MONO_WEBHOOK_SECRET);
+    if (!monoSecret) errors.push('MONO_SEC_KEY is required when Mono Prove is enabled.');
+    if (!webhookSecret) errors.push('MONO_WEBHOOK_SECRET is required when Mono Prove is enabled.');
+    if (monoSecret && webhookSecret && monoSecret === webhookSecret) errors.push('MONO_SEC_KEY and MONO_WEBHOOK_SECRET must be distinct secrets.');
+    validateMonoRedirect(errors, raw.MONO_PROVE_REDIRECT_URL, raw.CORS_ORIGINS, productionLike);
+  }
+
+  // Mono Lookup is a separate product/adapter with its own sandbox key.
+  // Both providers use Mono's documented shared API host; sandbox/live are
+  // selected by credentials, so only explicit sandbox configuration is allowed.
+  const monoLookupEnabled = booleanSetting(errors, 'MONO_LOOKUP_ENABLED', raw.MONO_LOOKUP_ENABLED, false);
+  const explicitLookupEnvironment = stringOrUndefined(raw.MONO_LOOKUP_ENVIRONMENT);
+  if (monoLookupEnabled) {
+    if (explicitLookupEnvironment !== 'sandbox') errors.push('MONO_LOOKUP_ENVIRONMENT must be explicitly set to sandbox.');
+    if (nodeEnv === 'production') errors.push('MONO_LOOKUP_ENABLED must remain false in production for this sandbox-only implementation.');
+    for (const [name, value] of [
+      ['MONO_LOOKUP_LAWFUL_BASIS_APPROVED', raw.MONO_LOOKUP_LAWFUL_BASIS_APPROVED],
+      ['MONO_LOOKUP_PRIVACY_NOTICE_APPROVED', raw.MONO_LOOKUP_PRIVACY_NOTICE_APPROVED],
+      ['MONO_LOOKUP_CONSENT_TEXT_APPROVED', raw.MONO_LOOKUP_CONSENT_TEXT_APPROVED],
+    ] as const) {
+      if (booleanSetting(errors, name, value, false) !== true) errors.push(`${name} must be true before Mono Lookup can be enabled.`);
+    }
+    for (const [name, value] of [
+      ['MONO_LOOKUP_CONSENT_TEXT_VERSION', raw.MONO_LOOKUP_CONSENT_TEXT_VERSION],
+      ['MONO_LOOKUP_PRIVACY_NOTICE_VERSION', raw.MONO_LOOKUP_PRIVACY_NOTICE_VERSION],
+      ['MONO_LOOKUP_LAWFUL_BASIS_VERSION', raw.MONO_LOOKUP_LAWFUL_BASIS_VERSION],
+    ] as const) {
+      const version = stringOrUndefined(value);
+      if (!version || !/^[A-Za-z0-9._-]{1,64}$/.test(version)) errors.push(`${name} is required when Mono Lookup is enabled.`);
+    }
+    const lookupConsentHash = stringOrUndefined(raw.MONO_LOOKUP_CONSENT_TEXT_SHA256);
+    if (!lookupConsentHash || !/^[0-9a-f]{64}$/.test(lookupConsentHash)) errors.push('MONO_LOOKUP_CONSENT_TEXT_SHA256 must be the approved consent text SHA-256 when Mono Lookup is enabled.');
+    const lookupKey = stringOrUndefined(raw.MONO_LOOKUP_SEC_KEY);
+    if (!lookupKey || !/^test_sk_[A-Za-z0-9_-]+$/.test(lookupKey)) errors.push('MONO_LOOKUP_SEC_KEY must be a Mono sandbox test_sk key when Mono Lookup is enabled.');
+    if (lookupKey && stringOrUndefined(raw.MONO_SEC_KEY) === lookupKey) errors.push('MONO_LOOKUP_SEC_KEY must be separate from the Mono Prove credential.');
+    validateVerificationOperationKeyring(errors, raw.VERIFICATION_OPERATION_HMAC_ACTIVE_KEY_VERSION, raw.VERIFICATION_OPERATION_HMAC_KEYS_JSON);
+  }
+  if (monoProveEnabled) {
+    validateVerificationOperationKeyring(errors, raw.VERIFICATION_OPERATION_HMAC_ACTIVE_KEY_VERSION, raw.VERIFICATION_OPERATION_HMAC_KEYS_JSON);
+  }
 
   // SMTP must be configured for real delivery in staging/production.
   const smtpHost = stringOrUndefined(raw.SMTP_HOST);
@@ -104,6 +237,74 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
     errors.push('JOINT_INVITATIONS_URL is required in staging/production (invitation links must target the real app).');
   }
 
+  // Individual KYC payload encryption uses a dedicated KMS key identifier.
+  // Leave it optional so the app can boot safely; writes fail closed until both
+  // values are configured. Never fall back to the Corporate O2/TIN key.
+  const individualKycDataResidencyApproved = booleanSetting(errors, 'INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED', raw.INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED, false);
+  const individualKycKmsKeyId = stringOrUndefined(raw.INDIVIDUAL_KYC_KMS_KEY_ID);
+  const individualKycKmsKeyVersion = stringOrUndefined(raw.INDIVIDUAL_KYC_KMS_KEY_VERSION);
+  if (Boolean(individualKycKmsKeyId) !== Boolean(individualKycKmsKeyVersion)) {
+    errors.push('INDIVIDUAL_KYC_KMS_KEY_ID and INDIVIDUAL_KYC_KMS_KEY_VERSION must be configured together.');
+  }
+  if (individualKycKmsKeyId && !/^(?:arn:(?:aws|aws-us-gov|aws-cn):kms:[a-z0-9-]+:\d{12}:(?:key|alias)\/[A-Za-z0-9/_-]+|[A-Za-z0-9-]{16,128}|alias\/[A-Za-z0-9/_-]+)$/.test(individualKycKmsKeyId)) {
+    errors.push('INDIVIDUAL_KYC_KMS_KEY_ID must be a KMS key ID, key ARN, or alias.');
+  }
+  if (individualKycKmsKeyVersion && !/^[A-Za-z0-9._-]{1,64}$/.test(individualKycKmsKeyVersion)) {
+    errors.push('INDIVIDUAL_KYC_KMS_KEY_VERSION must be a version token of at most 64 safe characters.');
+  }
+  if (individualKycDataResidencyApproved) {
+    const kycRegion = stringOrUndefined(raw.AWS_REGION);
+    const kycRoleArn = stringOrUndefined(raw.AWS_ROLE_ARN);
+    if (!individualKycKmsKeyId || !individualKycKmsKeyVersion) errors.push('A dedicated Individual KYC KMS key ID and version are required when data-residency approval is enabled.');
+    if (!kycRegion || !/^[a-z]{2}(-gov)?-[a-z]+-\d$/.test(kycRegion)) errors.push('AWS_REGION must be explicitly configured for approved Individual KYC encryption.');
+    if (raw.VERCEL === '1' && !kycRoleArn) errors.push('AWS_ROLE_ARN is required for Individual KYC KMS access through Vercel OIDC.');
+    if (kycRoleArn && !/^arn:(?:aws|aws-us-gov|aws-cn):iam::\d{12}:role\/[A-Za-z0-9+=,.@_/-]{1,512}$/.test(kycRoleArn)) errors.push('AWS_ROLE_ARN must be a valid IAM role ARN when Individual KYC encryption is enabled.');
+    if (stringOrUndefined(raw.AWS_ACCESS_KEY_ID) || stringOrUndefined(raw.AWS_SECRET_ACCESS_KEY)) errors.push('Static AWS access-key environment variables are not allowed for Individual KYC; use Vercel OIDC or a workload role.');
+  }
+
+  const individualKycS3StorageEnabled = booleanSetting(errors, 'INDIVIDUAL_KYC_S3_STORAGE_ENABLED', raw.INDIVIDUAL_KYC_S3_STORAGE_ENABLED, false);
+  const individualKycDocumentUploadEnabled = booleanSetting(errors, 'INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED', raw.INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED, false);
+  // Scanner work is explicitly deferred in this phase; the legacy env switch is not authoritative.
+  const individualKycScannerWorkerEnabled = false;
+  const storageResidencyApproved = booleanSetting(errors, 'INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED', raw.INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED, false);
+  const privateBucketApproved = booleanSetting(errors, 'INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED', raw.INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED, false);
+  const tlsPolicyApproved = booleanSetting(errors, 'INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED', raw.INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED, false);
+  const retentionApproved = booleanSetting(errors, 'INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED', raw.INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED, false);
+  const scannerResidencyApproved = booleanSetting(errors, 'INDIVIDUAL_KYC_SCANNER_RESIDENCY_APPROVED', raw.INDIVIDUAL_KYC_SCANNER_RESIDENCY_APPROVED, false);
+  const s3Endpoint = stringOrUndefined(raw.INDIVIDUAL_KYC_S3_ENDPOINT);
+  const s3Bucket = stringOrUndefined(raw.INDIVIDUAL_KYC_S3_BUCKET);
+  const s3Region = stringOrUndefined(raw.INDIVIDUAL_KYC_S3_REGION);
+  const s3CredentialReference = stringOrUndefined(raw.INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE);
+  const scannerApprovalReference = stringOrUndefined(raw.INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE);
+  const workerHmacKey = stringOrUndefined(raw.INDIVIDUAL_KYC_WORKER_HMAC_KEY);
+  const forcePathStyle = booleanSetting(errors, 'INDIVIDUAL_KYC_S3_FORCE_PATH_STYLE', raw.INDIVIDUAL_KYC_S3_FORCE_PATH_STYLE, true);
+
+  if (individualKycDocumentUploadEnabled && !individualKycS3StorageEnabled) {
+    errors.push('INDIVIDUAL_KYC_S3_STORAGE_ENABLED must be true before document uploads can be enabled.');
+  }
+  if (individualKycS3StorageEnabled || individualKycDocumentUploadEnabled) {
+    if (!individualKycDataResidencyApproved) errors.push('INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED must be explicitly approved before enabling KYC document infrastructure.');
+    if (!storageResidencyApproved) errors.push('INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED must confirm the approved storage country/region and transfer assessment.');
+    if (!privateBucketApproved) errors.push('INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED must confirm private-bucket/access policy review.');
+    if (!tlsPolicyApproved) errors.push('INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED must confirm TLS-only provider/bucket policy.');
+    if (!retentionApproved) errors.push('INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED must confirm the internal finite document-retention policy.');
+    if (!s3Endpoint) errors.push('INDIVIDUAL_KYC_S3_ENDPOINT must be explicitly configured; no provider/location is selected by default.');
+    else {
+      try {
+        const endpoint = new URL(s3Endpoint);
+        if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) errors.push('INDIVIDUAL_KYC_S3_ENDPOINT must be HTTPS without credentials, query or fragment.');
+        if (productionLike && ['localhost', '127.0.0.1', '::1', '[::1]'].includes(endpoint.hostname.toLowerCase())) errors.push('A production KYC storage endpoint cannot be loopback.');
+      } catch { errors.push('INDIVIDUAL_KYC_S3_ENDPOINT must be a valid HTTPS URL.'); }
+    }
+    if (!s3Bucket || !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(s3Bucket) || s3Bucket.includes('..')) errors.push('INDIVIDUAL_KYC_S3_BUCKET must be explicitly configured with a valid bucket name.');
+    if (!s3Region || !/^[A-Za-z0-9._-]{1,64}$/.test(s3Region)) errors.push('INDIVIDUAL_KYC_S3_REGION must be explicitly configured (it is a signing region, not residency evidence).');
+    if (s3CredentialReference !== 'workload-identity' && !(s3CredentialReference && /^file:\/run\/secrets\/[A-Za-z0-9._/-]{1,160}$/.test(s3CredentialReference) && !s3CredentialReference.includes('..'))) {
+      errors.push('INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE must be workload-identity or a /run/secrets/ mounted-provider-credential reference; never put credentials in environment values.');
+    }
+    if (raw.VERCEL === '1' && s3CredentialReference?.startsWith('file:')) errors.push('Mounted S3 credential files cannot be used on Vercel; use approved OIDC workload identity or a Nigerian signer deployment.');
+    if (stringOrUndefined(raw.AWS_ACCESS_KEY_ID) || stringOrUndefined(raw.AWS_SECRET_ACCESS_KEY)) errors.push('Static AWS access-key environment credentials are not allowed for Individual KYC; use workload identity.');
+  }
+
   if (errors.length > 0) {
     throw new Error(`Environment validation failed: ${errors.join(' ')}`);
   }
@@ -119,11 +320,123 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
     EMAIL_VERIFICATION_HMAC_SECRET: emailVerificationHmacSecret!,
     JOINT_INVITATION_TTL_HOURS: stringOrUndefined(raw.JOINT_INVITATION_TTL_HOURS),
     JOINT_INVITATIONS_URL: urlRaw,
+    AWS_ROLE_ARN: stringOrUndefined(raw.AWS_ROLE_ARN),
+    INDIVIDUAL_KYC_KMS_KEY_ID: individualKycKmsKeyId,
+    INDIVIDUAL_KYC_KMS_KEY_VERSION: individualKycKmsKeyVersion,
+    INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED: individualKycDataResidencyApproved,
+    INDIVIDUAL_KYC_S3_STORAGE_ENABLED: individualKycS3StorageEnabled,
+    INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED: individualKycDocumentUploadEnabled,
+    INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED: individualKycScannerWorkerEnabled,
+    INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED: storageResidencyApproved,
+    INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED: privateBucketApproved,
+    INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED: tlsPolicyApproved,
+    INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED: retentionApproved,
+    INDIVIDUAL_KYC_SCANNER_RESIDENCY_APPROVED: scannerResidencyApproved,
+    INDIVIDUAL_KYC_S3_ENDPOINT: s3Endpoint,
+    INDIVIDUAL_KYC_S3_BUCKET: s3Bucket,
+    INDIVIDUAL_KYC_S3_REGION: s3Region,
+    INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE: s3CredentialReference,
+    INDIVIDUAL_KYC_S3_FORCE_PATH_STYLE: String(forcePathStyle),
+    INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE: scannerApprovalReference,
+    INDIVIDUAL_KYC_WORKER_HMAC_KEY: workerHmacKey,
+    CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL: stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL),
+    CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN: stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN),
+    CORPORATE_O2_RATE_LIMIT_HMAC_SECRET: stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_HMAC_SECRET),
   };
+}
+
+function validateMonoRedirect(
+  errors: string[],
+  rawRedirect: unknown,
+  rawOrigins: unknown,
+  productionLike: boolean,
+): void {
+  const redirect = stringOrUndefined(rawRedirect);
+  if (!redirect) {
+    errors.push('MONO_PROVE_REDIRECT_URL is required when Mono Prove is enabled.');
+    return;
+  }
+  let parsed: URL;
+  try { parsed = new URL(redirect); } catch { parsed = null as unknown as URL; }
+  if (!parsed || !['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) {
+    errors.push('MONO_PROVE_REDIRECT_URL must be a plain http/https URL without credentials, query, or fragment.');
+    return;
+  }
+  const origins = typeof rawOrigins === 'string'
+    ? rawOrigins.split(',').map((origin) => origin.trim()).filter(Boolean)
+    : [];
+  if (!origins.includes(parsed.origin)) errors.push('MONO_PROVE_REDIRECT_URL origin must be present in CORS_ORIGINS.');
+  const host = parsed.hostname.toLowerCase();
+  if (productionLike && (parsed.protocol !== 'https:' || ['localhost', '127.0.0.1', '::1', '[::1]'].includes(host) || host.endsWith('.local'))) {
+    errors.push('MONO_PROVE_REDIRECT_URL must use a non-local HTTPS origin in staging/production.');
+  }
 }
 
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function isValidBase64Secret(value: string | undefined): boolean {
+  if (!value) return false;
+  const decoded = Buffer.from(value, 'base64');
+  return decoded.length >= 32 &&
+    decoded.toString('base64').replace(/=+$/, '') === value.replace(/=+$/, '');
+}
+
+function booleanSetting(errors: string[], name: string, value: unknown, defaultValue: boolean): boolean {
+  if (value === undefined || value === null || value === '') return defaultValue;
+  if (value === 'true' || value === true) return true;
+  if (value === 'false' || value === false) return false;
+  errors.push(`${name} must be exactly true or false.`);
+  return false;
+}
+
+function validateCorporateO2HmacKeyring(errors: string[], activeValue: unknown, serializedValue: unknown): void {
+  const activeVersion = stringOrUndefined(activeValue);
+  if (!activeVersion || !/^[A-Za-z0-9._-]{1,32}$/.test(activeVersion)) {
+    errors.push('CORPORATE_O2_HMAC_ACTIVE_KEY_VERSION is required when Corporate O2 is enabled.');
+  }
+  if (typeof serializedValue !== 'string') {
+    errors.push('CORPORATE_O2_HMAC_KEYS_JSON is required when Corporate O2 is enabled.');
+    return;
+  }
+  try {
+    const parsed: unknown = JSON.parse(serializedValue);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid keyring');
+    const entries = Object.entries(parsed as Record<string, unknown>);
+    if (entries.length === 0 || entries.some(([version, value]) => {
+      if (!/^[A-Za-z0-9._-]{1,32}$/.test(version) || typeof value !== 'string') return true;
+      const decoded = Buffer.from(value, 'base64');
+      return decoded.length < 32 || decoded.toString('base64').replace(/=+$/, '') !== value.replace(/=+$/, '');
+    })) throw new Error('invalid keyring');
+    if (!entries.some(([version]) => version === activeVersion)) throw new Error('active version missing');
+  } catch {
+    errors.push('CORPORATE_O2_HMAC_KEYS_JSON must be a version-to-base64-key object with keys of at least 32 bytes and contain the active version.');
+  }
+}
+
+function validateVerificationOperationKeyring(errors: string[], activeValue: unknown, serializedValue: unknown): void {
+  const activeVersion = stringOrUndefined(activeValue);
+  if (!activeVersion || !/^[A-Za-z0-9._-]{1,32}$/.test(activeVersion)) {
+    errors.push('VERIFICATION_OPERATION_HMAC_ACTIVE_KEY_VERSION is required when a Mono verification provider is enabled.');
+  }
+  if (typeof serializedValue !== 'string') {
+    errors.push('VERIFICATION_OPERATION_HMAC_KEYS_JSON is required when a Mono verification provider is enabled.');
+    return;
+  }
+  try {
+    const parsed: unknown = JSON.parse(serializedValue);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid');
+    const entries = Object.entries(parsed as Record<string, unknown>);
+    if (entries.length === 0 || entries.some(([version, value]) => {
+      if (!/^[A-Za-z0-9._-]{1,32}$/.test(version) || typeof value !== 'string') return true;
+      const decoded = Buffer.from(value, 'base64');
+      return decoded.length < 32 || decoded.toString('base64').replace(/=+$/, '') !== value.replace(/=+$/, '');
+    })) throw new Error('invalid');
+    if (!entries.some(([version]) => version === activeVersion)) throw new Error('active version missing');
+  } catch {
+    errors.push('VERIFICATION_OPERATION_HMAC_KEYS_JSON must be a version-to-base64-key object with keys of at least 32 bytes and contain the active version.');
+  }
 }
 
 function checkSecret(

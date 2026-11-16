@@ -4,6 +4,8 @@ import Link from "next/link";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, Info, LoaderCircle, LockKeyhole, Save, UserRound } from "lucide-react";
 import { getMyProfile, getSafeErrorMessage, isApiError, type IndividualAccountProfile, updateMyProfile } from "@/lib/api/client";
+import { ArrowLeft, Check, Info, LoaderCircle, LockKeyhole, Save, ShieldCheck, UserRound } from "lucide-react";
+import { completeIndividualKycDocument, createIndividualKycUploadIntent, getIndividualKycProfile, getMyProfile, getSafeErrorMessage, isApiError, saveIndividualKycPersonal, type IndividualAccountProfile, type IndividualKycDocumentType, type IndividualKycProfile, updateMyProfile } from "@/lib/api/client";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { BankDetailsDraft, emptyBankDetailsDraft } from "./BankDetailsDraft";
 import { InvestmentObjectiveRiskProfileDraft, emptyInvestmentObjectiveRiskDraft } from "./InvestmentObjectiveRiskProfileDraft";
@@ -20,17 +22,44 @@ type LocalKycDraft = {
   residentialAddress: string;
   stateOfResidence: string;
   idCardType: string;
-  idDocumentSelected: boolean;
   occupation: string;
 };
 
 const idCardTypes = ["", "Passport", "PVC", "Driver’s License", "NIN"];
+const apiIdCardTypeToLabel: Record<IndividualKycDocumentType, string> = {
+  PASSPORT: "Passport", PVC: "PVC", DRIVERS_LICENSE: "Driver’s License", NIN: "NIN",
+};
+const idCardTypeToApi: Record<string, IndividualKycDocumentType> = {
+  Passport: "PASSPORT",
+  PVC: "PVC",
+  "Driver’s License": "DRIVERS_LICENSE",
+  NIN: "NIN",
+};
+
+function acceptedDocumentContentType(file: File): "application/pdf" | "image/jpeg" | "image/png" | null {
+  const byExtension: Record<string, "application/pdf" | "image/jpeg" | "image/png"> = {
+    pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
+  };
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const expected = byExtension[extension];
+  if (!expected || (file.type && file.type !== expected)) return null;
+  return expected;
+}
+
+async function sha256Base64(file: File): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return btoa(String.fromCharCode(...new Uint8Array(digest)));
+}
 const profileSteps: Array<{ step: ProfileStep; title: string; description: string }> = [
   { step: 1, title: "Personal information", description: "Contact details, KYC draft and PEP declaration" },
   { step: 2, title: "Investment profile", description: "Objectives, horizon and risk preferences" },
   { step: 3, title: "Source of funds", description: "Funds and wealth draft" },
   { step: 4, title: "Bank details", description: "Settlement account draft" },
 ];
+const unsupportedSections: UnsupportedProfileSection[] = [
+  { title: "Documents", description: "Only the Individual identity-document path is wired to the guarded API; other supporting documents remain unavailable." },
+];
+
 function emptyLocalKycDraft(): LocalKycDraft {
   return {
     dateOfBirth: "",
@@ -39,9 +68,16 @@ function emptyLocalKycDraft(): LocalKycDraft {
     residentialAddress: "",
     stateOfResidence: "",
     idCardType: "",
-    idDocumentSelected: false,
     occupation: "",
   };
+}
+
+function individualKycErrorMessage(error: unknown): string {
+  if (!isApiError(error)) return getSafeErrorMessage(error);
+  if (error.code === "FEATURE_UNAVAILABLE" || error.code === "SERVICE_UNAVAILABLE") return "Individual KYC is temporarily unavailable because its required encryption, storage or privacy controls are not ready.";
+  if (error.code === "CONFLICT") return "The saved KYC profile changed. Reload its status and retry with the latest version.";
+  if (error.code === "VALIDATION_FAILED") return "Review the KYC fields and supported document details, then try again.";
+  return getSafeErrorMessage(error);
 }
 
 function inputClassName(readOnly = false) {
@@ -136,6 +172,11 @@ export function IndividualProfileContent() {
   const { status: authStatus, invalidateSession } = useAuth();
   const [requestState, setRequestState] = useState<ProfileRequestState>("loading");
   const [profile, setProfile] = useState<IndividualAccountProfile | null>(null);
+  const [kycProfile, setKycProfile] = useState<IndividualKycProfile | null>(null);
+  const [kycLoadState, setKycLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentUploadState, setDocumentUploadState] = useState<"idle" | "uploading">("idle");
+  const [documentUploadMessage, setDocumentUploadMessage] = useState("");
   const [localKycDraft, setLocalKycDraft] = useState<LocalKycDraft>(emptyLocalKycDraft);
   const [localInvestmentRiskDraft, setLocalInvestmentRiskDraft] = useState(emptyInvestmentObjectiveRiskDraft);
   const [localBankDetailsDraft, setLocalBankDetailsDraft] = useState(emptyBankDetailsDraft);
@@ -148,6 +189,7 @@ export function IndividualProfileContent() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const requestVersion = useRef(0);
+  const kycRequestVersion = useRef(0);
 
   const loadProfile = useCallback(async () => {
     const version = requestVersion.current + 1;
@@ -168,10 +210,114 @@ export function IndividualProfileContent() {
     }
   }, [invalidateSession]);
 
+  const loadKycProfile = useCallback(async (hydrateDraft = true) => {
+    const version = kycRequestVersion.current + 1;
+    kycRequestVersion.current = version;
+    setKycLoadState("loading");
+    try {
+      const current = await getIndividualKycProfile();
+      if (version !== kycRequestVersion.current) return;
+      setKycProfile(current);
+      const personal = current.sections.personal;
+      if (hydrateDraft && personal) {
+        setLocalKycDraft((draft) => ({
+          ...draft,
+          dateOfBirth: personal.dateOfBirth ?? "",
+          gender: personal.gender?.toLowerCase() ?? "",
+          nationality: personal.nationality ?? "",
+          stateOfResidence: personal.stateOfResidence ?? "",
+          residentialAddress: personal.residentialAddress ?? "",
+          idCardType: personal.idDocumentType ? apiIdCardTypeToLabel[personal.idDocumentType] : "",
+          occupation: personal.occupation ?? "",
+        }));
+        setLocalPepDeclarationDraft({
+          applicantPepStatus: personal.pepStatus?.toLowerCase() ?? "",
+          fullName: personal.pepDetails?.fullName ?? "",
+          position: personal.pepDetails?.position ?? "",
+          country: personal.pepDetails?.country ?? "",
+          periodHeld: personal.pepDetails?.periodHeld ?? "",
+        });
+      }
+      setKycLoadState("ready");
+    } catch (error) {
+      if (version !== kycRequestVersion.current) return;
+      if (isApiError(error) && error.code === "UNAUTHENTICATED") invalidateSession();
+      setKycProfile(null);
+      setKycLoadState("error");
+    }
+  }, [invalidateSession]);
+
+  async function uploadSelectedIdDocument() {
+    if (!documentFile || !kycProfile || documentUploadState === "uploading") return;
+    const contentType = acceptedDocumentContentType(documentFile);
+    if (!contentType) {
+      setDocumentUploadMessage("Choose a PDF, JPEG or PNG file whose extension matches its file type.");
+      return;
+    }
+    if (documentFile.size < 1 || documentFile.size > 10 * 1024 * 1024) {
+      setDocumentUploadMessage("The document must be between 1 byte and 10 MiB.");
+      return;
+    }
+    const documentType = idCardTypeToApi[localKycDraft.idCardType];
+    if (!documentType) {
+      setDocumentUploadMessage("Select a supported identity document type first.");
+      return;
+    }
+
+    setDocumentUploadState("uploading");
+    setDocumentUploadMessage("Preparing a secure upload…");
+    let bytesTransferred = false;
+    try {
+      const checksumSha256 = await sha256Base64(documentFile);
+      const intent = await createIndividualKycUploadIntent({
+        version: kycProfile.version,
+        documentType,
+        originalFilename: documentFile.name,
+        contentType,
+        sizeBytes: documentFile.size,
+        checksumSha256,
+      });
+      // The server advances the optimistic version when issuing a one-time intent.
+      setKycProfile((current) => current ? { ...current, version: intent.version } : current);
+      const put = await fetch(intent.uploadUrl, {
+        method: "PUT",
+        mode: "cors",
+        credentials: "omit",
+        cache: "no-store",
+        redirect: "error",
+        headers: intent.requiredHeaders,
+        body: documentFile,
+      });
+      if (!put.ok) throw new Error("SIGNED_UPLOAD_FAILED");
+      bytesTransferred = true;
+      const completed = await completeIndividualKycDocument(intent.documentId, intent.version);
+      setKycProfile((current) => current ? { ...current, version: completed.version } : current);
+      setDocumentUploadMessage("Document uploaded and marked UNDER REVIEW. Upload completion is not document acceptance or KYC approval.");
+      await loadKycProfile(false);
+    } catch (error) {
+      if (isApiError(error) && error.code === "UNAUTHENTICATED") invalidateSession();
+      setDocumentUploadMessage(isApiError(error)
+        ? error.code === "FEATURE_UNAVAILABLE"
+          ? bytesTransferred
+            ? "The file may have reached private storage, but the API could not confirm its upload. It is not verified or approved; contact support before retrying."
+            : "Document uploads are disabled until approved private storage, encryption, retention and residency controls are operational. No file was transferred."
+          : individualKycErrorMessage(error)
+        : "The secure upload could not be completed. Check the connection and try again; no document is treated as verified.");
+    } finally {
+      setDocumentUploadState("idle");
+    }
+  }
+
   useEffect(() => {
     if (authStatus === "authenticated") {
       void loadProfile();
+      void loadKycProfile();
     } else {
+      kycRequestVersion.current += 1;
+      setKycProfile(null);
+      setKycLoadState("loading");
+      setDocumentFile(null);
+      setDocumentUploadMessage("");
       setLocalKycDraft(emptyLocalKycDraft());
       setLocalInvestmentRiskDraft(emptyInvestmentObjectiveRiskDraft());
       setLocalBankDetailsDraft(emptyBankDetailsDraft());
@@ -185,8 +331,9 @@ export function IndividualProfileContent() {
 
     return () => {
       requestVersion.current += 1;
+      kycRequestVersion.current += 1;
     };
-  }, [authStatus, loadProfile]);
+  }, [authStatus, loadKycProfile, loadProfile]);
 
   function resetCompletionFrom(step: ProfileStep) {
     setCompletedThrough((current) => Math.min(current, step - 1));
@@ -214,10 +361,10 @@ export function IndividualProfileContent() {
     ];
     const missingField = requiredKycFields.find(([, value]) => !value.trim());
     if (missingField) return `Complete your ${missingField[0]} to continue.`;
-    if (!localKycDraft.idDocumentSelected) return "Select an ID document file to continue.";
     if (!localPepDeclarationDraft.applicantPepStatus) return "Select Yes or No in the PEP Declaration to continue.";
-    if (localPepDeclarationDraft.applicantPepStatus === "yes" && !localPepDeclarationDraft.details.trim()) {
-      return "Provide the requested PEP details to continue.";
+    if (localPepDeclarationDraft.applicantPepStatus === "yes") {
+      const missingPep = [localPepDeclarationDraft.fullName, localPepDeclarationDraft.position, localPepDeclarationDraft.country, localPepDeclarationDraft.periodHeld].some((value) => !value.trim());
+      if (missingPep) return "Complete the name, position, country and period held for the PEP declaration.";
     }
     return "";
   }
@@ -273,10 +420,33 @@ export function IndividualProfileContent() {
     setSaving(true);
     setNotice("");
     setStepError("");
+    let kycDetailsSaved = false;
     try {
-      // The current approved profile API requires the account-managed name
-      // fields alongside the editable phone number. Names remain unchanged in
-      // this UI; all local KYC/PEP draft fields are deliberately omitted.
+      // Names remain account-managed. Personal KYC uses its own encrypted,
+      // versioned endpoint and is not sent through the profile update contract.
+      if (!kycProfile || kycLoadState !== "ready") throw new Error("KYC_STATUS_UNAVAILABLE");
+      if (!/^[A-Za-z]{2}$/.test(localKycDraft.nationality.trim())) {
+        throw new Error("Enter nationality as a two-letter ISO country code (for example, NG).");
+      }
+      const personalResult = await saveIndividualKycPersonal({
+        version: kycProfile.version,
+        dateOfBirth: localKycDraft.dateOfBirth,
+        gender: localKycDraft.gender.toUpperCase() as "MALE" | "FEMALE",
+        nationality: localKycDraft.nationality.trim().toUpperCase(),
+        stateOfResidence: localKycDraft.stateOfResidence.trim(),
+        residentialAddress: localKycDraft.residentialAddress.trim(),
+        idDocumentType: idCardTypeToApi[localKycDraft.idCardType],
+        occupation: localKycDraft.occupation.trim(),
+        pepStatus: localPepDeclarationDraft.applicantPepStatus.toUpperCase() as "YES" | "NO",
+        ...(localPepDeclarationDraft.applicantPepStatus === "yes" ? { pepDetails: {
+          fullName: localPepDeclarationDraft.fullName.trim(),
+          position: localPepDeclarationDraft.position.trim(),
+          country: localPepDeclarationDraft.country.trim(),
+          periodHeld: localPepDeclarationDraft.periodHeld.trim(),
+        } } : {}),
+      });
+      setKycProfile((current) => current ? { ...current, version: personalResult.version, sectionStatuses: personalResult.sectionStatuses, progression: personalResult.progression } : current);
+      kycDetailsSaved = true;
       const savedProfile = await updateMyProfile({
         firstName: profile.firstName.trim(),
         lastName: profile.lastName.trim(),
@@ -285,11 +455,16 @@ export function IndividualProfileContent() {
       setProfile(savedProfile);
       setCompletedThrough(1);
       setActiveStep(2);
-      setNotice("Your phone number has been saved. Local KYC and PEP draft details were not submitted or stored.");
-      setStepNotice("Personal Information is complete for this page. Continue with your Investment Profile.");
+      setNotice("Phone and Personal KYC details have been saved to their account APIs. KYC submission requires a matching identity document upload; upload or document review does not itself approve customer identity.");
+      setStepNotice("Personal details are saved as a KYC draft. This is not verification or approval. Continue with your Investment Profile.");
     } catch (error) {
       if (isApiError(error) && error.code === "UNAUTHENTICATED") invalidateSession();
-      setNotice(getSafeErrorMessage(error));
+      const safeMessage = error instanceof Error && error.message === "Enter nationality as a two-letter ISO country code (for example, NG)."
+        ? error.message
+        : error instanceof Error && error.message === "KYC_STATUS_UNAVAILABLE"
+          ? "Saved KYC status is unavailable. Reload the page before attempting to save."
+          : individualKycErrorMessage(error);
+      setNotice(kycDetailsSaved ? `Personal KYC draft saved; the profile phone update did not finish. ${safeMessage}` : safeMessage);
     } finally {
       setSaving(false);
     }
@@ -376,6 +551,18 @@ export function IndividualProfileContent() {
             <div className="order-2 min-w-0 xl:order-1">
               {stepNotice ? <p role="status" className="mb-5 rounded-xl border border-[#cce7d0] bg-[#eff8f0] px-4 py-3 text-sm font-semibold leading-6 text-star-700">{stepNotice}</p> : null}
               {stepError ? <p role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold leading-6 text-red-700">{stepError}</p> : null}
+          <section className="mt-5 rounded-xl border border-star-200 bg-white p-5" aria-labelledby="individual-kyc-status-heading">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div><h2 id="individual-kyc-status-heading" className="text-base font-extrabold text-star-900">Saved KYC status</h2><p className="mt-1 text-sm leading-6 text-star-muted">This status comes from the authenticated Individual KYC service; local page drafts are not counted as saved.</p></div>
+              {kycLoadState === "ready" && kycProfile ? <span className="w-fit rounded-full bg-star-100 px-3 py-1 text-xs font-extrabold text-star-700">{kycProfile.status.replaceAll("_", " ")}</span> : null}
+            </div>
+            {kycLoadState === "loading" ? <p className="mt-3 text-sm text-star-muted">Loading saved KYC status…</p> : null}
+            {kycLoadState === "error" ? <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900">Saved KYC status is unavailable for this account or the service is not configured. No local draft is represented as persisted.</p> : null}
+            {kycLoadState === "ready" && kycProfile ? <><div className="mt-4 grid gap-2 sm:grid-cols-4">{Object.entries({ Personal: kycProfile.sectionStatuses.personal, Investment: kycProfile.sectionStatuses.investment, "Source of funds": kycProfile.sectionStatuses.sourceOfFunds, Bank: kycProfile.sectionStatuses.bank }).map(([label, state]) => <div key={label} className="rounded-lg bg-star-50 px-3 py-2"><p className="text-xs font-bold text-star-muted">{label}</p><p className="mt-1 text-xs font-extrabold text-star-900">{state.replaceAll("_", " ")}</p></div>)}</div><p className="mt-3 text-xs text-star-muted">{kycProfile.documents.length ? `${kycProfile.documents.length} identity document record(s).` : "No identity document has been uploaded."} Uploads enter manual document review; upload success is not KYC approval.</p>{kycProfile.documents.length ? <ul className="mt-3 space-y-2">{kycProfile.documents.map((document) => <li key={document.id} className="rounded-lg border border-star-100 px-3 py-2 text-xs"><span className="font-bold text-star-900">{document.originalFilename}</span><span className="ml-2 text-star-muted">{document.status.replaceAll("_", " ")} · review {document.manualReviewStatus.replaceAll("_", " ")}</span></li>)}</ul> : null}</> : null}
+          </section>
+
+          {stepNotice ? <p role="status" className="mt-5 rounded-lg border border-[#cce7d0] bg-[#eff8f0] px-4 py-3 text-sm font-semibold leading-6 text-star-700">{stepNotice}</p> : null}
+          {stepError ? <p role="alert" className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold leading-6 text-red-700">{stepError}</p> : null}
 
           {activeStep === 1 ? (
             <form onSubmit={savePersonalInformation} className="mt-0 rounded-2xl border border-star-200 bg-white p-5 shadow-[0_4px_18px_rgba(0,59,42,0.05)] sm:p-6">
@@ -397,14 +584,14 @@ export function IndividualProfileContent() {
 
               <div className="mt-7 border-t border-star-100 pt-6">
                 <h3 className="text-base font-extrabold text-star-900">KYC details</h3>
-                <p className="mt-1 text-sm leading-6 text-star-muted">Complete every field below to continue to the next current-page section. These current-page draft details are not submitted, saved, verified or retained when you leave or refresh this page.</p>
+                <p className="mt-1 text-sm leading-6 text-star-muted">Your phone is saved to the account profile. These personal fields and structured PEP details are saved separately as a versioned KYC draft, not as an approval. Investment, Source of Funds and Bank sections remain page-only until their approved option catalogues are available.</p>
                 <div className="mt-5 grid gap-4 sm:grid-cols-2">
                   <label className="block"><span className="text-sm font-extrabold text-star-900">Date of birth</span><input type="date" autoComplete="bday" value={localKycDraft.dateOfBirth} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, dateOfBirth: event.target.value })); resetCompletionFrom(1); }} className={`mt-2 ${inputClassName()}`} /></label>
                   <label className="block"><span className="text-sm font-extrabold text-star-900">Gender</span><select autoComplete="sex" value={localKycDraft.gender} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, gender: event.target.value })); resetCompletionFrom(1); }} className={`mt-2 ${inputClassName()}`}><option value="">Select gender</option><option value="male">Male</option><option value="female">Female</option></select></label>
-                  <label className="block"><span className="text-sm font-extrabold text-star-900">Nationality</span><input type="text" autoComplete="country-name" value={localKycDraft.nationality} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, nationality: event.target.value })); resetCompletionFrom(1); }} placeholder="Enter nationality" className={`mt-2 ${inputClassName()}`} /></label>
+                  <label className="block"><span className="text-sm font-extrabold text-star-900">Nationality</span><input type="text" autoComplete="off" value={localKycDraft.nationality} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, nationality: event.target.value })); resetCompletionFrom(1); }} placeholder="Two-letter country code (e.g. NG)" className={`mt-2 ${inputClassName()}`} /></label>
                   <label className="block"><span className="text-sm font-extrabold text-star-900">State of residence</span><input type="text" autoComplete="address-level1" value={localKycDraft.stateOfResidence} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, stateOfResidence: event.target.value })); resetCompletionFrom(1); }} placeholder="Enter state of residence" className={`mt-2 ${inputClassName()}`} /></label>
                   <label className="block sm:col-span-2"><span className="text-sm font-extrabold text-star-900">Residential address</span><textarea rows={3} autoComplete="street-address" value={localKycDraft.residentialAddress} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, residentialAddress: event.target.value })); resetCompletionFrom(1); }} placeholder="Enter residential address" className={`mt-2 ${inputClassName()} py-3`} /></label>
-                  <label className="block"><span className="text-sm font-extrabold text-star-900">ID card type</span><select value={localKycDraft.idCardType} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, idCardType: event.target.value, idDocumentSelected: false })); resetCompletionFrom(1); }} className={`mt-2 ${inputClassName()}`}><option value="">Select ID card type</option>{idCardTypes.slice(1).map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+                  <label className="block"><span className="text-sm font-extrabold text-star-900">ID card type</span><select value={localKycDraft.idCardType} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, idCardType: event.target.value })); setDocumentFile(null); setDocumentUploadMessage(""); resetCompletionFrom(1); }} className={`mt-2 ${inputClassName()}`}><option value="">Select ID card type</option>{idCardTypes.slice(1).map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
                   <label className="block"><span className="text-sm font-extrabold text-star-900">Occupation</span><input type="text" autoComplete="organization-title" value={localKycDraft.occupation} onChange={(event) => { setLocalKycDraft((current) => ({ ...current, occupation: event.target.value })); resetCompletionFrom(1); }} placeholder="Enter occupation" className={`mt-2 ${inputClassName()}`} /></label>
                 </div>
                 {localKycDraft.idCardType ? (
@@ -413,8 +600,10 @@ export function IndividualProfileContent() {
                     <p className="mt-1 text-sm leading-6 text-star-muted">Choose your {localKycDraft.idCardType} document to complete this current-page section.</p>
                     <label className="mt-4 block">
                       <span className="text-sm font-extrabold text-star-900">ID document</span>
-                      <input type="file" accept=".pdf,image/jpeg,image/png" onChange={(event) => { setLocalKycDraft((current) => ({ ...current, idDocumentSelected: Boolean(event.target.files?.length) })); resetCompletionFrom(1); }} className="mt-2 block w-full text-sm text-star-700 file:mr-4 file:rounded-md file:border-0 file:bg-star-700 file:px-3.5 file:py-2 file:text-sm file:font-extrabold file:text-white hover:file:bg-star-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700" />
-                      <span className="mt-2 block text-xs leading-5 text-star-muted">This file remains in the browser control for this page only. It is not uploaded, sent, or stored by the portal.</span>
+                      <input type="file" accept=".pdf,image/jpeg,image/png" disabled={documentUploadState === "uploading"} onChange={(event) => { setDocumentFile(event.target.files?.[0] ?? null); setDocumentUploadMessage(""); resetCompletionFrom(1); }} className="mt-2 block w-full text-sm text-star-700 file:mr-4 file:rounded-md file:border-0 file:bg-star-700 file:px-3.5 file:py-2 file:text-sm file:font-extrabold file:text-white hover:file:bg-star-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 disabled:opacity-60" />
+                      <span className="mt-2 block text-xs leading-5 text-star-muted">PDF, JPEG or PNG, maximum 10 MiB. Files are sent only after requesting a short-lived authenticated upload intent; the API keeps uploads disabled until operational approvals are complete.</span>
+                      <button type="button" onClick={() => { void uploadSelectedIdDocument(); }} disabled={!documentFile || !kycProfile || kycLoadState !== "ready" || documentUploadState === "uploading"} className="mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-star-700 px-4 text-sm font-extrabold text-white transition hover:bg-star-800 disabled:cursor-not-allowed disabled:opacity-60"><ShieldCheck size={16} aria-hidden="true" />{documentUploadState === "uploading" ? "Uploading…" : "Securely upload ID"}</button>
+                      {documentUploadMessage ? <p role="status" className="mt-2 text-sm leading-6 text-star-muted">{documentUploadMessage}</p> : null}
                     </label>
                   </section>
                 ) : null}
