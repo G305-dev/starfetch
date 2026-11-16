@@ -14,6 +14,7 @@ import { FAQSection } from "@/components/FAQSection";
 import { CTASection } from "@/components/CTASection";
 import { Footer } from "@/components/Footer";
 import { Reveal } from "@/components/Reveal";
+import { FixedNoteRatesPopup } from "@/components/FixedNoteRatesPopup";
 
 export default function Home() {
   return (
@@ -35,6 +36,7 @@ export default function Home() {
         <Reveal><CTASection /></Reveal>
       </main>
       <Footer />
+      <FixedNoteRatesPopup />
     </>
   );
 }
