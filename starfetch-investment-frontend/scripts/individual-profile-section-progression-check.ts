@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { IndividualAccountProfile } from "../lib/api/client";
+import type { IndividualAccountProfile, IndividualKycProfile } from "../lib/api/client";
 
-// Keeps this standalone source check on the project-root compilation path.
 type _IndividualAccountProfile = IndividualAccountProfile;
+type _IndividualKycProfile = IndividualKycProfile;
 
 const source = readFileSync(resolve(process.cwd(), "components/portal/IndividualProfileContent.tsx"), "utf8");
+const api = readFileSync(resolve(process.cwd(), "lib/api/client.ts"), "utf8");
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -13,10 +14,11 @@ function assert(condition: unknown, message: string): asserts condition {
 
 assert(
   source.includes('type ProfileStep = 1 | 2 | 3 | 4;')
-    && source.includes('const [activeStep, setActiveStep] = useState<ProfileStep>(1);')
-    && source.includes('const [completedThrough, setCompletedThrough] = useState(0);')
-    && source.includes("function SectionProgress"),
-  "Individual Profile must keep current-page-only sequential section progress",
+    && source.includes("function completedThrough(profile: IndividualKycProfile | null)")
+    && source.includes("profile.sectionStatuses[section.key]")
+    && source.includes("profile.progression.nextSection")
+    && source.includes("getIndividualKycProfile"),
+  "Sequential progress and resume position must be derived from the authenticated KYC API response",
 );
 assert(
   source.includes("{activeStep === 1 ? (")
@@ -26,32 +28,38 @@ assert(
   "Only the active Individual Profile section form must render at a time",
 );
 assert(
-  source.includes("Complete Personal Information")
-    && source.includes("Complete Investment Profile")
-    && source.includes("Complete Source of Funds")
-    && source.includes("Complete Bank Details")
-    && source.includes("setCompletedThrough(1)")
-    && source.includes("setCompletedThrough(2)")
-    && source.includes("setCompletedThrough(3)")
-    && source.includes("setCompletedThrough(4)"),
-  "Each Individual Profile section must explicitly complete before the next one is unlocked",
+  source.includes("saveIndividualKycPersonal({")
+    && source.includes("saveIndividualKycInvestmentProfile({")
+    && source.includes("saveIndividualKycSourceOfFunds({")
+    && source.includes("saveIndividualKycBankDetails({")
+    && source.includes("finishSavedSection")
+    && source.includes("await loadKycProfile(true)"),
+  "Each section must save using the returned version and refresh server statuses before unlocking the next section",
 );
 assert(
-  source.includes("getPersonalInformationError")
-    && source.includes("getInvestmentProfileError")
-    && source.includes("getSourceOfFundsError")
-    && source.includes("getBankDetailsError")
-    && source.includes("localPepDeclarationDraft.applicantPepStatus === \"yes\"")
-    && source.includes('localSourceOfFundsDraft.selectedSources.includes("Other (specify)")'),
-  "Sequential progression must require all relevant fields and conditional PEP/Other-source details",
+  api.includes('"/me/kyc-profile/investment-profile"')
+    && api.includes('"/me/kyc-profile/source-of-funds"')
+    && api.includes('"/me/kyc-profile/bank-details"')
+    && api.includes('"/me/kyc-profile/submit"')
+    && api.includes("requireIndividualKycVersion(input.version)"),
+  "KYC section saves and submission must use the mapped authenticated routes and version field",
 );
 assert(
-  source.includes("function resetCompletionFrom")
-    && source.includes("resetCompletionFrom(1)")
-    && source.includes("resetCompletionFrom(2)")
-    && source.includes("resetCompletionFrom(3)")
+  source.includes("kycProfile.progression.canSubmit")
+    && source.includes("submitIndividualKycProfile(kycProfile.version)")
+    && source.includes("Account Under Review")
+    && source.includes("SUBMITTED")
+    && source.includes("awaiting review"),
+  "Final submission must be gated by server progression and render the awaiting-review screen without claiming approval",
+);
+assert(
+  source.includes("Profile progress")
+    && source.includes("profile.sectionStatuses[key]")
+    && !source.includes("Saved KYC status</h2>")
+    && !source.includes("Additional onboarding is not available yet")
+    && !source.includes("Document upload and storage are not available in the current portal.")
     && !/(?:window\.)?(?:localStorage|sessionStorage)\s*[.[]/.test(source),
-  "Editing an earlier section must relock dependent sections without persisting progress in the browser",
+  "Persisted section status belongs in the compact progress card, not the removed large status panel or browser storage",
 );
 
-console.log("PASS — Individual Profile reveals one current-page section at a time, requires relevant fields before sequential unlocks, and relocks later sections when earlier drafts change");
+console.log("PASS — all four sections resume from server status, save with optimistic versions, unlock sequentially, and submit only when the backend enables it");
