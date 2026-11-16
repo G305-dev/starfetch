@@ -1,13 +1,4 @@
-export const corporateProfileSectionStatuses = ["NOT_STARTED", "DRAFT", "COMPLETE"] as const;
-export type CorporateProfileSectionStatus = (typeof corporateProfileSectionStatuses)[number];
-
-export type CorporateProfileSectionStates = {
-  companyDetails: CorporateProfileSectionStatus;
-  investmentProfile: CorporateProfileSectionStatus;
-  sourceOfFunds: CorporateProfileSectionStatus;
-  bankDetails: CorporateProfileSectionStatus;
-};
-
+/** Form shapes for the Corporate Profile's current-session-only preview. */
 export type CorporateApplicantInfo = {
   companyName: string;
   companyPhoneNumber: string;
@@ -17,7 +8,7 @@ export type CorporateApplicantInfo = {
 export type CorporateCompanyDetails = {
   rcNumber: string;
   dateOfIncorporation: string;
-  taxIdentificationNumberMasked: string | null;
+  taxIdentificationNumber: string;
   registeredAddress: string;
   city: string;
   state: string;
@@ -41,39 +32,7 @@ export type CorporateSourceOfFunds = {
 
 export type CorporateBankDetails = {
   bankName: string;
-  accountNumberMasked: string | null;
-  accountName: string;
-  accountType: string;
-  bvnLinkedToAccount: boolean | null;
-};
-
-export type CorporateProfile = {
-  applicant: CorporateApplicantInfo;
-  sections: CorporateProfileSectionStates;
-  companyDetails: CorporateCompanyDetails;
-  investmentProfile: CorporateInvestmentProfile;
-  sourceOfFunds: CorporateSourceOfFunds;
-  bankDetails: CorporateBankDetails;
-  version: number;
-  updatedAt: string;
-};
-
-export type CorporateCompanyDetailsInput = {
-  rcNumber: string;
-  dateOfIncorporation: string;
-  /** Write-only. Omit only when a backend-masked TIN is already present. */
-  taxIdentificationNumber?: string;
-  registeredAddress: string;
-  city: string;
-  state: string;
-};
-
-export type CorporateInvestmentProfileInput = CorporateInvestmentProfile;
-export type CorporateSourceOfFundsInput = CorporateSourceOfFunds;
-export type CorporateBankDetailsInput = {
-  bankName: string;
-  /** Write-only; omit only when a backend-masked account number already exists. */
-  accountNumber?: string;
+  accountNumber: string;
   accountName: string;
   accountType: string;
   bvnLinkedToAccount: boolean | null;
@@ -85,7 +44,7 @@ export const corporateInvestmentHorizonOptions = ["< 1 year", "1â€“3 years", "3â
 export const corporateSourceOfFundsOptions = ["Business income / operating cash", "Sale of assets", "Loan / financing", "Other (specify)"] as const;
 
 export function emptyCorporateCompanyDetails(): CorporateCompanyDetails {
-  return { rcNumber: "", dateOfIncorporation: "", taxIdentificationNumberMasked: null, registeredAddress: "", city: "", state: "" };
+  return { rcNumber: "", dateOfIncorporation: "", taxIdentificationNumber: "", registeredAddress: "", city: "", state: "" };
 }
 
 export function emptyCorporateInvestmentProfile(): CorporateInvestmentProfile {
@@ -97,5 +56,5 @@ export function emptyCorporateSourceOfFunds(): CorporateSourceOfFunds {
 }
 
 export function emptyCorporateBankDetails(): CorporateBankDetails {
-  return { bankName: "", accountNumberMasked: null, accountName: "", accountType: "", bvnLinkedToAccount: null };
+  return { bankName: "", accountNumber: "", accountName: "", accountType: "", bvnLinkedToAccount: null };
 }

@@ -2,8 +2,8 @@
 
 **Date:** 22 October 2026  
 **Audience:** Segun / Backend Team  
-**Status:** Backend implementation specification; frontend is being aligned to this contract  
-**Scope:** Corporate applicant registration identity and the four sequential Company Profile sections
+**Status:** Future backend specification. The current frontend has been changed to show the Corporate Profile sections as a current-session-only local form and does not call these profile routes.  
+**Scope:** Potential future Corporate applicant registration identity and the four sequential Company Profile sections
 
 ---
 

@@ -1,22 +1,4 @@
 import {
-  corporateInvestmentHorizonOptions,
-  corporateInvestmentObjectives,
-  corporateRiskToleranceOptions,
-  corporateSourceOfFundsOptions,
-} from "../corporate/profile";
-import type {
-  CorporateBankDetails,
-  CorporateBankDetailsInput,
-  CorporateCompanyDetails,
-  CorporateCompanyDetailsInput,
-  CorporateInvestmentProfile,
-  CorporateInvestmentProfileInput,
-  CorporateProfile,
-  CorporateProfileSectionStates,
-  CorporateSourceOfFunds,
-  CorporateSourceOfFundsInput,
-} from "../corporate/profile";
-import {
   corporateApplicationStates,
   corporateEditableFieldNames,
   corporateSnapshotIssueCodes,
@@ -140,6 +122,9 @@ export type AuthUser = {
   firstName: string;
   lastName: string;
   email: string;
+  /** Optional safe Corporate applicant projection when provided by the existing auth backend. */
+  companyName?: string;
+  companyPhoneNumber?: string;
   emailVerified?: boolean;
   role: AuthUserRole;
 };
@@ -463,6 +448,8 @@ function normaliseUser(payload: unknown): AuthUser {
   const firstName = readString(user, "firstName");
   const lastName = readString(user, "lastName");
   const email = readString(user, "email");
+  const companyName = readString(user, "companyName");
+  const companyPhoneNumber = readString(user, "companyPhoneNumber");
   const role = user.role;
   if (!id || firstName === undefined || lastName === undefined || !email || (role !== "INVESTOR" && role !== "STAFF" && role !== "ADMIN")) throw new ApiError("UNEXPECTED_RESPONSE");
   return {
@@ -470,6 +457,8 @@ function normaliseUser(payload: unknown): AuthUser {
     firstName,
     lastName,
     email,
+    ...(companyName ? { companyName } : {}),
+    ...(companyPhoneNumber ? { companyPhoneNumber } : {}),
     emailVerified: typeof user.emailVerified === "boolean" ? user.emailVerified : undefined,
     role,
   };
@@ -485,103 +474,6 @@ function normaliseProfile(payload: unknown): IndividualAccountProfile {
   const phone: string | null = typeof phoneValue === "string" ? phoneValue : null;
   if (!firstName || !lastName || !email) throw new ApiError("UNEXPECTED_RESPONSE");
   return { firstName, lastName, email, phone };
-}
-
-function normaliseCorporateProfileSectionStates(value: unknown): CorporateProfileSectionStates {
-  if (!isRecord(value)) throw new ApiError("UNEXPECTED_RESPONSE");
-  const companyDetails = value.companyDetails;
-  const investmentProfile = value.investmentProfile;
-  const sourceOfFunds = value.sourceOfFunds;
-  const bankDetails = value.bankDetails;
-  const allowed = ["NOT_STARTED", "DRAFT", "COMPLETE"];
-  if (![companyDetails, investmentProfile, sourceOfFunds, bankDetails].every((status) => typeof status === "string" && allowed.includes(status))) throw new ApiError("UNEXPECTED_RESPONSE");
-  return {
-    companyDetails: companyDetails as CorporateProfileSectionStates["companyDetails"],
-    investmentProfile: investmentProfile as CorporateProfileSectionStates["investmentProfile"],
-    sourceOfFunds: sourceOfFunds as CorporateProfileSectionStates["sourceOfFunds"],
-    bankDetails: bankDetails as CorporateProfileSectionStates["bankDetails"],
-  };
-}
-
-function normaliseCorporateCompanyProfileDetails(value: unknown): CorporateCompanyDetails {
-  if (!isRecord(value)) throw new ApiError("UNEXPECTED_RESPONSE");
-  const maskedTin = value.taxIdentificationNumberMasked;
-  if (maskedTin !== null && typeof maskedTin !== "string" && maskedTin !== undefined) throw new ApiError("UNEXPECTED_RESPONSE");
-  return {
-    rcNumber: readString(value, "rcNumber") ?? "",
-    dateOfIncorporation: readString(value, "dateOfIncorporation") ?? "",
-    taxIdentificationNumberMasked: typeof maskedTin === "string" ? maskedTin : null,
-    registeredAddress: readString(value, "registeredAddress") ?? "",
-    city: readString(value, "city") ?? "",
-    state: readString(value, "state") ?? "",
-  };
-}
-
-function normaliseCorporateInvestmentProfile(value: unknown): CorporateInvestmentProfile {
-  if (!isRecord(value)) throw new ApiError("UNEXPECTED_RESPONSE");
-  const primaryObjective = readString(value, "primaryObjective") ?? "";
-  const riskTolerance = readString(value, "riskTolerance") ?? "";
-  const investmentHorizon = readString(value, "investmentHorizon") ?? "";
-  if (primaryObjective && !(corporateInvestmentObjectives as readonly string[]).includes(primaryObjective)) throw new ApiError("UNEXPECTED_RESPONSE");
-  if (riskTolerance && !(corporateRiskToleranceOptions as readonly string[]).includes(riskTolerance)) throw new ApiError("UNEXPECTED_RESPONSE");
-  if (investmentHorizon && !(corporateInvestmentHorizonOptions as readonly string[]).includes(investmentHorizon)) throw new ApiError("UNEXPECTED_RESPONSE");
-  return {
-    primaryObjective,
-    riskTolerance,
-    investmentHorizon,
-    expectedWithdrawals: readString(value, "expectedWithdrawals") ?? "",
-    withdrawalFrequency: readString(value, "withdrawalFrequency") ?? "",
-    restrictionsOrExclusions: readString(value, "restrictionsOrExclusions") ?? "",
-  };
-}
-
-function normaliseCorporateSourceOfFunds(value: unknown): CorporateSourceOfFunds {
-  if (!isRecord(value)) throw new ApiError("UNEXPECTED_RESPONSE");
-  const sources = value.selectedSources;
-  if (!Array.isArray(sources) || !sources.every((source) => typeof source === "string" && (corporateSourceOfFundsOptions as readonly string[]).includes(source))) throw new ApiError("UNEXPECTED_RESPONSE");
-  return {
-    selectedSources: [...sources],
-    otherSource: readString(value, "otherSource") ?? "",
-    expectedAnnualInflow: readString(value, "expectedAnnualInflow") ?? "",
-    expectedTransactionFrequency: readString(value, "expectedTransactionFrequency") ?? "",
-  };
-}
-
-function normaliseCorporateBankDetails(value: unknown): CorporateBankDetails {
-  if (!isRecord(value)) throw new ApiError("UNEXPECTED_RESPONSE");
-  const maskedAccountNumber = value.accountNumberMasked;
-  const bvnLinked = value.bvnLinkedToAccount;
-  if (maskedAccountNumber !== null && typeof maskedAccountNumber !== "string" && maskedAccountNumber !== undefined) throw new ApiError("UNEXPECTED_RESPONSE");
-  if (bvnLinked !== null && typeof bvnLinked !== "boolean" && bvnLinked !== undefined) throw new ApiError("UNEXPECTED_RESPONSE");
-  return {
-    bankName: readString(value, "bankName") ?? "",
-    accountNumberMasked: typeof maskedAccountNumber === "string" ? maskedAccountNumber : null,
-    accountName: readString(value, "accountName") ?? "",
-    accountType: readString(value, "accountType") ?? "",
-    bvnLinkedToAccount: typeof bvnLinked === "boolean" ? bvnLinked : null,
-  };
-}
-
-function normaliseCorporateProfile(payload: unknown): CorporateProfile {
-  const data = unwrapPayload(payload);
-  const applicant = data.applicant;
-  const version = readNumber(data, "version");
-  const updatedAt = readString(data, "updatedAt");
-  if (!isRecord(applicant) || !version || !updatedAt) throw new ApiError("UNEXPECTED_RESPONSE");
-  const companyName = readString(applicant, "companyName");
-  const companyPhoneNumber = readString(applicant, "companyPhoneNumber");
-  const email = readString(applicant, "email");
-  if (!companyName || !companyPhoneNumber || !email) throw new ApiError("UNEXPECTED_RESPONSE");
-  return {
-    applicant: { companyName, companyPhoneNumber, email },
-    sections: normaliseCorporateProfileSectionStates(data.sections),
-    companyDetails: normaliseCorporateCompanyProfileDetails(data.companyDetails),
-    investmentProfile: normaliseCorporateInvestmentProfile(data.investmentProfile),
-    sourceOfFunds: normaliseCorporateSourceOfFunds(data.sourceOfFunds),
-    bankDetails: normaliseCorporateBankDetails(data.bankDetails),
-    version,
-    updatedAt,
-  };
 }
 
 function readMinor(record: JsonRecord, keys: string[]) {
@@ -936,32 +828,6 @@ export async function getMyProfile() {
 
 export async function updateMyProfile(input: { firstName: string; lastName: string; phone: string | null }) {
   return normaliseProfile(await authenticatedRequest("/me/profile", { method: "PUT", body: input }));
-}
-
-/** Corporate Profile is a separate owner-scoped record; it does not expose a Corporate account approval or portfolio. */
-export async function getMyCorporateProfile() {
-  return normaliseCorporateProfile(await authenticatedRequest("/me/corporate-profile"));
-}
-
-function corporateProfileVersionHeader(version: number): HeadersInit {
-  if (!Number.isSafeInteger(version) || version < 1) throw new ApiError("VALIDATION_FAILED");
-  return { "If-Match": `\"${version}\"` };
-}
-
-export async function saveCorporateCompanyDetails(input: CorporateCompanyDetailsInput, version: number) {
-  return normaliseCorporateProfile(await authenticatedMutation("/me/corporate-profile/company-details", input, corporateProfileVersionHeader(version), "PUT"));
-}
-
-export async function saveCorporateInvestmentProfile(input: CorporateInvestmentProfileInput, version: number) {
-  return normaliseCorporateProfile(await authenticatedMutation("/me/corporate-profile/investment-profile", input, corporateProfileVersionHeader(version), "PUT"));
-}
-
-export async function saveCorporateSourceOfFunds(input: CorporateSourceOfFundsInput, version: number) {
-  return normaliseCorporateProfile(await authenticatedMutation("/me/corporate-profile/source-of-funds", input, corporateProfileVersionHeader(version), "PUT"));
-}
-
-export async function saveCorporateBankDetails(input: CorporateBankDetailsInput, version: number) {
-  return normaliseCorporateProfile(await authenticatedMutation("/me/corporate-profile/bank-details", input, corporateProfileVersionHeader(version), "PUT"));
 }
 
 /** O2 — feature-gated Corporate DRAFT creation. The six-field body is explicit. */
