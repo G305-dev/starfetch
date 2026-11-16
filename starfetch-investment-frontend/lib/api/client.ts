@@ -136,6 +136,151 @@ export type IndividualAccountProfile = {
   phone: string | null;
 };
 
+export type IndividualKycDocumentType = "PASSPORT" | "PVC" | "DRIVERS_LICENSE" | "NIN";
+export type IndividualKycSectionStatus = "NOT_STARTED" | "DRAFT" | "COMPLETE";
+export type IndividualKycWorkflowStatus = "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "INFO_REQUIRED" | "INFO_REQUESTED" | "APPROVED" | "COMPLETE" | "REJECTED";
+
+export type IndividualKycSectionStatuses = {
+  personal: IndividualKycSectionStatus;
+  investmentProfile: IndividualKycSectionStatus;
+  sourceOfFunds: IndividualKycSectionStatus;
+  bankDetails: IndividualKycSectionStatus;
+};
+
+export type IndividualKycPepDetails = {
+  fullName: string;
+  position: string;
+  country: string;
+  periodHeld: string;
+};
+
+export type IndividualKycDocumentSummary = {
+  id: string | null;
+  documentType: IndividualKycDocumentType | null;
+  status: string | null;
+  manualReviewStatus: string | null;
+  originalFilename: string | null;
+};
+
+export type IndividualKycProfile = {
+  status: IndividualKycWorkflowStatus;
+  version: number;
+  sectionStatuses: IndividualKycSectionStatuses;
+  progression: { nextSection: string | null; canSubmit: boolean };
+  submittedAt: string | null;
+  sections: {
+    personal: {
+      dateOfBirth: string | null;
+      gender: "MALE" | "FEMALE" | null;
+      nationality: string | null;
+      residentialAddress: string | null;
+      stateOfResidence: string | null;
+      idDocumentType: IndividualKycDocumentType | null;
+      occupation: string | null;
+      pepStatus: "YES" | "NO" | null;
+      pepDetails: IndividualKycPepDetails | string | null;
+    };
+    investmentProfile: {
+      primaryInvestmentObjective: string | null;
+      riskTolerance: string | null;
+      investmentHorizon: string | null;
+      financialCurrency: string | null;
+      investmentKnowledgeExperience: string | null;
+      expectedWithdrawalsMinor: string | null;
+      withdrawalFrequency: string | null;
+      annualIncomeMinor: string | null;
+      estimatedNetWorthMinor: string | null;
+      investmentRestrictions: string | null;
+    };
+    sourceOfFunds: {
+      sourceOfFunds: string[];
+      otherSource: string | null;
+      expectedAnnualInflowMinor: string | null;
+      expectedTransactionFrequency: string | null;
+    };
+    bankDetails: {
+      bankName: string | null;
+      accountNumberMasked: string | null;
+      accountName: string | null;
+      accountType: string | null;
+      bvnLinkedToAccount: boolean | null;
+    };
+  };
+  documents: IndividualKycDocumentSummary[];
+};
+
+export type IndividualKycMutationResult = {
+  version: number;
+  sectionStatuses?: IndividualKycSectionStatuses;
+  progression?: { nextSection: string | null; canSubmit: boolean };
+};
+
+export type SaveIndividualKycPersonalInput = {
+  version: number;
+  dateOfBirth: string;
+  gender: "MALE" | "FEMALE";
+  nationality: string;
+  residentialAddress: string;
+  stateOfResidence: string;
+  idDocumentType: IndividualKycDocumentType;
+  occupation: string;
+  pepStatus: "YES" | "NO";
+  pepDetails: IndividualKycPepDetails | null;
+};
+
+export type SaveIndividualKycInvestmentProfileInput = {
+  version: number;
+  primaryInvestmentObjective: string;
+  riskTolerance: string;
+  investmentHorizon: string;
+  financialCurrency: "NGN";
+  investmentKnowledgeExperience: string;
+  expectedWithdrawalsMinor: string;
+  withdrawalFrequency: string;
+  annualIncomeMinor: string;
+  estimatedNetWorthMinor: string;
+  investmentRestrictions: string | null;
+};
+
+export type SaveIndividualKycSourceOfFundsInput = {
+  version: number;
+  sourceOfFunds: string[];
+  otherSource?: string;
+  expectedAnnualInflowMinor: string;
+  expectedTransactionFrequency: string;
+};
+
+export type SaveIndividualKycBankDetailsInput = {
+  version: number;
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+  accountType: string;
+  bvnLinkedToAccount: boolean;
+};
+
+export type IndividualKycUploadIntentInput = {
+  version: number;
+  documentType: IndividualKycDocumentType;
+  originalFilename: string;
+  contentType: "application/pdf" | "image/jpeg" | "image/png";
+  sizeBytes: number;
+  checksumSha256: string;
+};
+
+export type IndividualKycUploadIntent = {
+  documentId: string;
+  uploadUrl: string;
+  requiredHeaders: Record<string, string>;
+  version: number;
+};
+
+export type IndividualKycSubmissionResult = {
+  status: "SUBMITTED";
+  version: number;
+  submittedAt: string | null;
+};
+
 /** Exact Phase 2D /me/portfolio holding projection from docs/api/openapi.yaml. */
 export type PortfolioHolding = {
   id: string | null;
@@ -474,6 +619,212 @@ function normaliseProfile(payload: unknown): IndividualAccountProfile {
   const phone: string | null = typeof phoneValue === "string" ? phoneValue : null;
   if (!firstName || !lastName || !email) throw new ApiError("UNEXPECTED_RESPONSE");
   return { firstName, lastName, email, phone };
+}
+
+function nullableString(record: JsonRecord, key: string): string | null {
+  return typeof record[key] === "string" ? record[key] as string : null;
+}
+
+function readNonNegativeInteger(record: JsonRecord, key: string): number | null {
+  const value = record[key];
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return value;
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    const parsed = Number(value);
+    if (Number.isSafeInteger(parsed)) return parsed;
+  }
+  return null;
+}
+
+function readMinorDigits(record: JsonRecord, key: string): string | null {
+  const value = record[key];
+  if (typeof value === "string" && /^\d+$/.test(value)) return value;
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return String(value);
+  return null;
+}
+
+function isIndividualKycDocumentType(value: unknown): value is IndividualKycDocumentType {
+  return value === "PASSPORT" || value === "PVC" || value === "DRIVERS_LICENSE" || value === "NIN";
+}
+
+function normaliseIndividualKycSectionStatus(value: unknown): IndividualKycSectionStatus {
+  return value === "COMPLETE" || value === "DRAFT" ? value : "NOT_STARTED";
+}
+
+function normaliseIndividualKycSectionStatuses(value: unknown): IndividualKycSectionStatuses {
+  const statuses = isRecord(value) ? value : {};
+  return {
+    personal: normaliseIndividualKycSectionStatus(statuses.personal),
+    investmentProfile: normaliseIndividualKycSectionStatus(statuses.investmentProfile ?? statuses.investment),
+    sourceOfFunds: normaliseIndividualKycSectionStatus(statuses.sourceOfFunds),
+    bankDetails: normaliseIndividualKycSectionStatus(statuses.bankDetails ?? statuses.bank),
+  };
+}
+
+function normaliseIndividualKycProgression(value: unknown): IndividualKycProfile["progression"] {
+  if (!isRecord(value)) return { nextSection: "personal", canSubmit: false };
+  const nextSectionValue = value.nextSection;
+  return {
+    nextSection: typeof nextSectionValue === "string" ? nextSectionValue : null,
+    canSubmit: readBoolean(value, "canSubmit") ?? false,
+  };
+}
+
+function normaliseIndividualKycPepDetails(value: unknown): IndividualKycProfile["sections"]["personal"]["pepDetails"] {
+  if (typeof value === "string") return value;
+  if (!isRecord(value)) return null;
+  const fullName = readString(value, "fullName");
+  const position = readString(value, "position");
+  const country = readString(value, "country");
+  const periodHeld = readString(value, "periodHeld");
+  if (fullName === undefined && position === undefined && country === undefined && periodHeld === undefined) return null;
+  return {
+    fullName: fullName ?? "",
+    position: position ?? "",
+    country: country ?? "",
+    periodHeld: periodHeld ?? "",
+  };
+}
+
+function normaliseIndividualKycDocument(record: JsonRecord, fallbackType: unknown = null): IndividualKycDocumentSummary {
+  const documentTypeValue = record.documentType ?? fallbackType;
+  return {
+    id: readString(record, "id") ?? null,
+    documentType: isIndividualKycDocumentType(documentTypeValue) ? documentTypeValue : null,
+    status: nullableString(record, "status"),
+    manualReviewStatus: nullableString(record, "manualReviewStatus") ?? nullableString(record, "reviewStatus"),
+    originalFilename: nullableString(record, "originalFilename"),
+  };
+}
+
+function emptyIndividualKycProfile(): IndividualKycProfile {
+  return {
+    status: "DRAFT",
+    version: 0,
+    sectionStatuses: {
+      personal: "NOT_STARTED",
+      investmentProfile: "NOT_STARTED",
+      sourceOfFunds: "NOT_STARTED",
+      bankDetails: "NOT_STARTED",
+    },
+    progression: { nextSection: "personal", canSubmit: false },
+    submittedAt: null,
+    sections: {
+      personal: { dateOfBirth: null, gender: null, nationality: null, residentialAddress: null, stateOfResidence: null, idDocumentType: null, occupation: null, pepStatus: null, pepDetails: null },
+      investmentProfile: { primaryInvestmentObjective: null, riskTolerance: null, investmentHorizon: null, financialCurrency: null, investmentKnowledgeExperience: null, expectedWithdrawalsMinor: null, withdrawalFrequency: null, annualIncomeMinor: null, estimatedNetWorthMinor: null, investmentRestrictions: null },
+      sourceOfFunds: { sourceOfFunds: [], otherSource: null, expectedAnnualInflowMinor: null, expectedTransactionFrequency: null },
+      // The API deliberately returns only a masked account number. Never hydrate an account-number input from a response.
+      bankDetails: { bankName: null, accountNumberMasked: null, accountName: null, accountType: null, bvnLinkedToAccount: null },
+    },
+    documents: [],
+  };
+}
+
+function normaliseIndividualKycProfile(payload: unknown): IndividualKycProfile {
+  const data = unwrapPayload(payload);
+  const source = isRecord(data.kycProfile) ? data.kycProfile : data;
+  const version = readNonNegativeInteger(source, "version");
+  if (version === null) throw new ApiError("UNEXPECTED_RESPONSE");
+
+  const rawSections = isRecord(source.sections) ? source.sections : source;
+  const personal = isRecord(rawSections.personal) ? rawSections.personal : {};
+  const investment = isRecord(rawSections.investmentProfile) ? rawSections.investmentProfile : isRecord(rawSections.investment) ? rawSections.investment : {};
+  const sourceOfFunds = isRecord(rawSections.sourceOfFunds) ? rawSections.sourceOfFunds : {};
+  const bank = isRecord(rawSections.bankDetails) ? rawSections.bankDetails : isRecord(rawSections.bank) ? rawSections.bank : {};
+  const rawStatuses = source.sectionStatuses ?? source.sectionStatus;
+  const rawStatus = readString(source, "status");
+  const knownStatuses: readonly string[] = ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "INFO_REQUIRED", "INFO_REQUESTED", "APPROVED", "COMPLETE", "REJECTED"];
+  const status: IndividualKycWorkflowStatus = rawStatus && knownStatuses.includes(rawStatus) ? rawStatus as IndividualKycWorkflowStatus : "DRAFT";
+  const genderValue = readString(personal, "gender");
+  const pepStatusValue = readString(personal, "pepStatus");
+  const sourcesValue = sourceOfFunds.sourceOfFunds;
+  const rawDocuments = Array.isArray(source.documents) ? source.documents : [];
+  const documents = rawDocuments.filter(isRecord).map((document) => normaliseIndividualKycDocument(document));
+  if (documents.length === 0 && isRecord(personal.idDocument)) documents.push(normaliseIndividualKycDocument(personal.idDocument, personal.idDocumentType));
+
+  return {
+    status,
+    version,
+    sectionStatuses: normaliseIndividualKycSectionStatuses(rawStatuses),
+    progression: normaliseIndividualKycProgression(source.progression),
+    submittedAt: readString(source, "submittedAt") ?? readString(source, "timestamp") ?? null,
+    sections: {
+      personal: {
+        dateOfBirth: nullableString(personal, "dateOfBirth"),
+        gender: genderValue === "MALE" || genderValue === "FEMALE" ? genderValue : null,
+        nationality: nullableString(personal, "nationality"),
+        residentialAddress: nullableString(personal, "residentialAddress"),
+        stateOfResidence: nullableString(personal, "stateOfResidence"),
+        idDocumentType: isIndividualKycDocumentType(personal.idDocumentType) ? personal.idDocumentType : null,
+        occupation: nullableString(personal, "occupation"),
+        pepStatus: pepStatusValue === "YES" || pepStatusValue === "NO" ? pepStatusValue : null,
+        pepDetails: normaliseIndividualKycPepDetails(personal.pepDetails),
+      },
+      investmentProfile: {
+        primaryInvestmentObjective: nullableString(investment, "primaryInvestmentObjective"),
+        riskTolerance: nullableString(investment, "riskTolerance"),
+        investmentHorizon: nullableString(investment, "investmentHorizon"),
+        financialCurrency: nullableString(investment, "financialCurrency"),
+        investmentKnowledgeExperience: nullableString(investment, "investmentKnowledgeExperience"),
+        expectedWithdrawalsMinor: readMinorDigits(investment, "expectedWithdrawalsMinor"),
+        withdrawalFrequency: nullableString(investment, "withdrawalFrequency"),
+        annualIncomeMinor: readMinorDigits(investment, "annualIncomeMinor"),
+        estimatedNetWorthMinor: readMinorDigits(investment, "estimatedNetWorthMinor"),
+        investmentRestrictions: nullableString(investment, "investmentRestrictions"),
+      },
+      sourceOfFunds: {
+        sourceOfFunds: Array.isArray(sourcesValue) ? sourcesValue.filter((value): value is string => typeof value === "string") : [],
+        otherSource: nullableString(sourceOfFunds, "otherSource"),
+        expectedAnnualInflowMinor: readMinorDigits(sourceOfFunds, "expectedAnnualInflowMinor"),
+        expectedTransactionFrequency: nullableString(sourceOfFunds, "expectedTransactionFrequency"),
+      },
+      bankDetails: {
+        bankName: nullableString(bank, "bankName"),
+        accountNumberMasked: nullableString(bank, "accountNumberMasked"),
+        accountName: nullableString(bank, "accountName"),
+        accountType: nullableString(bank, "accountType"),
+        bvnLinkedToAccount: readBoolean(bank, "bvnLinkedToAccount") ?? null,
+      },
+    },
+    documents,
+  };
+}
+
+function normaliseIndividualKycMutationResult(payload: unknown): IndividualKycMutationResult {
+  const data = unwrapPayload(payload);
+  const version = readNonNegativeInteger(data, "version");
+  if (version === null) throw new ApiError("UNEXPECTED_RESPONSE");
+  const rawStatuses = data.sectionStatuses ?? data.sectionStatus;
+  const progression = isRecord(data.progression) ? normaliseIndividualKycProgression(data.progression) : undefined;
+  return {
+    version,
+    ...(rawStatuses !== undefined ? { sectionStatuses: normaliseIndividualKycSectionStatuses(rawStatuses) } : {}),
+    ...(progression ? { progression } : {}),
+  };
+}
+
+function normaliseIndividualKycUploadIntent(payload: unknown): IndividualKycUploadIntent {
+  const data = unwrapPayload(payload);
+  const documentId = readString(data, "documentId");
+  const uploadUrl = readString(data, "uploadUrl");
+  const version = readNonNegativeInteger(data, "version");
+  const headers = isRecord(data.requiredHeaders) ? data.requiredHeaders : {};
+  if (!documentId || !uploadUrl || version === null || !Object.values(headers).every((value) => typeof value === "string")) throw new ApiError("UNEXPECTED_RESPONSE");
+  try {
+    const parsed = new URL(uploadUrl);
+    const localHttp = parsed.protocol === "http:" && ["localhost", "127.0.0.1"].includes(parsed.hostname);
+    if (parsed.protocol !== "https:" && !localHttp) throw new Error("invalid upload scheme");
+  } catch {
+    throw new ApiError("UNEXPECTED_RESPONSE");
+  }
+  return { documentId, uploadUrl, version, requiredHeaders: headers as Record<string, string> };
+}
+
+function normaliseIndividualKycSubmission(payload: unknown): IndividualKycSubmissionResult {
+  const data = unwrapPayload(payload);
+  const version = readNonNegativeInteger(data, "version");
+  const status = readString(data, "status");
+  if (version === null || status !== "SUBMITTED") throw new ApiError("UNEXPECTED_RESPONSE");
+  return { status: "SUBMITTED", version, submittedAt: readString(data, "submittedAt") ?? readString(data, "timestamp") ?? null };
 }
 
 function readMinor(record: JsonRecord, keys: string[]) {
@@ -828,6 +1179,59 @@ export async function getMyProfile() {
 
 export async function updateMyProfile(input: { firstName: string; lastName: string; phone: string | null }) {
   return normaliseProfile(await authenticatedRequest("/me/profile", { method: "PUT", body: input }));
+}
+
+function requireIndividualKycVersion(version: number) {
+  if (!Number.isSafeInteger(version) || version < 0) throw new ApiError("VALIDATION_FAILED");
+}
+
+/** Load KYC state only for the currently authenticated Investor. No owner ID is accepted. */
+export async function getIndividualKycProfile(): Promise<IndividualKycProfile> {
+  try {
+    return normaliseIndividualKycProfile(await authenticatedRequest("/me/kyc-profile"));
+  } catch (error) {
+    // A first-time applicant may not have a profile record yet. A missing
+    // owner-scoped record starts at version 0; other API failures are not hidden.
+    if (isApiError(error) && error.code === "NOT_FOUND") return emptyIndividualKycProfile();
+    throw error;
+  }
+}
+
+export async function saveIndividualKycPersonal(input: SaveIndividualKycPersonalInput): Promise<IndividualKycMutationResult> {
+  requireIndividualKycVersion(input.version);
+  return normaliseIndividualKycMutationResult(await authenticatedMutation("/me/kyc-profile/personal", input, undefined, "PUT"));
+}
+
+export async function saveIndividualKycInvestmentProfile(input: SaveIndividualKycInvestmentProfileInput): Promise<IndividualKycMutationResult> {
+  requireIndividualKycVersion(input.version);
+  return normaliseIndividualKycMutationResult(await authenticatedMutation("/me/kyc-profile/investment-profile", input, undefined, "PUT"));
+}
+
+export async function saveIndividualKycSourceOfFunds(input: SaveIndividualKycSourceOfFundsInput): Promise<IndividualKycMutationResult> {
+  requireIndividualKycVersion(input.version);
+  return normaliseIndividualKycMutationResult(await authenticatedMutation("/me/kyc-profile/source-of-funds", input, undefined, "PUT"));
+}
+
+export async function saveIndividualKycBankDetails(input: SaveIndividualKycBankDetailsInput): Promise<IndividualKycMutationResult> {
+  requireIndividualKycVersion(input.version);
+  return normaliseIndividualKycMutationResult(await authenticatedMutation("/me/kyc-profile/bank-details", input, undefined, "PUT"));
+}
+
+export async function submitIndividualKycProfile(version: number): Promise<IndividualKycSubmissionResult> {
+  requireIndividualKycVersion(version);
+  return normaliseIndividualKycSubmission(await authenticatedMutation("/me/kyc-profile/submit", { version }));
+}
+
+/** The signed upload URL is used with credentials omitted; only the intent/finalize calls use the authenticated API. */
+export async function createIndividualKycUploadIntent(input: IndividualKycUploadIntentInput): Promise<IndividualKycUploadIntent> {
+  requireIndividualKycVersion(input.version);
+  return normaliseIndividualKycUploadIntent(await authenticatedMutation("/me/kyc-profile/id-document/upload-intent", input));
+}
+
+export async function completeIndividualKycDocument(documentId: string, version: number): Promise<IndividualKycMutationResult> {
+  requireIndividualKycVersion(version);
+  if (!documentId.trim()) throw new ApiError("VALIDATION_FAILED");
+  return normaliseIndividualKycMutationResult(await authenticatedMutation(`/me/kyc-profile/id-document/${encodeURIComponent(documentId)}/complete`, { version }));
 }
 
 /** O2 — feature-gated Corporate DRAFT creation. The six-field body is explicit. */

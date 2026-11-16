@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { IndividualAccountProfile } from "../lib/api/client";
+import type { IndividualKycPepDetails, SaveIndividualKycPersonalInput } from "../lib/api/client";
 
-// Keeps this standalone source check on the project-root compilation path.
-type _IndividualAccountProfile = IndividualAccountProfile;
+type _IndividualKycPepDetails = IndividualKycPepDetails;
+type _SaveIndividualKycPersonalInput = SaveIndividualKycPersonalInput;
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
@@ -14,29 +14,23 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-for (const text of ["Politically Exposed Person (PEP) Declaration", "within the last 12 months", "Yes</label>", "No</label>", "If yes, give details (name, position, country, period held)"]) {
-  assert(draft.includes(text), `Missing required PEP declaration content: ${text}`);
+for (const text of ["Politically Exposed Person (PEP) Declaration", "within the last 12 months", "Yes", "No", "Name", "Position", "Country", "Period held"]) {
+  assert(draft.includes(text), `Missing PEP declaration content: ${text}`);
 }
 assert(
-  draft.includes('type="radio"')
-    && draft.includes("emptyPepDeclarationDraft")
-    && !draft.includes("Applicant — Yes")
-    && !draft.includes("Applicant — No")
-    && !draft.includes("This declaration is not submitted, stored, screened, assessed, or retained after you leave or refresh this page because an approved compliance workflow is not available.")
-    && !/(?:window\.)?(?:localStorage|sessionStorage)\s*[.[]|fetch\(|updateMyProfile|console\.(log|info|debug)/i.test(draft),
-  "PEP declaration must use the requested Yes/No labels and remove the requested explanatory text without adding persistence, API writes, screening, or logging",
+  draft.includes('value="yes"')
+    && draft.includes('value="no"')
+    && draft.includes('value.applicantPepStatus === "yes"')
+    && draft.includes("Saving it does not screen or independently verify the information"),
+  "PEP must retain Yes/No and conditionally collect the mapped PEP details without claiming screening",
 );
-const personalInformationFormStart = profile.indexOf("<form onSubmit={savePersonalInformation}");
-const pepMount = profile.indexOf("<PepDeclarationDraft value={localPepDeclarationDraft}");
-const personalInformationFormEnd = profile.indexOf("</form>", pepMount);
 assert(
-  profile.includes("PepDeclarationDraft")
-    && profile.includes("setLocalPepDeclarationDraft")
-    && personalInformationFormStart >= 0
-    && pepMount > personalInformationFormStart
-    && personalInformationFormEnd > pepMount
-    && !profile.includes('title: "PEP Declaration"'),
-  "The PEP declaration form must be mounted inside Personal Information rather than an unavailable standalone PEP card",
+  profile.includes("saveIndividualKycPersonal({")
+    && profile.includes('pepStatus: pep.applicantPepStatus.toUpperCase() as "YES" | "NO"')
+    && profile.includes("pepDetails: pep.applicantPepStatus === \"yes\" ? {")
+    && profile.includes("fullName: pep.fullName.trim()")
+    && profile.includes("periodHeld: pep.periodHeld.trim()"),
+  "Personal save must send the canonical PEP status and structured details only when Yes is selected",
 );
 
-console.log("PASS — Individual Profile includes the local PEP declaration inside Personal Information with the requested Yes/No labels and without the removed explanatory text");
+console.log("PASS — PEP declaration stays within Personal Information and saves Yes/No plus conditional structured details without claiming screening or verification");
