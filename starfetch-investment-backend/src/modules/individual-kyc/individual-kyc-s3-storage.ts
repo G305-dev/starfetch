@@ -48,10 +48,23 @@ function safeRequestId(value: unknown): string | undefined {
   return value;
 }
 
+const ALLOWED_S3_ERROR_CODES = new Set([
+  'AccessDenied', 'AuthorizationHeaderMalformed', 'AuthorizationQueryParametersError',
+  'BadDigest', 'ConditionalRequestConflict', 'EntityTooLarge', 'ExpiredToken', 'IncompleteBody',
+  'InvalidArgument', 'InvalidBucketName', 'InvalidDigest', 'InvalidRequest', 'InvalidToken',
+  'MissingContentLength', 'NoSuchBucket', 'NotImplemented', 'PermanentRedirect',
+  'PreconditionFailed', 'RequestTimeTooSkewed', 'SignatureDoesNotMatch', 'SlowDown',
+  'TemporaryRedirect', 'XAmzContentSHA256Mismatch',
+]);
+
+function allowedS3ErrorCode(value: unknown): string | undefined {
+  return typeof value === 'string' && ALLOWED_S3_ERROR_CODES.has(value) ? value : undefined;
+}
+
 function logCapabilityCheckFailure(
   stage: CapabilityCheckStage,
   error?: unknown,
-  response?: { readonly status?: number; readonly requestId?: string; readonly awsErrorName?: string },
+  response?: { readonly status?: number; readonly requestId?: string; readonly awsErrorCode?: string },
 ): void {
   if (error && typeof error === 'object') {
     if (reportedCapabilityErrors.has(error)) return;
@@ -62,7 +75,7 @@ function logCapabilityCheckFailure(
     $metadata?: { httpStatusCode?: unknown; requestId?: unknown; extendedRequestId?: unknown };
   } : undefined;
   const metadata = candidate?.$metadata;
-  const awsErrorName = safeDiagnosticValue(response?.awsErrorName, 80) ?? safeDiagnosticValue(candidate?.name, 80);
+  const awsErrorCode = allowedS3ErrorCode(response?.awsErrorCode) ?? allowedS3ErrorCode(candidate?.name);
   const statusValue = response?.status ?? metadata?.httpStatusCode;
   const httpStatus = typeof statusValue === 'number' && Number.isInteger(statusValue) && statusValue >= 100 && statusValue <= 599
     ? statusValue : undefined;
@@ -71,17 +84,61 @@ function logCapabilityCheckFailure(
     ?? safeRequestId(metadata?.extendedRequestId);
   capabilityLogger.warn(JSON.stringify({
     stage,
-    ...(awsErrorName ? { awsErrorName } : {}),
+    ...(awsErrorCode ? { awsErrorCode } : {}),
     ...(httpStatus !== undefined ? { httpStatus } : {}),
     ...(requestId ? { requestId } : {}),
   }));
 }
 
-function responseDiagnostics(response: Response): { status: number; requestId?: string; awsErrorName?: string } {
+async function responseDiagnostics(response: Response): Promise<{ status: number; requestId?: string; awsErrorCode?: string }> {
+  let awsErrorCode = allowedS3ErrorCode(response.headers.get('x-amz-error-code'));
+  if (!awsErrorCode && response.status >= 400 && response.body) {
+    // S3 usually returns its error code in XML. Read only a bounded prefix, extract
+    // a strict allowlisted <Code>, and never retain or log the response body/message.
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let prefix = '';
+    let bytesRead = 0;
+    try {
+      while (bytesRead < 4096) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const remaining = 4096 - bytesRead;
+        const chunk = value.subarray(0, remaining);
+        bytesRead += chunk.byteLength;
+        prefix += decoder.decode(chunk, { stream: true });
+        if (chunk.byteLength < value.byteLength) break;
+      }
+      if (bytesRead >= 4096) await reader.cancel();
+      prefix += decoder.decode();
+    } catch {
+      // Diagnostic extraction is best-effort and must not affect the fail-closed probe.
+    } finally {
+      reader.releaseLock();
+    }
+    const codeMatch = /<(?:[A-Za-z0-9_.-]+:)?Code>\s*([A-Za-z0-9]+)\s*<\/(?:[A-Za-z0-9_.-]+:)?Code>/.exec(prefix);
+    awsErrorCode = allowedS3ErrorCode(codeMatch?.[1]);
+  }
   return {
     status: response.status,
     requestId: response.headers.get('x-amz-request-id') ?? response.headers.get('x-amz-id-2') ?? undefined,
-    awsErrorName: response.headers.get('x-amz-error-code') ?? undefined,
+    ...(awsErrorCode ? { awsErrorCode } : {}),
+  };
+}
+
+const UPLOAD_UNHOISTABLE_HEADERS = new Set(
+  INDIVIDUAL_KYC_UPLOAD_HEADERS.filter((header) => header.startsWith('x-amz-')),
+);
+
+function uploadPresignerOptions() {
+  return {
+    expiresIn: INDIVIDUAL_KYC_UPLOAD_URL_TTL_SECONDS,
+    // Keep content-length signed: the browser derives it from the File body and
+    // the probe sends the exact synthetic byte length.
+    signableHeaders: new Set<string>(INDIVIDUAL_KYC_UPLOAD_HEADERS),
+    // The AWS SDK otherwise hoists x-amz-* headers into the query string, rather
+    // than signing the exact headers the browser/probe sends on the PUT.
+    unhoistableHeaders: new Set(UPLOAD_UNHOISTABLE_HEADERS),
   };
 }
 
@@ -190,10 +247,7 @@ export class S3CompatibleIndividualKycDocumentStorage implements IndividualKycDo
     await this.ensureProviderCapabilities();
     const command = this.putCommand(input, input.objectKey);
     const issuedAt = Date.now();
-    const uploadUrl = await this.presigner(this.client, command, {
-      expiresIn: INDIVIDUAL_KYC_UPLOAD_URL_TTL_SECONDS,
-      signableHeaders: new Set(INDIVIDUAL_KYC_UPLOAD_HEADERS),
-    });
+    const uploadUrl = await this.presigner(this.client, command, uploadPresignerOptions());
     const parsed = new URL(uploadUrl);
     if (parsed.protocol !== 'https:' || !parsed.searchParams.get('X-Amz-Signature') || !parsed.searchParams.get('X-Amz-Expires')) throw disabled();
     return {
@@ -311,10 +365,8 @@ export class S3CompatibleIndividualKycDocumentStorage implements IndividualKycDo
       expiresInSeconds: INDIVIDUAL_KYC_UPLOAD_URL_TTL_SECONDS,
     } as const;
     const command = this.putCommand(input, key);
-    const url = await this.runCapabilityCheck('signed_put', () => this.presigner(this.client, command, {
-      expiresIn: INDIVIDUAL_KYC_UPLOAD_URL_TTL_SECONDS,
-      signableHeaders: new Set(INDIVIDUAL_KYC_UPLOAD_HEADERS),
-    }));
+    const url = await this.runCapabilityCheck('signed_put', () =>
+      this.presigner(this.client, command, uploadPresignerOptions()));
     const headers = {
       'content-type': input.contentType,
       'content-length': String(bytes.length),
@@ -330,7 +382,7 @@ export class S3CompatibleIndividualKycDocumentStorage implements IndividualKycDo
         this.fetcher(url, { method: 'PUT', headers, body: bytes as unknown as BodyInit, redirect: 'error' }));
       firstVersionId = first.headers.get('x-amz-version-id') ?? undefined;
       if (!first.ok || !firstVersionId) {
-        this.failCapabilityCheck('signed_put', undefined, responseDiagnostics(first));
+        this.failCapabilityCheck('signed_put', undefined, await responseDiagnostics(first));
       }
       const head = await this.runCapabilityCheck('metadata_head', () =>
         this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key, ChecksumMode: 'ENABLED' })));
@@ -343,7 +395,7 @@ export class S3CompatibleIndividualKycDocumentStorage implements IndividualKycDo
         this.fetcher(url, { method: 'PUT', headers, body: bytes as unknown as BodyInit, redirect: 'error' }));
       duplicateVersionId = replay.headers.get('x-amz-version-id') ?? undefined;
       if (replay.ok || ![409, 412].includes(replay.status)) {
-        this.failCapabilityCheck('replay_protection', undefined, responseDiagnostics(replay));
+        this.failCapabilityCheck('replay_protection', undefined, await responseDiagnostics(replay));
       }
       const afterReplay = await this.runCapabilityCheck('replay_protection', () =>
         this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key, ChecksumMode: 'ENABLED' })));
@@ -378,7 +430,7 @@ export class S3CompatibleIndividualKycDocumentStorage implements IndividualKycDo
   private failCapabilityCheck(
     stage: CapabilityCheckStage,
     error?: unknown,
-    response?: { readonly status?: number; readonly requestId?: string; readonly awsErrorName?: string },
+    response?: { readonly status?: number; readonly requestId?: string; readonly awsErrorCode?: string },
   ): never {
     logCapabilityCheckFailure(stage, error, response);
     throw disabled();
