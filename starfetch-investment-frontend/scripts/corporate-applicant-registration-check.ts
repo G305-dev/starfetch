@@ -20,12 +20,12 @@ globalThis.fetch = async (input, init = {}) => {
 };
 
 async function run() {
-  const corporate = await registerCorporateApplicant({ email: "applicant@company.example", password: "at-least-8-characters" });
+  const corporate = await registerCorporateApplicant({ companyName: "Example Holdings Limited", companyPhoneNumber: "+234 800 000 0000", email: "applicant@company.example", password: "at-least-8-characters" });
   assert(corporate.verificationId === corporateRegistration.verificationId && corporate.nextAction === "VERIFY_EMAIL", "Corporate registration response normalisation failed");
   const corporateRequest = requests[0];
   const corporateBody = JSON.parse(String(corporateRequest.init.body)) as Record<string, unknown>;
   assert(corporateRequest.url === "/api/v1/auth/register" && corporateRequest.init.method === "POST" && corporateRequest.init.credentials === "include", "Corporate registration must use the existing same-origin registration endpoint");
-  assert(JSON.stringify(corporateBody) === JSON.stringify({ registrationType: "CORPORATE", email: "applicant@company.example", password: "at-least-8-characters" }), "Corporate registration must send exactly registrationType, email and password — never names or confirmPassword");
+  assert(JSON.stringify(corporateBody) === JSON.stringify({ registrationType: "CORPORATE", companyName: "Example Holdings Limited", companyPhoneNumber: "+234 800 000 0000", email: "applicant@company.example", password: "at-least-8-characters" }), "Corporate registration must send the company name and phone with the account credentials and no confirm-password");
 
   await registerIndividual({ firstName: "Individual", lastName: "Investor", email: "individual@example.com", password: "at-least-8-characters" });
   const individualBody = JSON.parse(String(requests[1].init.body)) as Record<string, unknown>;
@@ -43,7 +43,8 @@ async function run() {
   const verification = read("lib/auth/verification-flow.ts");
   const onboarding = read("components/auth/CorporateOnboardingFlow.tsx");
   const corporateLayout = read("app/corporate/layout.tsx");
-  assert(registrationForm.includes("registerCorporateApplicant({ email, password })") && client.includes('const body = { registrationType: "CORPORATE" as const, email: input.email, password: input.password }') && registrationForm.includes('router.push("/register/corporate/verify-email")'), "Corporate registration form must use the exact client payload and begin email verification");
+  assert(registrationForm.includes("registerCorporateApplicant({ companyName, companyPhoneNumber, email, password })") && client.includes('registrationType: "CORPORATE" as const') && client.includes("companyName: input.companyName") && client.includes("companyPhoneNumber: input.companyPhoneNumber") && registrationForm.includes('router.push("/register/corporate/verify-email")'), "Corporate registration form must include account-managed company identity fields and begin email verification");
+  assert(registrationForm.includes('name="companyName"') && registrationForm.includes('name="companyPhoneNumber"') && client.includes("Confirm-password remains frontend-only") && !JSON.stringify(corporateBody).includes("confirmPassword"), "Company name and phone must be collected while confirm-password stays out of the request");
   assert(entry.includes("status === \"authenticated\"") && entry.includes("CorporateApplicantRegistrationForm") && entry.includes('router.replace("/corporate/dashboard")') && !entry.includes("CorporateOnboardingFlow"), "Corporate route must register an unauthenticated visitor and redirect an authenticated applicant to the protected dashboard without forcing O2");
   assert(signIn.includes("corporateApplicantLoginType") && signIn.includes("/register/corporate/verify-email") && signIn.includes('const corporateDestination = safeNextPath?.startsWith("/corporate/") ? safeNextPath : "/corporate/dashboard";') && signIn.includes('router.replace(accountType === "corporate" ? corporateDestination : safeNextPath ?? defaultDestination);') && signIn.includes("Log In to Corporate Applicant Dashboard") && !signIn.includes("Use an existing verified Individual or Joint Investor"), "Corporate login routing must use the normal Investor session, preserve protected Corporate routes, normalise the legacy registration path to the dashboard, and not require an existing Individual/Joint account");
   assert(verificationSuccess.includes('"/login?next=%2Fcorporate%2Fdashboard"') && !verificationSuccess.includes('"/login?next=%2Fregister%2Fcorporate"'), "Corporate verification success must return through login to the protected Corporate dashboard");
@@ -51,7 +52,7 @@ async function run() {
   assert(!/(?:window\.)?(?:localStorage)\s*[.[]|console\.(log|info|debug)/i.test(registrationForm + entry + signIn + onboarding), "Corporate credentials and application data must not be logged or persisted in local storage");
 
   globalThis.fetch = originalFetch;
-  console.log("PASS — Corporate applicant registration uses the v0.6.1 exact request, profileless INVESTOR login, verified dashboard continuation and protected applicant/dashboard boundaries while Individual registration remains unchanged");
+  console.log("PASS — Corporate applicant registration sends the company name and phone through the existing applicant registration endpoint, keeps the shared INVESTOR login, and leaves Individual registration and protected routing unchanged");
 }
 
 void run().catch((error: unknown) => { globalThis.fetch = originalFetch; throw error; });
