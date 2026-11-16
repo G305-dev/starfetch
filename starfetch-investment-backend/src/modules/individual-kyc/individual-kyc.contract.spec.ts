@@ -1,20 +1,84 @@
 import { IndividualKycDocumentStatus, IndividualKycIdDocumentType, IndividualKycSectionStatus, ManualDocumentReviewStatus } from '@prisma/client';
 import { IndividualKycInvestmentHorizon } from './individual-kyc.enums';
-import { allSectionsComplete, calculateSectionStatuses, isOtherSource, maskNuban, missingOtherSourceDetail, normalizeLegacyKycPayload } from './individual-kyc.contract';
+import { allSectionsComplete, calculateSectionStatuses, INDIVIDUAL_KYC_PROPOSED_OPTIONS, isOtherSource, maskNuban, missingOtherSourceDetail, normalizeLegacyKycPayload } from './individual-kyc.contract';
 
 describe('Individual KYC contract calculations', () => {
-  it('accepts all five stable horizon enum mappings specified by Emmanuel', () => {
-    const base = {
-      primaryInvestmentObjective: 'Some bounded draft value', riskTolerance: 'Some bounded draft value',
-      investmentKnowledgeExperience: 'Some bounded draft value', expectedWithdrawalsMinor: '500000',
-      withdrawalFrequency: 'monthly',
+  it('maps the current frontend option labels to canonical values and completes the four sections without implying approval', () => {
+    const labels = INDIVIDUAL_KYC_PROPOSED_OPTIONS;
+    const payload = normalizeLegacyKycPayload({
+      personal: {
+        dateOfBirth: '1990-01-01', gender: 'FEMALE', nationality: 'NG',
+        stateOfResidence: 'Lagos', residentialAddress: 'Synthetic address, Lagos',
+        idDocumentType: IndividualKycIdDocumentType.PASSPORT, occupation: 'Analyst', pepStatus: 'NO',
+      },
+      investmentProfile: {
+        primaryInvestmentObjective: labels.investmentObjectives.CAPITAL_PRESERVATION,
+        riskTolerance: labels.riskTolerances.MODERATE,
+        investmentHorizon: IndividualKycInvestmentHorizon.DAYS_180,
+        financialCurrency: 'ngn',
+        investmentKnowledgeExperience: labels.investmentKnowledgeExperience.GOOD,
+        expectedWithdrawalsMinor: '500000', annualIncomeMinor: '10000000', estimatedNetWorthMinor: '30000000',
+        withdrawalFrequency: 'Every six months',
+      },
+      sourceOfFunds: {
+        sourceOfFunds: [labels.sourceOfFunds.SALARY_EMPLOYMENT, labels.sourceOfFunds.OTHER],
+        otherSource: 'Synthetic declared source', expectedAnnualInflowMinor: '5000000',
+        expectedTransactionFrequency: 'About monthly',
+      },
+      bankDetails: {
+        bankName: 'Synthetic Bank', accountNumber: '0123456789', accountName: 'Synthetic Applicant',
+        accountType: 'Current account', bvnLinkedToAccount: true,
+      },
+    });
+    const document = [{
+      id: 'doc-1', documentType: IndividualKycIdDocumentType.PASSPORT,
+      status: IndividualKycDocumentStatus.UNDER_REVIEW,
+      manualReviewStatus: ManualDocumentReviewStatus.UNDER_REVIEW,
+    }];
+
+    expect(payload.investmentProfile?.primaryInvestmentObjective).toBe('CAPITAL_PRESERVATION');
+    expect(payload.investmentProfile?.riskTolerance).toBe('MODERATE');
+    expect(payload.investmentProfile?.investmentKnowledgeExperience).toBe('GOOD');
+    expect(payload.investmentProfile?.financialCurrency).toBe('NGN');
+    expect(payload.sourceOfFunds?.sourceOfFunds).toEqual(['SALARY_EMPLOYMENT', 'OTHER']);
+    const completeStatuses = {
+      personal: IndividualKycSectionStatus.COMPLETE,
+      investment: IndividualKycSectionStatus.COMPLETE,
+      sourceOfFunds: IndividualKycSectionStatus.COMPLETE,
+      bank: IndividualKycSectionStatus.COMPLETE,
     };
-    for (const investmentHorizon of Object.values(IndividualKycInvestmentHorizon)) {
-      const statuses = calculateSectionStatuses({ investmentProfile: { ...base, investmentHorizon } }, []);
-      // Values persist, but missing approved objective/risk/knowledge catalogues
-      // prevent this section from being represented as policy-complete.
-      expect(statuses.investment).toBe(IndividualKycSectionStatus.DRAFT);
-    }
+    expect(calculateSectionStatuses(payload, document)).toEqual(completeStatuses);
+    const canonicalWirePayload = {
+      ...payload,
+      investmentProfile: {
+        ...payload.investmentProfile,
+        primaryInvestmentObjective: 'CAPITAL_PRESERVATION',
+        riskTolerance: 'MODERATE',
+        investmentKnowledgeExperience: 'GOOD',
+      },
+      sourceOfFunds: { ...payload.sourceOfFunds, sourceOfFunds: ['SALARY_EMPLOYMENT', 'OTHER'] },
+    };
+    expect(calculateSectionStatuses(canonicalWirePayload, document)).toEqual(completeStatuses);
+  });
+
+  it('does not complete controlled fields outside the proposed catalogues', () => {
+    const valid = {
+      personal: {
+        dateOfBirth: '1990-01-01', gender: 'FEMALE' as const, nationality: 'NG',
+        stateOfResidence: 'Lagos', residentialAddress: 'Synthetic address',
+        idDocumentType: IndividualKycIdDocumentType.PASSPORT, occupation: 'Analyst', pepStatus: 'NO' as const,
+      },
+      investmentProfile: {
+        primaryInvestmentObjective: 'Invented investment objective', riskTolerance: 'MODERATE',
+        investmentHorizon: IndividualKycInvestmentHorizon.DAYS_180, financialCurrency: 'NGN',
+        investmentKnowledgeExperience: 'GOOD', expectedWithdrawalsMinor: '0', annualIncomeMinor: '0',
+        estimatedNetWorthMinor: '0', withdrawalFrequency: 'Monthly',
+      },
+    };
+    const document = [{ id: 'doc-1', documentType: IndividualKycIdDocumentType.PASSPORT,
+      status: IndividualKycDocumentStatus.UNDER_REVIEW, manualReviewStatus: ManualDocumentReviewStatus.UNDER_REVIEW }];
+    expect(calculateSectionStatuses(valid, document).personal).toBe(IndividualKycSectionStatus.COMPLETE);
+    expect(calculateSectionStatuses(valid, document).investment).toBe(IndividualKycSectionStatus.DRAFT);
   });
 
   it('moves legacy annual-income/net-worth draft fields into Investment Profile without overwriting newer values', () => {
@@ -28,8 +92,9 @@ describe('Individual KYC contract calculations', () => {
     });
   });
 
-  it('keeps OTHER source detail conditional and refuses completion while source values have no approved allowlist', () => {
+  it('keeps OTHER source detail conditional and refuses a missing conditional explanation', () => {
     expect(isOtherSource(['OTHER'])).toBe(true);
+    expect(isOtherSource(['Other (specify)'])).toBe(true);
     expect(missingOtherSourceDetail({ sourceOfFunds: ['OTHER'] })).toBe(true);
     expect(missingOtherSourceDetail({ sourceOfFunds: ['OTHER'], otherSource: 'Synthetic detail' })).toBe(false);
     const missingDetail = calculateSectionStatuses({ sourceOfFunds: {
@@ -41,6 +106,8 @@ describe('Individual KYC contract calculations', () => {
       expectedAnnualInflowMinor: '300', expectedTransactionFrequency: 'monthly',
     } }, []);
     expect(withDetail.sourceOfFunds).toBe(IndividualKycSectionStatus.DRAFT);
+    const listedSource = calculateSectionStatuses({ sourceOfFunds: { sourceOfFunds: ['Savings'], expectedAnnualInflowMinor: '300', expectedTransactionFrequency: 'Monthly' } }, []);
+    expect(listedSource.sourceOfFunds).toBe(IndividualKycSectionStatus.DRAFT); // prerequisite sections are not complete
   });
 
   it('requires a matching document upload and full conditional PEP details when the applicant declares YES', () => {

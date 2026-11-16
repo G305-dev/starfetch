@@ -99,6 +99,68 @@ describe('IndividualKycService persistence and ownership', () => {
     expect((await h.service.getOwn('different-investor')).version).toBe(0);
   });
 
+  it('persists a genuinely complete profile, restores it on GET, and submits for review without approving it', async () => {
+    const h = makeHarness();
+    const bytes = Buffer.from('%PDF-1.7 synthetic reviewed document');
+    const intent = await h.service.createUploadIntent('investor-a', uploadDto(0, bytes));
+    h.storage.stageUpload(intent.uploadUrl, bytes, 'application/pdf', digest(bytes));
+    const completion = await h.service.completeDocument('investor-a', intent.documentId, intent.version);
+    let version = completion.version;
+
+    version = (await h.service.savePersonal('investor-a', Object.assign(new PersonalKycSectionDto(), {
+      version, dateOfBirth: '1990-01-01', gender: 'FEMALE', nationality: 'NG', stateOfResidence: 'Lagos',
+      residentialAddress: 'Synthetic address, Lagos', idDocumentType: IndividualKycIdDocumentType.PASSPORT,
+      occupation: 'Analyst', pepStatus: 'NO',
+    }))).version;
+    version = (await h.service.saveInvestment('investor-a', Object.assign(new InvestmentProfileKycSectionDto(), {
+      version, primaryInvestmentObjective: 'Capital preservation', riskTolerance: 'Moderate',
+      investmentHorizon: 'DAYS_180', financialCurrency: 'NGN', investmentKnowledgeExperience: 'Good',
+      expectedWithdrawalsMinor: '500000', annualIncomeMinor: '10000000', estimatedNetWorthMinor: '30000000',
+      withdrawalFrequency: 'Every six months',
+    }))).version;
+    version = (await h.service.saveSourceOfFunds('investor-a', Object.assign(new SourceOfFundsKycSectionDto(), {
+      version, sourceOfFunds: ['Salary / employment', 'Other (specify)'], otherSource: 'Synthetic declared source',
+      expectedAnnualInflowMinor: '5000000', expectedTransactionFrequency: 'About monthly',
+    }))).version;
+    version = (await h.service.saveBankDetails('investor-a', Object.assign(new BankDetailsKycSectionDto(), {
+      version, bankName: 'Synthetic Bank', accountNumber: '0123456789', accountName: 'Synthetic Applicant',
+      accountType: 'Current account', bvnLinkedToAccount: true,
+    }))).version;
+
+    const beforeSubmit = await h.service.getOwn('investor-a');
+    expect(beforeSubmit.status).toBe(IndividualKycProfileStatus.DRAFT);
+    expect(beforeSubmit.sectionStatuses).toEqual({
+      personal: IndividualKycSectionStatus.COMPLETE,
+      investment: IndividualKycSectionStatus.COMPLETE,
+      sourceOfFunds: IndividualKycSectionStatus.COMPLETE,
+      bank: IndividualKycSectionStatus.COMPLETE,
+    });
+    expect(beforeSubmit.progression).toEqual({ nextSection: null, canSubmit: true });
+    expect((beforeSubmit.sections as any).investmentProfile).toMatchObject({
+      primaryInvestmentObjective: 'CAPITAL_PRESERVATION', riskTolerance: 'MODERATE',
+      investmentKnowledgeExperience: 'GOOD', financialCurrency: 'NGN',
+    });
+    expect((beforeSubmit.sections as any).sourceOfFunds.sourceOfFunds).toEqual(['SALARY_EMPLOYMENT', 'OTHER']);
+    expect((beforeSubmit.sections as any).bankDetails).toMatchObject({ accountNumberMasked: '******6789' });
+    expect(JSON.stringify(beforeSubmit)).not.toContain('0123456789');
+    expect(h.profile.encryptedPayload).not.toContain('0123456789');
+
+    const submitted = await h.service.submit('investor-a', version);
+    expect(submitted.status).toBe(IndividualKycProfileStatus.SUBMITTED);
+    expect(h.profile.status).toBe(IndividualKycProfileStatus.SUBMITTED);
+    expect(h.profile.submittedAt).toBeInstanceOf(Date);
+    expect(h.profile.approvedAt).toBeNull();
+    expect(h.profile.approvedByUserId).toBeNull();
+    expect(h.events.at(-1)).toMatchObject({ eventKind: 'SUBMITTED', actorUserId: 'investor-a', profileVersion: version + 1 });
+    const reloaded = await h.service.getOwn('investor-a');
+    expect(reloaded.status).toBe(IndividualKycProfileStatus.SUBMITTED);
+    expect(reloaded.submittedAt).toBe(submitted.submittedAt);
+    expect(reloaded.sectionStatuses).toEqual(beforeSubmit.sectionStatuses);
+    expect((reloaded.sections as any).bankDetails.accountNumberMasked).toBe('******6789');
+    expect((reloaded.documents as any[])[0]).toMatchObject({ status: 'UNDER_REVIEW', manualReviewStatus: 'UNDER_REVIEW' });
+    expect(h.documents[0].scanStatus).toBe(IndividualKycDocumentScanStatus.PENDING);
+  });
+
   it('normalizes legacy income/net worth under Investment Profile and preserves on subsequent save', async () => {
     const h = makeHarness();
     await h.service.savePersonal('investor-a', Object.assign(new PersonalKycSectionDto(), { version: 0 }));

@@ -294,7 +294,7 @@ export class IndividualKycService {
     const profile = await this.ensureDraftProfile(userId, version);
     assertVersion(profile.version, version);
     if (profile.status !== IndividualKycProfileStatus.DRAFT) throw immutableProfile();
-    const payload = patcher(await this.decryptPayload(profile));
+    const payload = normalizeLegacyKycPayload(patcher(await this.decryptPayload(profile)));
     validateSupportedPayload(payload);
     const statuses = calculateSectionStatuses(payload, profile.documents);
     const nextVersion = version + 1;

@@ -116,7 +116,7 @@ export class PersonalKycSectionDto extends KycVersionDto {
 }
 
 export class InvestmentProfileKycSectionDto extends KycVersionDto {
-  /** The report supplies no approved objective vocabulary; v1 stores bounded opaque user text without interpreting it. */
+  /** Proposed wire values mirror the current UI options; unsupported values may be saved as drafts but cannot complete this section. */
   @IsOptional()
   @IsString()
   @Length(1, 120)
@@ -142,7 +142,7 @@ export class InvestmentProfileKycSectionDto extends KycVersionDto {
   @trimString
   investmentKnowledgeExperience?: string | null;
 
-  /** ISO 4217-shaped currency code; an approved currency allowlist is still required before completion. */
+  /** ISO 4217 code; current UI amounts are labelled ₦, so NGN is the proposed completion value. */
   @IsOptional()
   @IsString()
   @Matches(/^[A-Z]{3}$/)
@@ -165,7 +165,7 @@ export class InvestmentProfileKycSectionDto extends KycVersionDto {
   @Matches(/^\d{1,18}$/)
   estimatedNetWorthMinor?: string | null;
 
-  /** Bounded text until Compliance/Product approves a frequency vocabulary. */
+  /** Bounded free text: the existing UI has no withdrawal-frequency option catalogue. */
   @IsOptional()
   @IsString()
   @Length(1, 80)
@@ -181,7 +181,7 @@ export class InvestmentProfileKycSectionDto extends KycVersionDto {
 }
 
 export class SourceOfFundsKycSectionDto extends KycVersionDto {
-  /** Opaque, bounded labels until a Compliance-approved source-of-funds enum is supplied. */
+  /** Proposed labels mirror the existing UI; unsupported values are draft-only and do not pass completion. */
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(10)
@@ -202,7 +202,7 @@ export class SourceOfFundsKycSectionDto extends KycVersionDto {
   @Matches(/^\d{1,18}$/)
   expectedAnnualInflowMinor?: string | null;
 
-  /** Bounded text until Compliance approves the transaction-frequency values. */
+  /** Bounded free text: the existing UI has no transaction-frequency option catalogue. */
   @IsOptional()
   @IsString()
   @Length(1, 80)
@@ -232,7 +232,7 @@ export class BankDetailsKycSectionDto extends KycVersionDto {
   @trimString
   accountName?: string | null;
 
-  /** Bounded opaque string; final account-type allowlist is unresolved. */
+  /** Bounded free text: the existing UI has no account-type option catalogue. */
   @IsOptional()
   @IsString()
   @Length(1, 40)

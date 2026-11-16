@@ -13,5 +13,5 @@ export const INDIVIDUAL_KYC_HORIZON_LABELS: Readonly<Record<IndividualKycInvestm
   [IndividualKycInvestmentHorizon.DAYS_365]: '365 days',
   [IndividualKycInvestmentHorizon.YEARS_1_TO_3]: '1–3 years',
   [IndividualKycInvestmentHorizon.YEARS_3_TO_5]: '3–5 years',
-  [IndividualKycInvestmentHorizon.YEARS_5_PLUS]: '5+ years',
+  [IndividualKycInvestmentHorizon.YEARS_5_PLUS]: '5 years +',
 });
