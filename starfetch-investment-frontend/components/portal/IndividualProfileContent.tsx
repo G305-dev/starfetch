@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, Info, LoaderCircle, LockKeyhole, Save, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowLeft, Check, Info, LoaderCircle, LockKeyhole, Save, UserRound } from "lucide-react";
 import { getMyProfile, getSafeErrorMessage, isApiError, type IndividualAccountProfile, updateMyProfile } from "@/lib/api/client";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { BankDetailsDraft, emptyBankDetailsDraft } from "./BankDetailsDraft";
@@ -24,11 +24,6 @@ type LocalKycDraft = {
   occupation: string;
 };
 
-type UnsupportedProfileSection = {
-  title: string;
-  description: string;
-};
-
 const idCardTypes = ["", "Passport", "PVC", "Driver’s License", "NIN"];
 const profileSteps: Array<{ step: ProfileStep; title: string; description: string }> = [
   { step: 1, title: "Personal information", description: "Contact details, KYC draft and PEP declaration" },
@@ -36,10 +31,6 @@ const profileSteps: Array<{ step: ProfileStep; title: string; description: strin
   { step: 3, title: "Source of funds", description: "Funds and wealth draft" },
   { step: 4, title: "Bank details", description: "Settlement account draft" },
 ];
-const unsupportedSections: UnsupportedProfileSection[] = [
-  { title: "Documents", description: "Document upload and storage are not available in the current portal." },
-];
-
 function emptyLocalKycDraft(): LocalKycDraft {
   return {
     dateOfBirth: "",
@@ -57,32 +48,47 @@ function inputClassName(readOnly = false) {
   return `min-h-11 w-full rounded-md border border-star-200 px-3 text-sm font-semibold text-star-900 outline-none transition focus:border-star-700 focus:ring-2 focus:ring-star-100 ${readOnly ? "cursor-not-allowed bg-star-50 text-star-muted" : "bg-white"}`;
 }
 
-function UnsupportedSection({ title, description }: UnsupportedProfileSection) {
+function SectionProgress({ activeStep, completedThrough, onSelect }: { activeStep: ProfileStep; completedThrough: number; onSelect: (step: ProfileStep) => void }) {
+  const completionPercent = Math.round((completedThrough / profileSteps.length) * 100);
+  const nextStepTitle = profileSteps[completedThrough]?.title;
+
   return (
-    <article className="rounded-xl border border-star-200 bg-star-50 p-4">
-      <div className="flex gap-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-white text-star-700">
-          <ShieldCheck size={19} aria-hidden="true" />
-        </span>
+    <aside className="rounded-2xl border border-star-200 bg-white p-5 shadow-[0_4px_18px_rgba(0,59,42,0.05)] sm:p-6" aria-labelledby="profile-progress-heading">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-extrabold text-star-900">{title}</h2>
-          <p className="mt-1 text-sm leading-6 text-star-muted">{description}</p>
-          <p className="mt-3 text-xs font-bold text-star-700">Unavailable pending approved backend support</p>
+          <p className="text-[0.65rem] font-extrabold uppercase tracking-[0.16em] text-star-700">Your profile</p>
+          <h2 id="profile-progress-heading" className="mt-1 text-lg font-extrabold text-star-900">Profile progress</h2>
+        </div>
+        <span className="rounded-full bg-star-50 px-3 py-1 text-xs font-extrabold text-star-700">{completedThrough} of {profileSteps.length}</span>
+      </div>
+
+      <div className="mt-5 flex items-center gap-4 rounded-xl bg-[#f5f9f1] p-4">
+        <div
+          role="progressbar"
+          aria-label="Profile sections completed on this page"
+          aria-valuemin={0}
+          aria-valuemax={profileSteps.length}
+          aria-valuenow={completedThrough}
+          aria-valuetext={`${completedThrough} of ${profileSteps.length} sections complete on this page`}
+          style={{ background: `conic-gradient(#76b900 ${completionPercent * 3.6}deg, #e4ebe3 0deg)` }}
+          className="grid size-[76px] shrink-0 place-items-center rounded-full p-[7px]"
+        >
+          <span className="grid size-full place-items-center rounded-full bg-white text-center">
+            <span className="text-lg font-extrabold leading-none text-star-900">{completionPercent}%</span>
+          </span>
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-extrabold text-star-900">{completedThrough === profileSteps.length ? "All four sections complete" : `Next: ${nextStepTitle ?? "Personal information"}`}</p>
+          <p className="mt-1 text-xs leading-5 text-star-muted">Progress through the forms on this page only.</p>
         </div>
       </div>
-    </article>
-  );
-}
 
-function SectionProgress({ activeStep, completedThrough, onSelect }: { activeStep: ProfileStep; completedThrough: number; onSelect: (step: ProfileStep) => void }) {
-  return (
-    <nav className="mt-7 rounded-xl border border-star-200 bg-white p-3 shadow-[0_2px_12px_rgba(14,62,46,0.04)] sm:p-4" aria-label="Profile section progress">
-      <ol className="grid gap-2 lg:grid-cols-4">
+      <ol className="mt-5 grid gap-2">
         {profileSteps.map(({ step, title, description }) => {
           const isComplete = step <= completedThrough;
-          const isAvailable = step <= Math.min(completedThrough + 1, 4);
+          const isAvailable = step <= Math.min(completedThrough + 1, profileSteps.length);
           const isActive = step === activeStep;
-          const stateLabel = isComplete ? "Completed" : isAvailable ? "Current section" : "Locked";
+          const stateLabel = isComplete ? (isActive ? "Current" : "Edit") : isActive ? "In progress" : isAvailable ? "Next" : "Locked";
 
           return (
             <li key={step}>
@@ -91,32 +97,38 @@ function SectionProgress({ activeStep, completedThrough, onSelect }: { activeSte
                   type="button"
                   onClick={() => onSelect(step)}
                   aria-current={isActive ? "step" : undefined}
-                  className={`flex min-h-20 w-full items-start gap-3 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 ${isActive ? "border-star-700 bg-star-50" : "border-star-200 bg-white hover:bg-star-50"}`}
+                  aria-label={`${title}: ${stateLabel}. ${description}`}
+                  className={`flex min-h-[76px] w-full items-start gap-3 rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-1 ${isActive ? "border-star-700 bg-star-50" : "border-star-200 bg-white hover:border-star-300 hover:bg-star-50"}`}
                 >
-                  <span className={`grid size-7 shrink-0 place-items-center rounded-full text-xs font-extrabold ${isComplete ? "bg-star-700 text-star-lime" : "bg-star-100 text-star-700"}`}>
+                  <span className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-full text-xs font-extrabold ${isComplete ? "bg-star-700 text-star-lime" : "bg-star-100 text-star-700"}`}>
                     {isComplete ? <Check size={15} strokeWidth={3} aria-hidden="true" /> : step}
                   </span>
-                  <span className="min-w-0">
+                  <span className="min-w-0 flex-1">
                     <span className="block text-sm font-extrabold text-star-900">{title}</span>
                     <span className="mt-0.5 block text-xs leading-5 text-star-muted">{description}</span>
-                    <span className="mt-1 block text-[0.68rem] font-bold uppercase tracking-[0.08em] text-star-700">{stateLabel}</span>
                   </span>
+                  <span className="shrink-0 pt-1 text-[0.63rem] font-extrabold uppercase tracking-[0.07em] text-star-700">{stateLabel}</span>
                 </button>
               ) : (
-                <div className="flex min-h-20 items-start gap-3 rounded-lg border border-star-100 bg-star-50 p-3 text-star-muted" aria-label={`${title}: locked until the preceding section is complete`}>
-                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-white text-star-muted"><LockKeyhole size={14} aria-hidden="true" /></span>
-                  <span className="min-w-0">
+                <div className="flex min-h-[76px] items-start gap-3 rounded-xl border border-star-100 bg-star-50/70 p-3 text-star-muted" aria-label={`${title}: locked until the preceding section is complete`}>
+                  <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-white text-star-muted"><LockKeyhole size={14} aria-hidden="true" /></span>
+                  <span className="min-w-0 flex-1">
                     <span className="block text-sm font-extrabold">{title}</span>
                     <span className="mt-0.5 block text-xs leading-5">Complete the preceding section to unlock this form.</span>
-                    <span className="mt-1 block text-[0.68rem] font-bold uppercase tracking-[0.08em]">Locked</span>
                   </span>
+                  <span className="shrink-0 pt-1 text-[0.63rem] font-extrabold uppercase tracking-[0.07em]">Locked</span>
                 </div>
               )}
             </li>
           );
         })}
       </ol>
-    </nav>
+
+      <div className="mt-5 flex gap-2 border-t border-star-100 pt-4">
+        <Info size={17} className="mt-0.5 shrink-0 text-star-700" aria-hidden="true" />
+        <p className="text-xs leading-5 text-star-muted">This page progress is not KYC verification. Local draft values and progress reset when you leave or refresh the page.</p>
+      </div>
+    </aside>
   );
 }
 
@@ -322,7 +334,7 @@ export function IndividualProfileContent() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl" aria-labelledby="individual-profile-heading">
+    <section className="mx-auto max-w-[1260px]" aria-labelledby="individual-profile-heading">
       <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm font-extrabold text-star-700 no-underline transition hover:text-star-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">
         <ArrowLeft size={17} aria-hidden="true" />
         Return to Dashboard
@@ -330,7 +342,7 @@ export function IndividualProfileContent() {
 
       <div className="mt-5">
         <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-star-700">Individual account</p>
-        <h1 id="individual-profile-heading" className="mt-2 font-display text-[clamp(2rem,3.5vw,3rem)] font-extrabold tracking-[-0.045em] text-star-900">Profile</h1>
+        <h1 id="individual-profile-heading" className="mt-2 font-display text-[clamp(2rem,3.5vw,3rem)] font-extrabold tracking-[-0.045em] text-star-900">My Profile</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-star-muted">Complete each current-page section in sequence. Earlier completed sections remain available for review and editing.</p>
       </div>
 
@@ -350,13 +362,23 @@ export function IndividualProfileContent() {
 
       {requestState === "success" && profile ? (
         <>
-          <SectionProgress activeStep={activeStep} completedThrough={completedThrough} onSelect={selectStep} />
+          <section className="mt-6 flex flex-col gap-4 rounded-2xl border border-star-200 bg-white p-5 shadow-[0_4px_18px_rgba(0,59,42,0.05)] sm:flex-row sm:items-center sm:p-6" aria-label="Individual investor profile overview">
+            <span className="grid size-16 shrink-0 place-items-center rounded-full bg-star-100 text-lg font-extrabold tracking-wide text-star-700 ring-4 ring-[#f5f9f1]">{`${profile.firstName.charAt(0)}${profile.lastName.charAt(0)}`.toUpperCase() || "IN"}</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[0.65rem] font-extrabold uppercase tracking-[0.16em] text-star-700">Individual investor</p>
+              <h2 className="mt-1 truncate font-display text-xl font-extrabold tracking-[-0.03em] text-star-900">{`${profile.firstName} ${profile.lastName}`.trim() || "Investor profile"}</h2>
+              <p className="mt-1 text-sm leading-5 text-star-muted">Your account-managed identity and profile forms.</p>
+            </div>
+            <span className="inline-flex min-h-9 items-center justify-center rounded-full border border-star-200 bg-[#f8faf5] px-4 text-xs font-bold text-star-700">Individual account</span>
+          </section>
 
-          {stepNotice ? <p role="status" className="mt-5 rounded-lg border border-[#cce7d0] bg-[#eff8f0] px-4 py-3 text-sm font-semibold leading-6 text-star-700">{stepNotice}</p> : null}
-          {stepError ? <p role="alert" className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold leading-6 text-red-700">{stepError}</p> : null}
+          <div className="mt-6 grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="order-2 min-w-0 xl:order-1">
+              {stepNotice ? <p role="status" className="mb-5 rounded-xl border border-[#cce7d0] bg-[#eff8f0] px-4 py-3 text-sm font-semibold leading-6 text-star-700">{stepNotice}</p> : null}
+              {stepError ? <p role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold leading-6 text-red-700">{stepError}</p> : null}
 
           {activeStep === 1 ? (
-            <form onSubmit={savePersonalInformation} className="mt-7 rounded-xl border border-star-200 bg-white p-5 shadow-[0_2px_12px_rgba(14,62,46,0.04)] sm:p-6">
+            <form onSubmit={savePersonalInformation} className="mt-0 rounded-2xl border border-star-200 bg-white p-5 shadow-[0_4px_18px_rgba(0,59,42,0.05)] sm:p-6">
               <div className="flex items-start gap-3">
                 <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-star-100 text-star-700"><UserRound size={22} aria-hidden="true" /></span>
                 <div>
@@ -408,21 +430,21 @@ export function IndividualProfileContent() {
           ) : null}
 
           {activeStep === 2 ? (
-            <div className="mt-7">
+            <div className="mt-0">
               <InvestmentObjectiveRiskProfileDraft value={localInvestmentRiskDraft} onChange={(next) => { setLocalInvestmentRiskDraft(next); resetCompletionFrom(2); }} />
               <div className="mt-5 flex justify-end"><button type="button" onClick={completeInvestmentProfile} className="min-h-11 rounded-md bg-star-700 px-5 text-sm font-extrabold text-white transition hover:bg-star-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Complete Investment Profile</button></div>
             </div>
           ) : null}
 
           {activeStep === 3 ? (
-            <div className="mt-7">
+            <div className="mt-0">
               <SourceOfFundsDraft value={localSourceOfFundsDraft} onChange={(next) => { setLocalSourceOfFundsDraft(next); resetCompletionFrom(3); }} />
               <div className="mt-5 flex justify-end"><button type="button" onClick={completeSourceOfFunds} className="min-h-11 rounded-md bg-star-700 px-5 text-sm font-extrabold text-white transition hover:bg-star-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Complete Source of Funds</button></div>
             </div>
           ) : null}
 
           {activeStep === 4 ? (
-            <div className="mt-7">
+            <div className="mt-0">
               <BankDetailsDraft value={localBankDetailsDraft} onChange={(next) => { setLocalBankDetailsDraft(next); resetCompletionFrom(4); }} />
               <div className="mt-5 flex justify-end"><button type="button" onClick={completeBankDetails} className="min-h-11 rounded-md bg-star-700 px-5 text-sm font-extrabold text-white transition hover:bg-star-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Complete Bank Details</button></div>
             </div>
@@ -434,10 +456,11 @@ export function IndividualProfileContent() {
             </section>
           ) : null}
 
-          <section className="mt-7" aria-labelledby="onboarding-unavailable-heading">
-            <div className="flex gap-3 rounded-xl border border-[#d9eac8] bg-[linear-gradient(115deg,#f6faee_0%,#edf6e3_100%)] p-4"><Info size={21} className="mt-0.5 shrink-0 text-star-700" aria-hidden="true" /><div><h2 id="onboarding-unavailable-heading" className="text-base font-extrabold text-star-900">Additional onboarding is not available yet</h2><p className="mt-1 text-sm leading-6 text-star-muted">These areas have no approved backend storage or verification workflow. The portal does not collect or claim to save this information.</p></div></div>
-            <div className="mt-5 grid gap-4 md:grid-cols-2">{unsupportedSections.map((section) => <UnsupportedSection key={section.title} {...section} />)}</div>
-          </section>
+            </div>
+            <div className="order-1 xl:order-2 xl:sticky xl:top-[96px]">
+              <SectionProgress activeStep={activeStep} completedThrough={completedThrough} onSelect={selectStep} />
+            </div>
+          </div>
         </>
       ) : null}
     </section>

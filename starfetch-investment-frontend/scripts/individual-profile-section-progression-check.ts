@@ -54,4 +54,13 @@ assert(
   "Editing an earlier section must relock dependent sections without persisting progress in the browser",
 );
 
-console.log("PASS — Individual Profile reveals one current-page section at a time, requires relevant fields before sequential unlocks, and relocks later sections when earlier drafts change");
+assert(
+  source.includes('aria-label="Individual investor profile overview"')
+    && source.includes('Profile progress')
+    && source.includes("xl:grid-cols-[minmax(0,1fr)_340px]")
+    && !source.includes("Additional onboarding is not available yet")
+    && !source.includes("Document upload and storage are not available in the current portal."),
+  "Individual Profile must use the overview/progress-card layout and omit the obsolete Additional onboarding and Documents placeholder",
+);
+
+console.log("PASS — Individual Profile uses a profile overview and progress card, omits the obsolete onboarding/Documents placeholder, and preserves current-page sequential section progression");
