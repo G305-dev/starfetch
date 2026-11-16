@@ -1,3 +1,5 @@
+import configuration from './configuration';
+import { INDIVIDUAL_KYC_DOCUMENT_RETENTION_DAYS } from './document-retention-policy';
 import { validateEnv } from './env.validation';
 
 const DB = 'postgresql://user:pw@localhost:5432/db';
@@ -311,16 +313,15 @@ describe('validateEnv (fail-fast, fail-secure)', () => {
       INDIVIDUAL_KYC_S3_BUCKET: 'synthetic-kyc-test',
       INDIVIDUAL_KYC_S3_REGION: 'test-signing-region',
       INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE: 'file:/run/secrets/provider-test.json',
-      INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE: 'decision:storage-test',
-      INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE: 'decision:retention-test',
-      INDIVIDUAL_KYC_STORAGE_RETENTION_DAYS: '90',
     });
-    expect(validateEnv(approved).INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED).toBe(true);
-    expect(validateEnv(approved).INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED).toBe(false);
+    const validated = validateEnv(approved);
+    expect(validated.INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED).toBe(true);
+    expect(validated.INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED).toBe(false);
     expect(() => validateEnv({ ...approved, INDIVIDUAL_KYC_S3_ENDPOINT: 'http://s3.example.invalid' })).toThrow(/must be HTTPS/);
     expect(() => validateEnv({ ...approved, INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE: 'access=secret' })).toThrow(/CREDENTIAL_REFERENCE/);
-    expect(() => validateEnv({ ...approved, INDIVIDUAL_KYC_STORAGE_RETENTION_DAYS: undefined })).toThrow(/RETENTION_DAYS/);
     expect(() => validateEnv({ ...approved, AWS_ACCESS_KEY_ID: 'synthetic-static-key' })).toThrow(/Static AWS access-key/);
+    expect(configuration().individualKyc.s3.retentionDays).toBe(INDIVIDUAL_KYC_DOCUMENT_RETENTION_DAYS);
+    expect(INDIVIDUAL_KYC_DOCUMENT_RETENTION_DAYS).toBeGreaterThan(0);
   });
 
 });

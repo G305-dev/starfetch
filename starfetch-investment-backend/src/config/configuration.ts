@@ -1,3 +1,5 @@
+import { INDIVIDUAL_KYC_DOCUMENT_RETENTION_DAYS } from './document-retention-policy';
+
 export default () => {
   const nodeEnv = process.env.NODE_ENV ?? 'development';
   const productionLike = nodeEnv === 'production' || nodeEnv === 'staging';
@@ -122,9 +124,7 @@ export default () => {
         privateBucketApproved: process.env.INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED === 'true',
         tlsPolicyApproved: process.env.INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED === 'true',
         retentionApproved: process.env.INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED === 'true',
-        retentionApprovalReference: process.env.INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE,
-        retentionDays: parseInt(process.env.INDIVIDUAL_KYC_STORAGE_RETENTION_DAYS ?? '0', 10),
-        approvalReference: process.env.INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE,
+        retentionDays: INDIVIDUAL_KYC_DOCUMENT_RETENTION_DAYS,
       },
       scanner: {
         residencyApproved: process.env.INDIVIDUAL_KYC_SCANNER_RESIDENCY_APPROVED === 'true',

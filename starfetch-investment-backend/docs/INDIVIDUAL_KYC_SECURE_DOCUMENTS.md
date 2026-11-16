@@ -46,30 +46,18 @@ Keep these false/unset until the control is verified and an accountable owner ha
 
 - `INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED=true`: verified complete data-flow/storage/processing residency and transfer assessment; this is an explicit governance decision, not a region-name heuristic.
 - `INDIVIDUAL_KYC_S3_STORAGE_ENABLED=true`: selected provider explicitly approved; HTTPS endpoint, signing region, bucket, credential reference, and provider capabilities configured.
-- `INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED=true`: only after storage, scanner, retention, and all approval controls pass.
-- `INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED=true`: authenticated worker and real clamd deployment are tested and approved.
+- `INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED=true`: only after private storage, residency, encryption, finite retention and deletion controls pass. Malware scanning is disabled and is not an upload prerequisite.
 - `INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED=true`, `INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED=true`, `INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED=true`, and `INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED=true`: verified provider/location, no-public-access and least-privilege policy, TLS-only controls, and scheduled deletion/backup policy.
-- `INDIVIDUAL_KYC_SCANNER_RESIDENCY_APPROVED=true`: verified Nigerian execution location, scanner update path, access restrictions, and no outbound document transfer.
-- `INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE`, `INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE`, `INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE`: non-secret references to recorded approvals, not claims that create approval.
-- `INDIVIDUAL_KYC_STORAGE_RETENTION_DAYS`: approved integer from 1 to 3650. It is applied from clean scan completion; pending/failed uploads have separate expiry cleanup.
 - `INDIVIDUAL_KYC_S3_ENDPOINT`, `INDIVIDUAL_KYC_S3_BUCKET`, `INDIVIDUAL_KYC_S3_REGION`, `INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE`: explicit approved provider configuration. The S3 signing region is not residency evidence. Credential reference is `workload-identity` or an approved `/run/secrets/...` file mount; credentials themselves must never be environment values.
-- `INDIVIDUAL_KYC_WORKER_HMAC_KEY`: base64 for at least 32 random bytes, injected separately into API and worker secrets; rotate under a documented process. Do not commit it or log it.
 - `INDIVIDUAL_KYC_KMS_KEY_ID`, `INDIVIDUAL_KYC_KMS_KEY_VERSION`: a dedicated Individual KYC key, separate from Corporate TIN keys. For a Vercel KMS caller, configure the approved `AWS_ROLE_ARN` and OIDC trust policy. Static AWS key variables are rejected for this workflow.
 
-Production activation requires more than setting variables: verify IAM and service-role scope, Vercel OIDC trust (if applicable), storage and database location, bucket versioning, deny-public-access, object ownership, TLS policy, conditional-write behavior, no overwrite, short presigning, checksum support, encryption-at-rest, audit logging without payloads, retention/deletion including versions/backups, scanner patch/signature maintenance, and incident/restore procedures. Validate the exact approved controls and actual vendor behavior. Capability probes fail closed if conditional create/replay protections or versioning are absent.
+The internal application retention policy is 90 days from upload completion. It is finite, does not read an environment variable, and is enforced through `retentionExpiresAt` plus exact-version cleanup. Review this constant with compliance before changing it.
 
-## Dedicated scanner worker
+Production activation requires more than setting variables: verify IAM and service-role scope, Vercel OIDC trust (if applicable), storage and database location, bucket versioning, deny-public-access, object ownership, TLS policy, conditional-write behavior, no overwrite, short presigning, checksum support, encryption-at-rest, audit logging without payloads, the internal finite retention/deletion policy including versions/backups, and incident/restore procedures. Validate the exact approved controls and actual vendor behavior. Capability probes fail closed if conditional create/replay protections or versioning are absent. Malware scanning remains disabled and is not part of upload authorization or manual review.
 
-`Dockerfile.individual-kyc-scanner` builds the dedicated worker plus clamd in one image. Deploy it only as a private service in the specifically approved Nigerian environment. The container updates ClamAV signatures before starting, starts clamd bound to loopback, does not publish port 3310, then starts the polling worker. Keep image provenance, OS and ClamAV updates, signature freshness/availability, resource limits, logs, and outbound network policy under operational controls. The worker downloads only a pinned object version over HTTPS, checks exact size/type/metadata/version/checksum, streams bytes to clamd INSTREAM without writing them to disk, and posts an attestation. If scanner/API/storage fails, no CLEAN result is issued.
+## Malware scanner status
 
-Build and run only after prerequisites are approved:
-
-```sh
-docker build -f Dockerfile.individual-kyc-scanner -t starfetch-individual-kyc-scanner:review .
-docker run --rm --env-file /secure/mounted/worker.env \
-  --network approved-private-network \
-  starfetch-individual-kyc-scanner:review
-```
+Malware scanning is deferred and disabled in this phase. The backend forces the scanner-worker enablement setting off; upload authorization, upload completion and manual review do not call a scanner or depend on scanner configuration. Do not build or deploy the legacy scanner/ClamAV worker as part of this change. The retained worker code is only a future integration point and must remain unreachable in production until a separately approved phase.
 
 Do not commit or distribute the env file. `INDIVIDUAL_KYC_CLAMD_HOST` should be loopback for this image (`127.0.0.1`); worker S3 permissions should be read-only to the quarantine prefix and only support exact version reads. API credentials permit conditional upload authorization, metadata HEAD, version-specific delete, and no document GET. Keep credentials out of image layers and command-line arguments. Do not expose clamd's TCP port to other networks.
 
