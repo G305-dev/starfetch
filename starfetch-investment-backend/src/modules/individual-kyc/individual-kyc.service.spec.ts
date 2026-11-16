@@ -72,7 +72,7 @@ function makeHarness() {
     $transaction: jest.fn(async (callback: (tx: any) => Promise<any>) => callback(db)),
   };
   const storage = new IsolatedMemoryIndividualKycDocumentStorage('test');
-  const service = new IndividualKycService(db, new TestIndividualKycEncryptionProvider('test', Buffer.alloc(32, 9)), storage);
+  const service = new IndividualKycService(db, { get: () => 365 } as any, new TestIndividualKycEncryptionProvider('test', Buffer.alloc(32, 9)), storage);
   return { service, db, storage, get profile() { return profile; }, documents, events };
 }
 
@@ -131,7 +131,7 @@ describe('IndividualKycService persistence and ownership', () => {
     ['application/pdf', Buffer.from('%PDF-1.7 synthetic')],
     ['image/jpeg', Buffer.from([0xff, 0xd8, 0xff, 0x00, 0x11])],
     ['image/png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01])],
-  ] as const)('creates a one-time 5-minute signed intent and queues %s without reading bytes in the API', async (contentType, bytes) => {
+  ] as const)('creates a one-time 5-minute signed intent and completes %s into manual review without reading bytes in the API', async (contentType, bytes) => {
     const h = makeHarness();
     const intent = await h.service.createUploadIntent('investor-a', uploadDto(0, bytes, contentType));
     expect(intent.expiresAt).toBeTruthy();
@@ -140,9 +140,9 @@ describe('IndividualKycService persistence and ownership', () => {
     expect(intent.requiredHeaders).not.toHaveProperty('content-length');
     expect(h.storage.stageUpload(intent.uploadUrl, bytes, contentType, digest(bytes))).toBeTruthy();
     const completed = await h.service.completeDocument('investor-a', intent.documentId, intent.version);
-    expect(completed).toMatchObject({ status: IndividualKycDocumentStatus.PENDING_SCAN, scanStatus: IndividualKycDocumentScanStatus.PENDING, version: 2 });
+    expect(completed).toMatchObject({ status: IndividualKycDocumentStatus.UNDER_REVIEW, manualReviewStatus: 'UNDER_REVIEW', version: 2 });
     const restored = await h.service.getOwn('investor-a');
-    expect((restored.documents as any[])[0]).toMatchObject({ status: 'PENDING_SCAN', scanStatus: 'PENDING' });
+    expect((restored.documents as any[])[0]).toMatchObject({ status: 'UNDER_REVIEW', manualReviewStatus: 'UNDER_REVIEW' });
   });
 
   it('rejects unsupported MIME, oversized input, and invalid/missing checksum before upload', async () => {
@@ -161,10 +161,10 @@ describe('IndividualKycService persistence and ownership', () => {
     await expect(h.service.completeDocument('investor-a', intent.documentId, intent.version)).rejects.toMatchObject({ response: { code: 'UPLOAD_NOT_FOUND' } });
     h.storage.stageUpload(intent.uploadUrl, bytes, 'application/pdf', digest(bytes));
     await expect(h.service.completeDocument('investor-b', intent.documentId, intent.version)).rejects.toBeInstanceOf(NotFoundException);
-    await expect(h.service.completeDocument('investor-a', intent.documentId, intent.version)).resolves.toMatchObject({ status: IndividualKycDocumentStatus.PENDING_SCAN });
+    await expect(h.service.completeDocument('investor-a', intent.documentId, intent.version)).resolves.toMatchObject({ status: IndividualKycDocumentStatus.UNDER_REVIEW });
   });
 
-  it('rejects object metadata size, checksum, MIME and SSE mismatches before scan queueing', async () => {
+  it('rejects object metadata size, checksum, MIME and SSE mismatches before upload completion', async () => {
     const h = makeHarness();
     const bytes = Buffer.from('%PDF-1.7 synthetic');
     const intent = await h.service.createUploadIntent('investor-a', uploadDto(0, bytes));
@@ -178,14 +178,15 @@ describe('IndividualKycService persistence and ownership', () => {
     expect(h.documents[0].status).toBe(IndividualKycDocumentStatus.PENDING_UPLOAD);
   });
 
-  it('rejects duplicate/replayed browser PUT and does not mark an unvalidated object clean', async () => {
+  it('rejects duplicate/replayed browser PUT and records only uploaded/manual-review state', async () => {
     const h = makeHarness();
     const bytes = Buffer.from('%PDF-1.7 synthetic');
     const intent = await h.service.createUploadIntent('investor-a', uploadDto(0, bytes));
     h.storage.stageUpload(intent.uploadUrl, bytes, 'application/pdf', digest(bytes));
     expect(() => h.storage.stageUpload(intent.uploadUrl, bytes, 'application/pdf', digest(bytes))).toThrow(ServiceUnavailableException);
     await h.service.completeDocument('investor-a', intent.documentId, intent.version);
-    expect(h.documents[0].status).toBe(IndividualKycDocumentStatus.PENDING_SCAN);
+    expect(h.documents[0].status).toBe(IndividualKycDocumentStatus.UNDER_REVIEW);
+    expect(h.documents[0].manualReviewStatus).toBe('UNDER_REVIEW');
     expect(h.documents[0].scanStatus).toBe(IndividualKycDocumentScanStatus.PENDING);
   });
 
@@ -198,7 +199,7 @@ describe('IndividualKycService persistence and ownership', () => {
     expect(h.documents[0].status).toBe(IndividualKycDocumentStatus.PENDING_UPLOAD);
   });
 
-  it('keeps scanner clearance separate from upload completion and never submits before a clean matching ID', async () => {
+  it('allows ID upload to satisfy document presence without implying scan or identity approval', async () => {
     const h = makeHarness();
     const intent = await h.service.createUploadIntent('investor-a', uploadDto(0, Buffer.from('%PDF-1.7 synthetic')));
     await expect(h.service.submit('investor-a', intent.version)).rejects.toBeInstanceOf(ConflictException);

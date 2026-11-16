@@ -109,7 +109,7 @@ export default () => {
       dataResidencyApproved: process.env.INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED === 'true',
       awsRoleArn: process.env.AWS_ROLE_ARN,
       documentUploadEnabled: process.env.INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED === 'true',
-      scannerWorkerEnabled: process.env.INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED === 'true',
+      scannerWorkerEnabled: false, // malware scanning is deferred and cannot be enabled via environment flags
       workerHmacKey: process.env.INDIVIDUAL_KYC_WORKER_HMAC_KEY,
       s3: {
         enabled: process.env.INDIVIDUAL_KYC_S3_STORAGE_ENABLED === 'true',

@@ -3,11 +3,13 @@ import {
   NotFoundException, ServiceUnavailableException,
 } from '@nestjs/common';
 import {
-  IndividualKycDocumentScanStatus, IndividualKycDocumentStatus,
+  IndividualKycDocumentScanStatus, IndividualKycDocumentStatus, ManualDocumentReviewDecision, ManualDocumentReviewStatus,
   IndividualKycEncryptionProvider, IndividualKycProfileEventKind,
   IndividualKycProfileStatus, IndividualKycSection, IndividualKycSectionStatus, Prisma,
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import { customerDocumentStatus, customerReviewStatus } from './individual-kyc.customer-document-status';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import {
   IndividualKycEncryptionProvider as IndividualKycEncryptionPort,
@@ -37,6 +39,7 @@ export class IndividualKycService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
     @Inject(INDIVIDUAL_KYC_ENCRYPTION) private readonly encryption: IndividualKycEncryptionPort,
     @Inject(INDIVIDUAL_KYC_DOCUMENT_STORAGE) private readonly storage: IndividualKycDocumentStorage,
   ) {}
@@ -46,8 +49,7 @@ export class IndividualKycService {
       where: { investorUserId: userId },
       include: { documents: { orderBy: { createdAt: 'asc' }, select: {
         id: true, documentType: true, originalFilename: true, contentType: true,
-        sizeBytes: true, status: true, scanStatus: true, scannerVersion: true,
-        scanCompletedAt: true, uploadedAt: true, createdAt: true,
+        sizeBytes: true, status: true, manualReviewStatus: true, uploadedAt: true, createdAt: true,
       } } },
     });
     if (!profile) return {
@@ -57,7 +59,8 @@ export class IndividualKycService {
     };
     const payload = await this.decryptPayload(profile);
     const docs: KycDocumentState[] = profile.documents.map((doc) => ({
-      id: doc.id, documentType: doc.documentType, status: doc.status, scanStatus: doc.scanStatus,
+      id: doc.id, documentType: doc.documentType, status: doc.status,
+      manualReviewStatus: doc.manualReviewStatus,
     }));
     const sectionStatuses = calculateSectionStatuses(payload, docs);
     const sections = {
@@ -75,9 +78,8 @@ export class IndividualKycService {
       updatedAt: profile.updatedAt.toISOString(), sections, sectionStatuses,
       documents: profile.documents.map((doc) => ({
         id: doc.id, documentType: doc.documentType, originalFilename: doc.originalFilename,
-        contentType: doc.contentType, sizeBytes: doc.sizeBytes.toString(), status: doc.status,
-        scanStatus: doc.scanStatus, scannerVersion: doc.scannerVersion,
-        scanCompletedAt: doc.scanCompletedAt?.toISOString() ?? null,
+        contentType: doc.contentType, sizeBytes: doc.sizeBytes.toString(), status: customerDocumentStatus(doc.status, doc.manualReviewStatus, doc.uploadedAt),
+        manualReviewStatus: customerReviewStatus(doc.status, doc.manualReviewStatus, doc.uploadedAt),
         uploadedAt: doc.uploadedAt?.toISOString() ?? null,
         createdAt: doc.createdAt.toISOString(),
       })),
@@ -213,7 +215,10 @@ export class IndividualKycService {
       !document.expectedChecksumSha256;
     if (invalid) throw new BadRequestException({ code: 'UPLOAD_VALIDATION_FAILED', message: 'Uploaded object metadata, size, encryption or checksum did not match the signed upload.' });
 
-    const queuedAt = new Date();
+    const uploadedAt = new Date();
+    const retentionDays = this.config.get<number>('individualKyc.s3.retentionDays') ?? 0;
+    if (!Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 3650) throw new ServiceUnavailableException({ code: 'FEATURE_UNAVAILABLE', message: 'Approved document-retention configuration is unavailable.' });
+    const retentionExpiresAt = new Date(uploadedAt.getTime() + retentionDays * 24 * 60 * 60 * 1000);
     return this.prisma.$transaction(async (tx) => {
       const changedProfile = await tx.individualKycProfile.updateMany({
         where: { id: profile.id, investorUserId: userId, version, status: IndividualKycProfileStatus.DRAFT },
@@ -223,12 +228,11 @@ export class IndividualKycService {
       const changedDocument = await tx.individualKycDocument.updateMany({
         where: { id: document.id, kycProfileId: profile.id, investorUserId: userId, status: IndividualKycDocumentStatus.PENDING_UPLOAD },
         data: {
-          status: IndividualKycDocumentStatus.PENDING_SCAN,
-          scanStatus: IndividualKycDocumentScanStatus.PENDING,
+          status: IndividualKycDocumentStatus.UNDER_REVIEW,
+          manualReviewStatus: ManualDocumentReviewStatus.UNDER_REVIEW,
           storageObjectVersionId: metadata.versionId,
-          uploadedAt: queuedAt,
-          scanRequestedAt: queuedAt,
-          scanAttemptCount: 0,
+          uploadedAt,
+          retentionExpiresAt,
         },
       });
       if (changedDocument.count !== 1) throw staleVersion();
@@ -236,7 +240,7 @@ export class IndividualKycService {
       await tx.individualKycProfileEvent.create({ data: {
         kycProfileId: profile.id,
         actorUserId: userId,
-        eventKind: IndividualKycProfileEventKind.ID_DOCUMENT_SCAN_QUEUED,
+        eventKind: IndividualKycProfileEventKind.ID_DOCUMENT_UPLOADED,
         section: IndividualKycSection.PERSONAL,
         profileVersion: nextVersion,
         relatedDocumentId: document.id,
@@ -244,8 +248,8 @@ export class IndividualKycService {
       return {
         documentId: document.id,
         version: nextVersion,
-        status: IndividualKycDocumentStatus.PENDING_SCAN,
-        scanStatus: IndividualKycDocumentScanStatus.PENDING,
+        status: IndividualKycDocumentStatus.UNDER_REVIEW,
+        manualReviewStatus: ManualDocumentReviewStatus.UNDER_REVIEW,
       };
     });
   }
@@ -253,7 +257,7 @@ export class IndividualKycService {
   async submit(userId: string, version: number) {
     const profile = await this.prisma.individualKycProfile.findUnique({
       where: { investorUserId: userId },
-      include: { documents: { select: { id: true, documentType: true, status: true, scanStatus: true } } },
+      include: { documents: { select: { id: true, documentType: true, status: true, scanStatus: true, manualReviewStatus: true } } },
     });
     if (!profile) throw new ConflictException({ code: 'CONFLICT', message: 'Complete all required KYC sections before submission.' });
     assertVersion(profile.version, version);
@@ -264,7 +268,7 @@ export class IndividualKycService {
     }
     const statuses = calculateSectionStatuses(payload, profile.documents);
     if (!allSectionsComplete(statuses)) {
-      throw new ConflictException({ code: 'CONFLICT', message: 'Complete all four KYC sections and provide a clean matching identity document before submission.' });
+      throw new ConflictException({ code: 'CONFLICT', message: 'Complete all four KYC sections and upload a matching identity document before submission.' });
     }
     const submittedAt = new Date();
     return this.prisma.$transaction(async (tx) => {
@@ -316,14 +320,14 @@ export class IndividualKycService {
   private async ensureDraftProfile(userId: string, version: number) {
     const existing = await this.prisma.individualKycProfile.findUnique({
       where: { investorUserId: userId },
-      include: { documents: { select: { id: true, documentType: true, status: true, scanStatus: true } } },
+      include: { documents: { select: { id: true, documentType: true, status: true, scanStatus: true, manualReviewStatus: true } } },
     });
     if (existing) return existing;
     if (version !== 0) throw staleVersion();
     try {
       return await this.prisma.individualKycProfile.create({
         data: { id: randomUUID(), investorUserId: userId, version: 0 },
-        include: { documents: { select: { id: true, documentType: true, status: true, scanStatus: true } } },
+        include: { documents: { select: { id: true, documentType: true, status: true, scanStatus: true, manualReviewStatus: true } } },
       });
     } catch (error) {
       if (isUniqueConflict(error)) throw staleVersion();

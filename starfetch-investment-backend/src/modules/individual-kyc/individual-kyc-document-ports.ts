@@ -22,6 +22,12 @@ export interface IndividualKycUploadIntent {
 }
 
 /** Metadata-only projection. This port intentionally has no object-byte read method. */
+export interface IndividualKycViewAuthorization {
+  readonly viewUrl: string;
+  readonly expiresAt: Date;
+  readonly disposition: 'attachment';
+}
+
 export interface IndividualKycObjectMetadata {
   readonly versionId: string | null;
   readonly sizeBytes: number;
@@ -44,12 +50,15 @@ export interface IndividualKycDocumentStorage {
   }): Promise<IndividualKycUploadIntent>;
   headQuarantined(objectKey: string): Promise<IndividualKycObjectMetadata | null>;
   deleteObjectVersion(objectKey: string, versionId: string): Promise<void>;
+  createViewAuthorization(input: { objectKey: string; versionId: string; filename: string; expiresInSeconds: number }): Promise<IndividualKycViewAuthorization>;
+  putDocumentObject(input: { documentId: string; objectKey: string; bytes: Buffer; contentType: string; checksumSha256Hex: string }): Promise<string>;
+  readDocumentObject(objectKey: string, versionId: string): Promise<Buffer>;
 }
 
 function unavailable(): ServiceUnavailableException {
   return new ServiceUnavailableException({
     code: 'FEATURE_UNAVAILABLE',
-    message: 'Individual KYC document upload is disabled pending approved Nigerian storage and scanner configuration.',
+    message: 'Private document storage is disabled pending storage, privacy, residency and retention approvals.',
   });
 }
 
@@ -59,6 +68,9 @@ export class DisabledIndividualKycDocumentStorage implements IndividualKycDocume
   async createUploadIntent(): Promise<IndividualKycUploadIntent> { throw unavailable(); }
   async headQuarantined(): Promise<IndividualKycObjectMetadata | null> { throw unavailable(); }
   async deleteObjectVersion(): Promise<void> { throw unavailable(); }
+  async createViewAuthorization(): Promise<IndividualKycViewAuthorization> { throw unavailable(); }
+  async putDocumentObject(): Promise<string> { throw unavailable(); }
+  async readDocumentObject(): Promise<Buffer> { throw unavailable(); }
 }
 
 export interface TestStoredObject {
@@ -146,6 +158,28 @@ export class IsolatedMemoryIndividualKycDocumentStorage implements IndividualKyc
     const object = this.objects.get(objectKey);
     if (!object || object.metadata.versionId !== versionId) return null;
     return Buffer.from(object.bytes);
+  }
+
+  async putDocumentObject(input: { documentId: string; objectKey: string; bytes: Buffer; contentType: string; checksumSha256Hex: string }): Promise<string> {
+    this.assertTest();
+    if (!input.documentId || !input.objectKey || !Buffer.isBuffer(input.bytes) || input.bytes.length < 1 || input.bytes.length > 25 * 1024 * 1024 || this.objects.has(input.objectKey)) throw unavailable();
+    const versionId = `test-version-${this.objects.size + 1}`;
+    const bytes = Buffer.from(input.bytes);
+    this.objects.set(input.objectKey, { bytes, metadata: { versionId, sizeBytes: bytes.length, contentType: input.contentType, checksumSha256: null, documentIdMetadata: input.documentId, serverSideEncryption: 'AES256', etag: `"test-etag-${versionId}"` } });
+    return versionId;
+  }
+
+  async readDocumentObject(objectKey: string, versionId: string): Promise<Buffer> {
+    const bytes = this.readTestVersion(objectKey, versionId);
+    if (!bytes) throw unavailable();
+    return bytes;
+  }
+
+  async createViewAuthorization(input: { objectKey: string; versionId: string; filename: string; expiresInSeconds: number }): Promise<IndividualKycViewAuthorization> {
+    this.assertTest();
+    const object = this.objects.get(input.objectKey);
+    if (!object || object.metadata.versionId !== input.versionId || input.expiresInSeconds < 1 || input.expiresInSeconds > 60) throw unavailable();
+    return { viewUrl: `https://individual-kyc-view.invalid/${encodeURIComponent(input.objectKey)}?v=${encodeURIComponent(input.versionId)}`, expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000), disposition: 'attachment' };
   }
 
   async deleteObjectVersion(objectKey: string, versionId: string): Promise<void> {

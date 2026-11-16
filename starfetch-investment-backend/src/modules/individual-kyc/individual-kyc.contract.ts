@@ -1,6 +1,6 @@
 import {
-  IndividualKycDocumentScanStatus,
   IndividualKycDocumentStatus,
+  ManualDocumentReviewStatus,
   IndividualKycIdDocumentType,
   IndividualKycProfileStatus,
   IndividualKycSectionStatus,
@@ -97,7 +97,7 @@ export interface KycDocumentState {
   readonly id: string;
   readonly documentType: IndividualKycIdDocumentType;
   readonly status: IndividualKycDocumentStatus;
-  readonly scanStatus: IndividualKycDocumentScanStatus;
+  readonly manualReviewStatus: import('@prisma/client').ManualDocumentReviewStatus;
 }
 
 export interface IndividualKycSectionStatuses {
@@ -108,12 +108,12 @@ export interface IndividualKycSectionStatuses {
 }
 
 export function calculateSectionStatuses(payload: IndividualKycPayload, documents: readonly KycDocumentState[]): IndividualKycSectionStatuses {
-  const matchingCleanDocument = documents.some((doc) =>
-    doc.status === IndividualKycDocumentStatus.UPLOADED &&
-    doc.scanStatus === IndividualKycDocumentScanStatus.CLEAN &&
+  const matchingUploadedDocument = documents.some((doc) =>
+    (doc.status === IndividualKycDocumentStatus.UPLOADED || doc.status === IndividualKycDocumentStatus.UNDER_REVIEW || doc.status === IndividualKycDocumentStatus.PENDING_SCAN) &&
+    doc.manualReviewStatus !== ManualDocumentReviewStatus.REJECTED &&
     doc.documentType === payload.personal?.idDocumentType,
   );
-  const personalComplete = completePersonal(payload.personal, matchingCleanDocument);
+  const personalComplete = completePersonal(payload.personal, matchingUploadedDocument);
   const investmentComplete = completeInvestment(payload.investmentProfile);
   const sourceComplete = completeSourceOfFunds(payload.sourceOfFunds);
   const bankComplete = completeBank(payload.bankDetails);

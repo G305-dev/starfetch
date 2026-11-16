@@ -1,5 +1,5 @@
 import { ServiceUnavailableException } from '@nestjs/common';
-import { DeleteObjectCommand, GetBucketVersioningCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetBucketVersioningCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { S3CompatibleIndividualKycDocumentStorage } from './individual-kyc-s3-storage';
 
 const key = 'individual-kyc/quarantine/1e52bf47-28b3-4702-a80d-622359b4f0d7';
@@ -93,11 +93,47 @@ describe('S3-compatible Individual KYC quarantine storage', () => {
     expect(() => new S3CompatibleIndividualKycDocumentStorage({ ...config, residencyApproved: false })).toThrow(ServiceUnavailableException);
   });
 
-  it('returns metadata only and exposes no object-byte read method', async () => {
+  it('returns metadata only for the customer API; object reads are version-pinned and used only by isolated internal ports', async () => {
     const h = harness();
     await h.storage.createUploadIntent({ documentId, objectKey: key, contentType: 'application/pdf', sizeBytes: bytes.length, checksumSha256: checksum, expiresInSeconds: 300 });
     const metadata = await h.storage.headQuarantined(key);
     expect(metadata).toMatchObject({ versionId: 'v1', sizeBytes: bytes.length, contentType: 'application/pdf', checksumSha256: checksum, documentIdMetadata: documentId, serverSideEncryption: 'AES256' });
     expect((h.storage as any).readQuarantined).toBeUndefined();
+    expect(typeof h.storage.readDocumentObject).toBe('function');
+  });
+
+  it('creates a short-lived version-pinned attachment authorization for a staff review', async () => {
+    const h = harness();
+    const view = await h.storage.createViewAuthorization({ objectKey: key, versionId: 'v1', filename: 'review.pdf', expiresInSeconds: 45 });
+    expect(view.viewUrl).toMatch(/^https:\/\//);
+    expect(view.disposition).toBe('attachment');
+    expect(view.expiresAt.getTime()).toBeGreaterThan(Date.now());
+    const call = (h.presigner.mock.calls as unknown as [unknown, unknown, any][]).at(-1)!;
+    expect(call[1]).toBeInstanceOf(GetObjectCommand);
+    expect((call[1] as GetObjectCommand).input).toMatchObject({ Bucket: config.bucket, Key: key, VersionId: 'v1', ResponseContentType: 'application/octet-stream', ResponseCacheControl: 'private, no-store, max-age=0' });
+    expect(call[2].expiresIn).toBe(45);
+  });
+
+  it('writes approved shared onboarding objects with versioned private keys and signed integrity metadata', async () => {
+    const h = harness();
+    h.send.mockImplementation(async (command: any): Promise<any> => {
+      if (command instanceof GetBucketVersioningCommand) return { Status: 'Enabled' };
+      if (command instanceof HeadObjectCommand) {
+        const probe = (h.presigner.mock.calls as unknown as [unknown, unknown, any][]).find((call) => (call[1] as any)?.input?.Key?.includes('_capability-probe'));
+        const input = (probe?.[1] as any)?.input ?? {};
+        return { VersionId: 'v1', ContentLength: input.ContentLength, ContentType: input.ContentType, ChecksumSHA256: input.ChecksumSHA256, Metadata: input.Metadata, ServerSideEncryption: input.ServerSideEncryption };
+      }
+      if (command instanceof PutObjectCommand) return { VersionId: 'onboarding-version-1' };
+      if (command instanceof DeleteObjectCommand) return {};
+      return {};
+    });
+    const objectBytes = Buffer.from('%PDF-1.7 synthetic onboarding');
+    const { createHash } = await import('crypto');
+    const versionId = await h.storage.putDocumentObject({
+      documentId, objectKey: `onboarding-documents/${documentId}`, bytes: objectBytes, contentType: 'application/pdf', checksumSha256Hex: createHash('sha256').update(objectBytes).digest('hex'),
+    });
+    expect(versionId).toBe('onboarding-version-1');
+    const put = h.send.mock.calls.map(([command]) => command).find((command) => command instanceof PutObjectCommand) as PutObjectCommand;
+    expect(put.input).toMatchObject({ Bucket: config.bucket, Key: `onboarding-documents/${documentId}`, IfNoneMatch: '*', ServerSideEncryption: 'AES256', Metadata: { 'kyc-document-id': documentId } });
   });
 });

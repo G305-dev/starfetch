@@ -1,4 +1,4 @@
-import { IndividualKycDocumentScanStatus, IndividualKycDocumentStatus, IndividualKycIdDocumentType, IndividualKycSectionStatus } from '@prisma/client';
+import { IndividualKycDocumentStatus, IndividualKycIdDocumentType, IndividualKycSectionStatus, ManualDocumentReviewStatus } from '@prisma/client';
 import { IndividualKycInvestmentHorizon } from './individual-kyc.enums';
 import { allSectionsComplete, calculateSectionStatuses, isOtherSource, maskNuban, missingOtherSourceDetail, normalizeLegacyKycPayload } from './individual-kyc.contract';
 
@@ -43,18 +43,18 @@ describe('Individual KYC contract calculations', () => {
     expect(withDetail.sourceOfFunds).toBe(IndividualKycSectionStatus.DRAFT);
   });
 
-  it('requires full conditional PEP details when the applicant declares YES', () => {
+  it('requires a matching document upload and full conditional PEP details when the applicant declares YES', () => {
     const base = {
       dateOfBirth: '1990-01-01', gender: 'FEMALE' as const, nationality: 'NG',
       stateOfResidence: 'Lagos', residentialAddress: 'Synthetic address, Lagos',
       idDocumentType: IndividualKycIdDocumentType.PASSPORT, occupation: 'Analyst', pepStatus: 'YES' as const,
     };
-    const cleanDocument = [{ id: 'pep-document', documentType: IndividualKycIdDocumentType.PASSPORT, status: IndividualKycDocumentStatus.UPLOADED, scanStatus: IndividualKycDocumentScanStatus.CLEAN }];
-    expect(calculateSectionStatuses({ personal: base }, cleanDocument).personal).toBe(IndividualKycSectionStatus.DRAFT);
-    expect(calculateSectionStatuses({ personal: { ...base, pepDetails: { fullName: 'Synthetic PEP', position: 'Synthetic public role', country: 'NG', periodHeld: '2020–2022' } } }, cleanDocument).personal).toBe(IndividualKycSectionStatus.COMPLETE);
+    const reviewedDocument = [{ id: 'pep-document', documentType: IndividualKycIdDocumentType.PASSPORT, status: IndividualKycDocumentStatus.UNDER_REVIEW, manualReviewStatus: ManualDocumentReviewStatus.UNDER_REVIEW }];
+    expect(calculateSectionStatuses({ personal: base }, reviewedDocument).personal).toBe(IndividualKycSectionStatus.DRAFT);
+    expect(calculateSectionStatuses({ personal: { ...base, pepDetails: { fullName: 'Synthetic PEP', position: 'Synthetic public role', country: 'NG', periodHeld: '2020–2022' } } }, reviewedDocument).personal).toBe(IndividualKycSectionStatus.COMPLETE);
   });
 
-  it('requires a clean matching document before personal completion and gates later sections sequentially', () => {
+  it('requires a matching upload before personal completion and gates later sections sequentially', () => {
     const payload = {
       personal: {
         dateOfBirth: '1990-01-01', gender: 'FEMALE' as const, nationality: 'NG',
@@ -63,13 +63,15 @@ describe('Individual KYC contract calculations', () => {
       },
       investmentProfile: { investmentHorizon: IndividualKycInvestmentHorizon.DAYS_180 },
     };
-    const pending = [{ id: 'document-1', documentType: IndividualKycIdDocumentType.PASSPORT, status: IndividualKycDocumentStatus.PENDING_UPLOAD, scanStatus: IndividualKycDocumentScanStatus.PENDING }];
+    const pending = [{ id: 'document-1', documentType: IndividualKycIdDocumentType.PASSPORT, status: IndividualKycDocumentStatus.PENDING_UPLOAD, manualReviewStatus: ManualDocumentReviewStatus.NOT_REVIEWED }];
     expect(calculateSectionStatuses(payload, pending)).toMatchObject({
       personal: IndividualKycSectionStatus.DRAFT,
       investment: IndividualKycSectionStatus.DRAFT,
     });
-    const clean = [{ ...pending[0], status: IndividualKycDocumentStatus.UPLOADED, scanStatus: IndividualKycDocumentScanStatus.CLEAN }];
-    expect(calculateSectionStatuses(payload, clean).personal).toBe(IndividualKycSectionStatus.COMPLETE);
+    const uploaded = [{ ...pending[0], status: IndividualKycDocumentStatus.UNDER_REVIEW, manualReviewStatus: ManualDocumentReviewStatus.UNDER_REVIEW }];
+    expect(calculateSectionStatuses(payload, uploaded).personal).toBe(IndividualKycSectionStatus.COMPLETE);
+    const rejected = [{ ...uploaded[0], manualReviewStatus: ManualDocumentReviewStatus.REJECTED }];
+    expect(calculateSectionStatuses(payload, rejected).personal).toBe(IndividualKycSectionStatus.DRAFT);
     expect(allSectionsComplete({
       personal: IndividualKycSectionStatus.COMPLETE,
       investment: IndividualKycSectionStatus.COMPLETE,

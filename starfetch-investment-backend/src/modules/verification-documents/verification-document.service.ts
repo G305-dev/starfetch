@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from 'crypto';
 import { ConflictException, ForbiddenException, Inject, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ApplicationVerificationRequirementKind, ApplicationVerificationRequirementState, OnboardingApplicationKind, OnboardingApplicationStatus, Prisma, UserRole, VerificationDocumentEventKind } from '@prisma/client';
+import { ApplicationVerificationRequirementKind, ApplicationVerificationRequirementState, ManualDocumentReviewDecision, ManualDocumentReviewStatus, OnboardingApplicationKind, OnboardingApplicationStatus, Prisma, UserRole, VerificationDocumentEventKind } from '@prisma/client';
 import { AuthPrincipal } from '../../common/types/auth-principal';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { DOCUMENT_MALWARE_SCANNER, DocumentMalwareScanner, PRIVATE_DOCUMENT_STORAGE, PrivateDocumentStorage } from './document-infrastructure.ports';
+import { VERIFICATION_DOCUMENT_REVIEW_AUTHORIZER, VerificationDocumentReviewAuthorizer } from './verification-document-review-authorizer';
 
 const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -17,7 +18,8 @@ export interface DocumentUploadReceipt {
   readonly version: number;
   readonly contentSha256: string;
   readonly contentLength: number;
-  readonly state: 'QUARANTINED';
+  readonly state: 'UNDER_REVIEW';
+  readonly manualReviewStatus: 'UNDER_REVIEW';
 }
 
 export interface DocumentDownloadReceipt {
@@ -27,7 +29,7 @@ export interface DocumentDownloadReceipt {
   readonly bytes: Buffer;
 }
 
-/** Owner-scoped private document lifecycle; no upload/download route is registered. */
+/** Owner-scoped private document lifecycle and separately permission-gated staff review. */
 @Injectable()
 export class VerificationDocumentService {
   constructor(
@@ -35,6 +37,7 @@ export class VerificationDocumentService {
     private readonly config: ConfigService,
     @Inject(PRIVATE_DOCUMENT_STORAGE) private readonly storage: PrivateDocumentStorage,
     @Inject(DOCUMENT_MALWARE_SCANNER) private readonly scanner: DocumentMalwareScanner,
+    @Inject(VERIFICATION_DOCUMENT_REVIEW_AUTHORIZER) private readonly authorizer: VerificationDocumentReviewAuthorizer,
   ) {}
 
   async upload(
@@ -48,7 +51,7 @@ export class VerificationDocumentService {
     },
   ): Promise<DocumentUploadReceipt> {
     const userId = await this.requireInvestor(principal);
-    this.requireCollectionGate();
+    const retentionDays = this.requireCollectionGate();
     if (!UUID.test(input.applicationId) || !UUID.test(input.requirementId) ||
       (input.replacesDocumentId !== undefined && !UUID.test(input.replacesDocumentId)) ||
       !Buffer.isBuffer(input.bytes) || input.bytes.length === 0 || input.bytes.length > MAX_DOCUMENT_BYTES ||
@@ -68,13 +71,18 @@ export class VerificationDocumentService {
     }
 
     const documentId = randomUUID();
-    const objectKey = randomUUID();
+    const objectKey = `onboarding-documents/${randomUUID()}`;
     const hash = createHash('sha256').update(input.bytes).digest('hex');
+    let uploadedVersionId: string | null = null;
     try {
-      await this.storage.putQuarantined(objectKey, input.bytes, { sha256: hash, mediaType: input.mediaType });
+      const versionId = await this.storage.putQuarantined(objectKey, input.bytes, { sha256: hash, mediaType: input.mediaType, documentId });
+      if (!versionId || versionId.length > 256) throw unavailable();
+      uploadedVersionId = versionId;
     } catch {
       throw unavailable();
     }
+    const uploadedAt = new Date();
+    const retentionExpiresAt = new Date(uploadedAt.getTime() + retentionDays * 24 * 60 * 60 * 1000);
     try {
       const document = await this.prisma.$transaction(async (tx) => {
         const row = await tx.verificationDocument.create({
@@ -90,10 +98,14 @@ export class VerificationDocumentService {
             contentLength: BigInt(input.bytes.length),
             mediaType: input.mediaType,
             version: replacement ? replacement.version + 1 : 1,
+            storageObjectVersionId: uploadedVersionId,
+            uploadedAt,
+            retentionExpiresAt,
+            manualReviewStatus: ManualDocumentReviewStatus.UNDER_REVIEW,
           },
         });
         await tx.verificationDocumentEvent.create({
-          data: { documentId: row.id, actorUserId: userId, eventKind: VerificationDocumentEventKind.QUARANTINED },
+          data: { documentId: row.id, actorUserId: userId, eventKind: VerificationDocumentEventKind.UPLOADED },
         });
         return row;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 10_000 });
@@ -105,10 +117,11 @@ export class VerificationDocumentService {
         version: document.version,
         contentSha256: document.contentSha256,
         contentLength: Number(document.contentLength),
-        state: 'QUARANTINED',
+        state: 'UNDER_REVIEW',
+        manualReviewStatus: 'UNDER_REVIEW',
       };
     } catch (error) {
-      try { await this.storage.delete(objectKey); } catch { /* private object remains unreachable without metadata */ }
+      try { if (uploadedVersionId) await this.storage.delete(objectKey, uploadedVersionId); } catch { /* private object remains unreachable without metadata */ }
       throw error;
     }
   }
@@ -121,10 +134,10 @@ export class VerificationDocumentService {
       where: { id: documentId },
       include: { events: { orderBy: { sequence: 'desc' } } },
     });
-    if (!document || effectiveDocumentState(document.events) !== 'QUARANTINED') throw new ConflictException('Document is not quarantined.');
+    if (!document || !document.storageObjectVersionId || effectiveDocumentState(document.events) !== 'QUARANTINED') throw new ConflictException('Document is not eligible for optional scanning.');
     let bytes: Buffer | undefined;
     try {
-      bytes = await this.storage.readQuarantined(document.objectKey);
+bytes = await this.storage.readQuarantined(document.objectKey, document.storageObjectVersionId);
       const scan = await this.scanner.scan(bytes);
       if (!/^[A-Za-z0-9._-]{1,64}$/.test(scan.scannerVersion)) throw unavailable();
       await this.prisma.$transaction(async (tx) => {
@@ -167,6 +180,7 @@ export class VerificationDocumentService {
     const document = await this.prisma.verificationDocument.findFirst({
       where: {
         id: documentId,
+        deletedAt: null,
         application: {
           OR: [
             { initiatingUserId: userId },
@@ -177,9 +191,9 @@ export class VerificationDocumentService {
       },
       include: { events: { orderBy: { sequence: 'desc' } } },
     });
-    if (!document || effectiveDocumentState(document.events) !== 'SCAN_CLEAN') throw new ForbiddenException();
+    if (!document || document.manualReviewStatus !== ManualDocumentReviewStatus.ACCEPTED || !document.storageObjectVersionId) throw new ForbiddenException();
     let bytes: Buffer;
-    try { bytes = await this.storage.readQuarantined(document.objectKey); } catch { throw unavailable(); }
+    try { bytes = await this.storage.readQuarantined(document.objectKey, document.storageObjectVersionId); } catch { throw unavailable(); }
     try {
       await this.prisma.verificationDocumentEvent.create({
         data: { documentId, actorUserId: userId, eventKind: VerificationDocumentEventKind.ACCESS_GRANTED },
@@ -189,6 +203,90 @@ export class VerificationDocumentService {
       throw unavailable();
     }
     return { documentId, mediaType: document.mediaType, contentSha256: document.contentSha256, bytes };
+  }
+
+  async listReviewQueue(principal: AuthPrincipal | null | undefined) {
+    const actor = await this.requireStaff(principal);
+    const docs = await this.prisma.verificationDocument.findMany({
+      where: { manualReviewStatus: ManualDocumentReviewStatus.UNDER_REVIEW, deletedAt: null },
+      orderBy: [{ uploadedAt: 'asc' }, { id: 'asc' }], take: 100,
+      select: { id: true, applicationId: true, requirementId: true, documentKindKey: true, mediaType: true, contentLength: true, version: true, uploadedAt: true, manualReviewStatus: true },
+    });
+    const permitted: typeof docs = [];
+    for (const doc of docs) {
+      if (await this.authorizer.authorizeReview(actor, doc.applicationId)) {
+        permitted.push(doc);
+        await this.appendDocumentEvent(doc.id, actor.userId, VerificationDocumentEventKind.METADATA_LISTED);
+      }
+    }
+    return { documents: permitted.map(({ contentLength, uploadedAt, ...doc }) => ({ ...doc, contentLength: contentLength.toString(), uploadedAt: uploadedAt?.toISOString() ?? null })) };
+  }
+
+  async authorizeReviewView(principal: AuthPrincipal | null | undefined, documentId: string) {
+    const actor = await this.requireStaff(principal);
+    if (!UUID.test(documentId)) throw new ForbiddenException();
+    const doc = await this.prisma.verificationDocument.findUnique({ where: { id: documentId, deletedAt: null }, select: { id: true, applicationId: true, objectKey: true, storageObjectVersionId: true, manualReviewStatus: true } });
+    if (!doc || doc.manualReviewStatus !== ManualDocumentReviewStatus.UNDER_REVIEW || !doc.storageObjectVersionId || !await this.authorizer.authorizeReview(actor, doc.applicationId)) throw new ForbiddenException();
+    const filename = `document-${doc.id}.bin`;
+    const view = await this.storage.createViewAuthorization(doc.objectKey, doc.storageObjectVersionId, filename, 60);
+    await this.appendDocumentEvent(doc.id, actor.userId, VerificationDocumentEventKind.VIEW_AUTHORIZATION_ISSUED);
+    return { documentId, viewUrl: view.viewUrl, expiresAt: view.expiresAt.toISOString(), disposition: 'attachment' as const, sandboxRequired: true };
+  }
+
+  async decideReview(principal: AuthPrincipal | null | undefined, documentId: string, decision: import('@prisma/client').ManualDocumentReviewDecision, safeReason: string) {
+    const actor = await this.requireStaff(principal);
+    if (!UUID.test(documentId) || !Object.values(ManualDocumentReviewDecision).includes(decision) || !/^[A-Z][A-Z0-9_]{1,79}$/.test(safeReason)) throw new ForbiddenException();
+    const doc = await this.prisma.verificationDocument.findUnique({ where: { id: documentId, deletedAt: null }, select: { id: true, applicationId: true, manualReviewStatus: true } });
+    if (!doc || doc.manualReviewStatus !== ManualDocumentReviewStatus.UNDER_REVIEW || !await this.authorizer.authorizeReview(actor, doc.applicationId)) throw new ForbiddenException();
+    const next = decision === ManualDocumentReviewDecision.ACCEPT ? ManualDocumentReviewStatus.ACCEPTED : ManualDocumentReviewStatus.REJECTED;
+    await this.prisma.$transaction(async (tx) => {
+      const changed = await tx.verificationDocument.updateMany({ where: { id: documentId, deletedAt: null, manualReviewStatus: ManualDocumentReviewStatus.UNDER_REVIEW }, data: { manualReviewStatus: next } });
+      if (changed.count !== 1) throw new ConflictException('Document review has already been recorded.');
+      const latest = await tx.verificationDocumentEvent.findFirst({ where: { documentId }, orderBy: { sequence: 'desc' }, select: { sequence: true } });
+      await tx.verificationDocumentEvent.create({ data: { documentId, actorUserId: actor.userId, sequence: (latest?.sequence ?? 0) + 1, eventKind: decision === ManualDocumentReviewDecision.ACCEPT ? VerificationDocumentEventKind.REVIEW_ACCEPTED : VerificationDocumentEventKind.REVIEW_REJECTED, decision, safeReason } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 10000 });
+    return { documentId, manualReviewStatus: next, decision, customerIdentityApproved: false };
+  }
+
+  /** Internal retention-worker hook; callers must invoke this only after approved lifecycle scheduling is enabled. */
+  async cleanupExpired(limit = 25): Promise<{ deleted: number }> {
+    const now = new Date();
+    const safeLimit = Number.isInteger(limit) ? Math.max(1, Math.min(limit, 100)) : 25;
+    const candidates = await this.prisma.verificationDocument.findMany({
+      where: { deletedAt: null, retentionExpiresAt: { lte: now }, storageObjectVersionId: { not: null } },
+      orderBy: [{ retentionExpiresAt: 'asc' }, { id: 'asc' }], take: safeLimit,
+      select: { id: true, objectKey: true, storageObjectVersionId: true },
+    });
+    let deleted = 0;
+    for (const document of candidates) {
+      if (!document.storageObjectVersionId) continue;
+      try {
+        await this.storage.delete(document.objectKey, document.storageObjectVersionId);
+        const recorded = await this.prisma.$transaction(async (tx) => {
+          const changed = await tx.verificationDocument.updateMany({ where: { id: document.id, deletedAt: null, retentionExpiresAt: { lte: now } }, data: { deletedAt: now } });
+          if (changed.count !== 1) return false;
+          const latest = await tx.verificationDocumentEvent.findFirst({ where: { documentId: document.id }, orderBy: { sequence: 'desc' }, select: { sequence: true } });
+          await tx.verificationDocumentEvent.create({ data: { documentId: document.id, actorUserId: null, sequence: (latest?.sequence ?? 0) + 1, eventKind: VerificationDocumentEventKind.RETENTION_DELETED, safeReason: 'RETENTION_EXPIRED' } });
+          return true;
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 10000 });
+        if (recorded) deleted += 1;
+      } catch { /* keep metadata for retry; never log object keys or provider errors */ }
+    }
+    return { deleted };
+  }
+
+  private async requireStaff(principal: AuthPrincipal | null | undefined): Promise<AuthPrincipal> {
+    if (!principal || !UUID.test(principal.userId) || !principal.sessionId || (principal.role !== UserRole.STAFF && principal.role !== UserRole.ADMIN)) throw new UnauthorizedException();
+    const user = await this.prisma.user.findUnique({ where: { id: principal.userId }, select: { id: true, role: true, emailVerifiedAt: true } });
+    if (!user || user.role !== principal.role || !user.emailVerifiedAt) throw new ForbiddenException();
+    return principal;
+  }
+
+  private async appendDocumentEvent(documentId: string, actorUserId: string, eventKind: VerificationDocumentEventKind) {
+    await this.prisma.$transaction(async (tx) => {
+      const latest = await tx.verificationDocumentEvent.findFirst({ where: { documentId }, orderBy: { sequence: 'desc' }, select: { sequence: true } });
+      await tx.verificationDocumentEvent.create({ data: { documentId, actorUserId, sequence: (latest?.sequence ?? 0) + 1, eventKind } });
+    });
   }
 
   private async requireCurrentRequiredDocument(userId: string, applicationId: string, requirementId: string): Promise<{
@@ -238,8 +336,10 @@ export class VerificationDocumentService {
     return user.id;
   }
 
-  private requireCollectionGate(): void {
-    if (!this.config.get<boolean>('verification.documentCollectionEnabled')) throw unavailable();
+  private requireCollectionGate(): number {
+    const retentionDays = this.config.get<number>('individualKyc.s3.retentionDays') ?? 0;
+    if (!this.config.get<boolean>('verification.documentCollectionEnabled') || !Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 3650) throw unavailable();
+    return retentionDays;
   }
 }
 
@@ -259,5 +359,5 @@ function invalidUpload(): ServiceUnavailableException {
 }
 
 function unavailable(): ServiceUnavailableException {
-  return new ServiceUnavailableException({ code: 'FEATURE_UNAVAILABLE', message: 'Private document storage and scanning are not configured.' });
+  return new ServiceUnavailableException({ code: 'FEATURE_UNAVAILABLE', message: 'Private document storage is not configured.' });
 }
