@@ -11,11 +11,13 @@
 - Profile form values live only in React component memory. They are not sent to a backend, localStorage, or sessionStorage and are cleared on page refresh, leaving the page, logout, or changing accounts.
 - The controls say “Validate & continue” and “Mark complete for this session.” There is no Save draft or Submit action. Completion does not imply KYC/KYB verification or approval.
 - Bank Details do not include Branch/sort code or a raw BVN number. A Yes/No declaration asks only whether the account is BVN-linked.
+- Added a compatibility replacement at `scripts/corporate-profile-api-check.ts`. Some existing branches still contain the former API test, and Next.js typechecks all included `.ts` files even when a script is no longer run. The replacement delegates to the current local-only check and does not import removed profile API functions.
 
 ## Validation
 
 - `npm run typecheck`
 - `npm run test:corporate-profile`
+- `node scripts/run-typescript-check.cjs scripts/corporate-profile-api-check.ts` (legacy-file build-fix check)
 - `npm run test:corporate-registration`
 - `npm run test:corporate-verification`
 - `npm run test:corporate-api`
