@@ -1,4 +1,4 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import {
   DeleteObjectCommand, GetBucketVersioningCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client,
 } from '@aws-sdk/client-s3';
@@ -27,6 +27,64 @@ export type S3CredentialProvider = AwsCredentialIdentityProvider;
 export type S3Presigner = typeof getSignedUrl;
 export type FetchLike = typeof fetch;
 
+type CapabilityCheckStage =
+  | 'credential_acquisition_oidc'
+  | 'bucket_versioning'
+  | 'signed_put'
+  | 'metadata_head'
+  | 'replay_protection'
+  | 'cleanup';
+
+const capabilityLogger = new Logger('S3CompatibleIndividualKycDocumentStorage');
+const reportedCapabilityErrors = new WeakSet<object>();
+
+function safeDiagnosticValue(value: unknown, maxLength = 128): string | undefined {
+  if (typeof value !== 'string' || value.length > maxLength || !/^[A-Za-z0-9._:-]+$/.test(value)) return undefined;
+  return value;
+}
+
+function safeRequestId(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 512 || !/^[A-Za-z0-9._:/+=-]+$/.test(value)) return undefined;
+  return value;
+}
+
+function logCapabilityCheckFailure(
+  stage: CapabilityCheckStage,
+  error?: unknown,
+  response?: { readonly status?: number; readonly requestId?: string; readonly awsErrorName?: string },
+): void {
+  if (error && typeof error === 'object') {
+    if (reportedCapabilityErrors.has(error)) return;
+    reportedCapabilityErrors.add(error);
+  }
+  const candidate = error && typeof error === 'object' ? error as {
+    name?: unknown;
+    $metadata?: { httpStatusCode?: unknown; requestId?: unknown; extendedRequestId?: unknown };
+  } : undefined;
+  const metadata = candidate?.$metadata;
+  const awsErrorName = safeDiagnosticValue(response?.awsErrorName, 80) ?? safeDiagnosticValue(candidate?.name, 80);
+  const statusValue = response?.status ?? metadata?.httpStatusCode;
+  const httpStatus = typeof statusValue === 'number' && Number.isInteger(statusValue) && statusValue >= 100 && statusValue <= 599
+    ? statusValue : undefined;
+  const requestId = safeRequestId(response?.requestId)
+    ?? safeRequestId(metadata?.requestId)
+    ?? safeRequestId(metadata?.extendedRequestId);
+  capabilityLogger.warn(JSON.stringify({
+    stage,
+    ...(awsErrorName ? { awsErrorName } : {}),
+    ...(httpStatus !== undefined ? { httpStatus } : {}),
+    ...(requestId ? { requestId } : {}),
+  }));
+}
+
+function responseDiagnostics(response: Response): { status: number; requestId?: string; awsErrorName?: string } {
+  return {
+    status: response.status,
+    requestId: response.headers.get('x-amz-request-id') ?? response.headers.get('x-amz-id-2') ?? undefined,
+    awsErrorName: response.headers.get('x-amz-error-code') ?? undefined,
+  };
+}
+
 function disabled(): ServiceUnavailableException {
   return new ServiceUnavailableException({ code: 'FEATURE_UNAVAILABLE', message: 'Private KYC object storage is not enabled or its provider capability checks have not passed.' });
 }
@@ -49,7 +107,7 @@ export function credentialProviderFromReference(
         try {
           provider ??= (await import('@vercel/oidc-aws-credentials-provider')).awsCredentialsProvider({ roleArn: options.roleArn! });
           return provider();
-        } catch { throw disabled(); }
+        } catch (error) { throw error; }
       };
     }
     if (process.env.AWS_ACCESS_KEY_ID || process.env.AWS_SECRET_ACCESS_KEY) throw disabled();
@@ -99,11 +157,19 @@ export class S3CompatibleIndividualKycDocumentStorage implements IndividualKycDo
     const endpoint = new URL(config.endpoint);
     if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw disabled();
     this.bucket = config.bucket;
+    const credentialProvider = credentialProviderFromReference(config.credentialReference, { isVercel: config.isVercel, roleArn: config.roleArn });
     this.client = client ?? new S3Client({
       region: config.region,
       endpoint: endpoint.toString(),
       forcePathStyle: config.forcePathStyle,
-      credentials: credentialProviderFromReference(config.credentialReference, { isVercel: config.isVercel, roleArn: config.roleArn }),
+      credentials: async () => {
+        try {
+          return await credentialProvider();
+        } catch (error) {
+          logCapabilityCheckFailure('credential_acquisition_oidc', error);
+          throw error;
+        }
+      },
       requestChecksumCalculation: 'WHEN_REQUIRED',
       responseChecksumValidation: 'WHEN_REQUIRED',
       maxAttempts: 2,
@@ -229,8 +295,9 @@ export class S3CompatibleIndividualKycDocumentStorage implements IndividualKycDo
 
   /** Public for deployment capability tests; uses synthetic bytes and a random scratch key only. */
   async probeProviderCapabilities(): Promise<void> {
-    const versioning = await this.client.send(new GetBucketVersioningCommand({ Bucket: this.bucket }));
-    if (versioning.Status !== 'Enabled') throw disabled();
+    const versioning = await this.runCapabilityCheck('bucket_versioning', () =>
+      this.client.send(new GetBucketVersioningCommand({ Bucket: this.bucket })));
+    if (versioning.Status !== 'Enabled') this.failCapabilityCheck('bucket_versioning');
     const key = `individual-kyc/_capability-probe/${randomUUID()}`;
     const documentId = randomUUID();
     const bytes = Buffer.from('%PDF-1.7\nsynthetic-storage-capability-probe\n');
@@ -244,10 +311,10 @@ export class S3CompatibleIndividualKycDocumentStorage implements IndividualKycDo
       expiresInSeconds: INDIVIDUAL_KYC_UPLOAD_URL_TTL_SECONDS,
     } as const;
     const command = this.putCommand(input, key);
-    const url = await this.presigner(this.client, command, {
+    const url = await this.runCapabilityCheck('signed_put', () => this.presigner(this.client, command, {
       expiresIn: INDIVIDUAL_KYC_UPLOAD_URL_TTL_SECONDS,
       signableHeaders: new Set(INDIVIDUAL_KYC_UPLOAD_HEADERS),
-    });
+    }));
     const headers = {
       'content-type': input.contentType,
       'content-length': String(bytes.length),
@@ -259,26 +326,62 @@ export class S3CompatibleIndividualKycDocumentStorage implements IndividualKycDo
     let firstVersionId: string | undefined;
     let duplicateVersionId: string | undefined;
     try {
-      const first = await this.fetcher(url, { method: 'PUT', headers, body: bytes as unknown as BodyInit, redirect: 'error' });
+      const first = await this.runCapabilityCheck('signed_put', () =>
+        this.fetcher(url, { method: 'PUT', headers, body: bytes as unknown as BodyInit, redirect: 'error' }));
       firstVersionId = first.headers.get('x-amz-version-id') ?? undefined;
-      if (!first.ok || !firstVersionId) throw disabled();
-      const head = await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key, ChecksumMode: 'ENABLED' }));
+      if (!first.ok || !firstVersionId) {
+        this.failCapabilityCheck('signed_put', undefined, responseDiagnostics(first));
+      }
+      const head = await this.runCapabilityCheck('metadata_head', () =>
+        this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key, ChecksumMode: 'ENABLED' })));
       if (head.VersionId !== firstVersionId || Number(head.ContentLength) !== bytes.length ||
           head.ContentType !== input.contentType || head.ChecksumSHA256 !== checksum ||
-          head.Metadata?.['kyc-document-id'] !== documentId || head.ServerSideEncryption !== 'AES256') throw disabled();
-      const replay = await this.fetcher(url, { method: 'PUT', headers, body: bytes as unknown as BodyInit, redirect: 'error' });
+          head.Metadata?.['kyc-document-id'] !== documentId || head.ServerSideEncryption !== 'AES256') {
+        this.failCapabilityCheck('metadata_head');
+      }
+      const replay = await this.runCapabilityCheck('replay_protection', () =>
+        this.fetcher(url, { method: 'PUT', headers, body: bytes as unknown as BodyInit, redirect: 'error' }));
       duplicateVersionId = replay.headers.get('x-amz-version-id') ?? undefined;
-      if (replay.ok || ![409, 412].includes(replay.status)) throw disabled();
-      const afterReplay = await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key, ChecksumMode: 'ENABLED' }));
-      if (afterReplay.VersionId !== firstVersionId || afterReplay.ChecksumSHA256 !== checksum) throw disabled();
+      if (replay.ok || ![409, 412].includes(replay.status)) {
+        this.failCapabilityCheck('replay_protection', undefined, responseDiagnostics(replay));
+      }
+      const afterReplay = await this.runCapabilityCheck('replay_protection', () =>
+        this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key, ChecksumMode: 'ENABLED' })));
+      if (afterReplay.VersionId !== firstVersionId || afterReplay.ChecksumSHA256 !== checksum) {
+        this.failCapabilityCheck('replay_protection');
+      }
     } finally {
       // A provider that accepted the replay may have created a second version;
       // clean only these synthetic probe versions, never list a customer bucket.
       if (duplicateVersionId && duplicateVersionId !== firstVersionId) {
-        await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key, VersionId: duplicateVersionId })).catch(() => undefined);
+        await this.runCapabilityCheck('cleanup', () =>
+          this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key, VersionId: duplicateVersionId! })))
+          .catch(() => undefined);
       }
-      if (firstVersionId) await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key, VersionId: firstVersionId })).catch(() => undefined);
+      if (firstVersionId) {
+        await this.runCapabilityCheck('cleanup', () =>
+          this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key, VersionId: firstVersionId! })))
+          .catch(() => undefined);
+      }
     }
+  }
+
+  private async runCapabilityCheck<T>(stage: CapabilityCheckStage, operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      logCapabilityCheckFailure(stage, error);
+      throw error;
+    }
+  }
+
+  private failCapabilityCheck(
+    stage: CapabilityCheckStage,
+    error?: unknown,
+    response?: { readonly status?: number; readonly requestId?: string; readonly awsErrorName?: string },
+  ): never {
+    logCapabilityCheckFailure(stage, error, response);
+    throw disabled();
   }
 
   private async ensureProviderCapabilities(): Promise<void> {
