@@ -12,6 +12,9 @@ import {
 } from './individual-kyc-document-ports';
 import { S3CompatibleIndividualKycDocumentStorage } from './individual-kyc-s3-storage';
 import { IndividualKycController } from './individual-kyc.controller';
+import { IndividualKycDocumentReviewController } from './individual-kyc-document-review.controller';
+import { IndividualKycDocumentReviewService } from './individual-kyc-document-review.service';
+import { DenyAllIndividualKycDocumentReviewAuthorizer, INDIVIDUAL_KYC_DOCUMENT_REVIEW_AUTHORIZER } from './individual-kyc-document-review-authorizer';
 import { IndividualKycGuard } from './individual-kyc.guard';
 import { IndividualKycWorkerAuthGuard } from './individual-kyc-worker-auth';
 import { IndividualKycWorkerController } from './individual-kyc-worker.controller';
@@ -20,9 +23,12 @@ import { IndividualKycService } from './individual-kyc.service';
 
 @Module({
   imports: [AuthModule, CorporateOnboardingModule],
-  controllers: [IndividualKycController, IndividualKycWorkerController],
+  controllers: [IndividualKycController, IndividualKycDocumentReviewController, IndividualKycWorkerController],
   providers: [
     IndividualKycService,
+    IndividualKycDocumentReviewService,
+    DenyAllIndividualKycDocumentReviewAuthorizer,
+    { provide: INDIVIDUAL_KYC_DOCUMENT_REVIEW_AUTHORIZER, useExisting: DenyAllIndividualKycDocumentReviewAuthorizer },
     IndividualKycWorkerService,
     IndividualKycGuard,
     IndividualKycWorkerAuthGuard,
@@ -33,13 +39,11 @@ import { IndividualKycService } from './individual-kyc.service';
       useFactory: (config: ConfigService) => {
         const allowed = config.get<boolean>('individualKyc.s3.enabled') === true &&
           config.get<boolean>('individualKyc.documentUploadEnabled') === true &&
-          config.get<boolean>('individualKyc.scannerWorkerEnabled') === true &&
           config.get<boolean>('individualKyc.dataResidencyApproved') === true &&
           config.get<boolean>('individualKyc.s3.storageResidencyApproved') === true &&
           config.get<boolean>('individualKyc.s3.privateBucketApproved') === true &&
           config.get<boolean>('individualKyc.s3.tlsPolicyApproved') === true &&
-          config.get<boolean>('individualKyc.s3.retentionApproved') === true &&
-          config.get<boolean>('individualKyc.scanner.residencyApproved') === true;
+          config.get<boolean>('individualKyc.s3.retentionApproved') === true;
         if (!allowed) return new DisabledIndividualKycDocumentStorage();
         return new S3CompatibleIndividualKycDocumentStorage({
           enabled: true,
@@ -57,6 +61,6 @@ import { IndividualKycService } from './individual-kyc.service';
       },
     },
   ],
-  exports: [IndividualKycService],
+  exports: [IndividualKycService, INDIVIDUAL_KYC_DOCUMENT_STORAGE],
 })
 export class IndividualKycModule {}

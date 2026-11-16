@@ -267,7 +267,8 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
 
   const individualKycS3StorageEnabled = booleanSetting(errors, 'INDIVIDUAL_KYC_S3_STORAGE_ENABLED', raw.INDIVIDUAL_KYC_S3_STORAGE_ENABLED, false);
   const individualKycDocumentUploadEnabled = booleanSetting(errors, 'INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED', raw.INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED, false);
-  const individualKycScannerWorkerEnabled = booleanSetting(errors, 'INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED', raw.INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED, false);
+  // Scanner work is explicitly deferred in this phase; the legacy env switch is not authoritative.
+  const individualKycScannerWorkerEnabled = false;
   const storageResidencyApproved = booleanSetting(errors, 'INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED', raw.INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED, false);
   const privateBucketApproved = booleanSetting(errors, 'INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED', raw.INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED, false);
   const tlsPolicyApproved = booleanSetting(errors, 'INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED', raw.INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED, false);
@@ -284,16 +285,15 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
   const workerHmacKey = stringOrUndefined(raw.INDIVIDUAL_KYC_WORKER_HMAC_KEY);
   const forcePathStyle = booleanSetting(errors, 'INDIVIDUAL_KYC_S3_FORCE_PATH_STYLE', raw.INDIVIDUAL_KYC_S3_FORCE_PATH_STYLE, true);
 
-  if (individualKycDocumentUploadEnabled && (!individualKycS3StorageEnabled || !individualKycScannerWorkerEnabled)) {
-    errors.push('INDIVIDUAL_KYC_S3_STORAGE_ENABLED and INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED must both be true before document uploads can be enabled.');
+  if (individualKycDocumentUploadEnabled && !individualKycS3StorageEnabled) {
+    errors.push('INDIVIDUAL_KYC_S3_STORAGE_ENABLED must be true before document uploads can be enabled.');
   }
-  if (individualKycS3StorageEnabled || individualKycDocumentUploadEnabled || individualKycScannerWorkerEnabled) {
+  if (individualKycS3StorageEnabled || individualKycDocumentUploadEnabled) {
     if (!individualKycDataResidencyApproved) errors.push('INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED must be explicitly approved before enabling KYC document infrastructure.');
     if (!storageResidencyApproved || !storageApprovalReference) errors.push('Storage country/region and transfer approval plus INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE are required.');
     if (!privateBucketApproved) errors.push('INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED must confirm private-bucket/access policy review.');
     if (!tlsPolicyApproved) errors.push('INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED must confirm TLS-only provider/bucket policy.');
     if (!retentionApproved || !retentionApprovalReference) errors.push('Approved retention policy and INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE are required.');
-    if (!scannerResidencyApproved || !scannerApprovalReference) errors.push('Approved Nigerian scanner location and INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE are required.');
     if (!s3Endpoint) errors.push('INDIVIDUAL_KYC_S3_ENDPOINT must be explicitly configured; no provider/location is selected by default.');
     else {
       try {
@@ -308,11 +308,9 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
       errors.push('INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE must be workload-identity or a /run/secrets/ mounted-provider-credential reference; never put credentials in environment values.');
     }
     if (raw.VERCEL === '1' && s3CredentialReference?.startsWith('file:')) errors.push('Mounted S3 credential files cannot be used on Vercel; use approved OIDC workload identity or a Nigerian signer deployment.');
-    if (!isValidBase64Secret(workerHmacKey)) errors.push('INDIVIDUAL_KYC_WORKER_HMAC_KEY must be base64 for at least 32 random bytes.');
     if (stringOrUndefined(raw.AWS_ACCESS_KEY_ID) || stringOrUndefined(raw.AWS_SECRET_ACCESS_KEY)) errors.push('Static AWS access-key environment credentials are not allowed for Individual KYC; use workload identity.');
     if (!storageApprovalReference || storageApprovalReference.length > 128 || !/^[A-Za-z0-9._:/-]+$/.test(storageApprovalReference)) errors.push('INDIVIDUAL_KYC_STORAGE_APPROVAL_REFERENCE must be an approved non-secret reference.');
     if (!retentionApprovalReference || retentionApprovalReference.length > 128 || !/^[A-Za-z0-9._:/-]+$/.test(retentionApprovalReference)) errors.push('INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVAL_REFERENCE must be an approved non-secret reference.');
-    if (!scannerApprovalReference || scannerApprovalReference.length > 128 || !/^[A-Za-z0-9._:/-]+$/.test(scannerApprovalReference)) errors.push('INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE must be an approved non-secret reference.');
     if (!retentionDaysRaw || !/^\d{1,4}$/.test(retentionDaysRaw) || Number(retentionDaysRaw) < 1 || Number(retentionDaysRaw) > 3650) errors.push('INDIVIDUAL_KYC_STORAGE_RETENTION_DAYS must be explicitly approved between 1 and 3650 days.');
   }
 

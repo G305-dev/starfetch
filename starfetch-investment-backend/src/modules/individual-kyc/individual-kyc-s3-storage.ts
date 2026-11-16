@@ -1,13 +1,13 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import {
-  DeleteObjectCommand, GetBucketVersioningCommand, HeadObjectCommand, PutObjectCommand, S3Client,
+  DeleteObjectCommand, GetBucketVersioningCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client,
 } from '@aws-sdk/client-s3';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types';
 import { createHash, randomUUID } from 'crypto';
 import { readFile, stat } from 'fs/promises';
-import { IndividualKycDocumentStorage, IndividualKycObjectMetadata, IndividualKycUploadIntent, INDIVIDUAL_KYC_UPLOAD_HEADERS, INDIVIDUAL_KYC_UPLOAD_URL_TTL_SECONDS, MAX_INDIVIDUAL_KYC_DOCUMENT_BYTES } from './individual-kyc-document-ports';
+import { IndividualKycDocumentStorage, IndividualKycObjectMetadata, IndividualKycUploadIntent, IndividualKycViewAuthorization, INDIVIDUAL_KYC_UPLOAD_HEADERS, INDIVIDUAL_KYC_UPLOAD_URL_TTL_SECONDS, MAX_INDIVIDUAL_KYC_DOCUMENT_BYTES } from './individual-kyc-document-ports';
 
 export interface IndividualKycS3Config {
   readonly enabled: boolean;
@@ -76,8 +76,10 @@ export function credentialProviderFromReference(
 }
 
 /**
- * Configurable S3-compatible private quarantine adapter. API process can PUT-sign,
- * HEAD metadata, and delete pinned versions; it deliberately has no GetObject.
+ * Configurable S3-compatible private document adapter. Customer-facing KYC uploads
+ * use short-lived conditional PUT grants and HEAD-only completion. A version-pinned
+ * attachment grant is available only after staff authorization; internal read/write
+ * methods support shared application documents and optional future worker plumbing.
  * Every provider must pass a live conditional-write/replay probe before use.
  */
 @Injectable()
@@ -164,6 +166,55 @@ export class S3CompatibleIndividualKycDocumentStorage implements IndividualKycDo
       if (candidate.name === 'NotFound' || candidate.name === 'NoSuchKey' || candidate.$metadata?.httpStatusCode === 404) return null;
       throw disabled();
     }
+  }
+
+  async createViewAuthorization(input: { objectKey: string; versionId: string; filename: string; expiresInSeconds: number }): Promise<IndividualKycViewAuthorization> {
+    if (!input.objectKey || input.objectKey.length > 256 || !input.versionId || input.versionId.length > 256 ||
+      !Number.isInteger(input.expiresInSeconds) || input.expiresInSeconds < 1 || input.expiresInSeconds > 60) throw disabled();
+    await this.ensureProviderCapabilities();
+    const safeFilename = sanitizeDownloadFilename(input.filename);
+    try {
+      const url = await this.presigner(this.client, new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: input.objectKey,
+        VersionId: input.versionId,
+        ResponseContentType: 'application/octet-stream',
+        ResponseContentDisposition: `attachment; filename="${safeFilename}"`,
+        ResponseCacheControl: 'private, no-store, max-age=0',
+      }), { expiresIn: input.expiresInSeconds });
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'https:' || !parsed.searchParams.get('X-Amz-Signature')) throw disabled();
+      return { viewUrl: url, expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000), disposition: 'attachment' };
+    } catch { throw disabled(); }
+  }
+
+  async putDocumentObject(input: { documentId: string; objectKey: string; bytes: Buffer; contentType: string; checksumSha256Hex: string }): Promise<string> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.documentId) || !/^onboarding-documents\/[0-9a-f-]{36}$/i.test(input.objectKey) ||
+      !Buffer.isBuffer(input.bytes) || input.bytes.length < 1 || input.bytes.length > 25 * 1024 * 1024 ||
+      !/^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/.test(input.contentType) || !/^[0-9a-f]{64}$/.test(input.checksumSha256Hex) ||
+      createHash('sha256').update(input.bytes).digest('hex') !== input.checksumSha256Hex) throw disabled();
+    await this.ensureProviderCapabilities();
+    try {
+      const result = await this.client.send(new PutObjectCommand({
+        Bucket: this.bucket, Key: input.objectKey, Body: input.bytes, ContentType: input.contentType,
+        ContentLength: input.bytes.length, ChecksumSHA256: createHash('sha256').update(input.bytes).digest('base64'),
+        IfNoneMatch: '*', ServerSideEncryption: 'AES256', Metadata: { 'kyc-document-id': input.documentId },
+      }));
+      if (!result.VersionId || result.VersionId.length > 256) throw disabled();
+      return result.VersionId;
+    } catch { throw disabled(); }
+  }
+
+  async readDocumentObject(objectKey: string, versionId: string): Promise<Buffer> {
+    if (!/^onboarding-documents\/[0-9a-f-]{36}$/i.test(objectKey) || !versionId || versionId.length > 256) throw disabled();
+    await this.ensureProviderCapabilities();
+    try {
+      const result = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: objectKey, VersionId: versionId }));
+      if (!result.Body) throw disabled();
+      const bytes = Buffer.from(await result.Body.transformToByteArray());
+      if (bytes.length > 25 * 1024 * 1024) { bytes.fill(0); throw disabled(); }
+      return bytes;
+    } catch { throw disabled(); }
   }
 
   async deleteObjectVersion(objectKey: string, versionId: string): Promise<void> {
@@ -254,4 +305,12 @@ export class S3CompatibleIndividualKycDocumentStorage implements IndividualKycDo
       Metadata: { 'kyc-document-id': input.documentId },
     });
   }
+}
+
+function sanitizeDownloadFilename(value: string): string {
+  const cleaned = Array.from(value.normalize('NFKC')).filter((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code >= 0x20 && !(code >= 0x7f && code <= 0x9f) && !/[\\/";\r\n]/.test(character);
+  }).join('');
+  return cleaned.slice(0, 96) || 'review-document.bin';
 }

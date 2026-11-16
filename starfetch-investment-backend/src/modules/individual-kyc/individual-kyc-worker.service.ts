@@ -176,6 +176,7 @@ export class IndividualKycWorkerService {
           { status: IndividualKycDocumentStatus.PENDING_SCAN, uploadExpiresAt: { lte: uploadCutoff }, OR: [{ scanLeaseExpiresAt: null }, { scanLeaseExpiresAt: { lte: now } }] },
           { status: IndividualKycDocumentStatus.REMOVED, uploadExpiresAt: { lte: uploadCutoff } },
           { status: IndividualKycDocumentStatus.UPLOADED, retentionExpiresAt: { lte: now } },
+          { status: IndividualKycDocumentStatus.UNDER_REVIEW, retentionExpiresAt: { lte: now } },
         ],
       },
       orderBy: { updatedAt: 'asc' },
@@ -228,7 +229,7 @@ export class IndividualKycWorkerService {
         });
       } else {
         Object.assign(where, { status: doc.status });
-        if (doc.status === IndividualKycDocumentStatus.UPLOADED) Object.assign(data, { status: IndividualKycDocumentStatus.REMOVED });
+        if (doc.status === IndividualKycDocumentStatus.UPLOADED || doc.status === IndividualKycDocumentStatus.UNDER_REVIEW) Object.assign(data, { status: IndividualKycDocumentStatus.REMOVED });
       }
       const changedDoc = await tx.individualKycDocument.updateMany({ where: where as never, data: data as never });
       if (changedDoc.count !== 1) return false;

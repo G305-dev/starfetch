@@ -5,6 +5,7 @@ import { IndividualKycScannerWorker } from './worker';
 async function bootstrap(): Promise<void> {
   const e = process.env;
   const isTest = e.NODE_ENV === 'test';
+  if (!isTest) throw new Error('Malware scanning is deferred; scanner worker execution is disabled in this phase.');
   if (e.VERCEL === '1') throw new Error('The raw-document scanner worker must never run on Vercel.');
   if (e.AWS_ACCESS_KEY_ID || e.AWS_SECRET_ACCESS_KEY) throw new Error('Static AWS access-key credentials are not permitted in the scanner worker.');
   if (!isTest && (e.INDIVIDUAL_KYC_SCANNER_WORKER_ENABLED !== 'true' ||

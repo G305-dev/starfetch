@@ -133,6 +133,69 @@ export type IndividualAccountProfile = {
   phone: string | null;
 };
 
+export type IndividualKycStatus = "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "INFO_REQUIRED" | "APPROVED" | "REJECTED";
+export type IndividualKycSectionStatus = "NOT_STARTED" | "DRAFT" | "COMPLETE";
+export type IndividualKycDocumentType = "PASSPORT" | "PVC" | "DRIVERS_LICENSE" | "NIN";
+export type IndividualKycDocument = {
+  id: string;
+  documentType: IndividualKycDocumentType;
+  originalFilename: string;
+  contentType: string;
+  sizeBytes: string;
+  status: "PENDING_UPLOAD" | "UPLOADED" | "UNDER_REVIEW" | "REPLACED" | "REMOVED";
+  manualReviewStatus: "NOT_REVIEWED" | "UNDER_REVIEW" | "ACCEPTED" | "REJECTED";
+  uploadedAt: string | null;
+  createdAt: string;
+};
+export type IndividualKycProfile = {
+  status: IndividualKycStatus;
+  version: number;
+  submittedAt: string | null;
+  updatedAt: string | null;
+  sections: {
+    personal?: {
+      dateOfBirth?: string | null;
+      gender?: "MALE" | "FEMALE" | null;
+      nationality?: string | null;
+      stateOfResidence?: string | null;
+      residentialAddress?: string | null;
+      idDocumentType?: IndividualKycDocumentType | null;
+      occupation?: string | null;
+      pepStatus?: "YES" | "NO" | null;
+      pepDetails?: { fullName?: string | null; position?: string | null; country?: string | null; periodHeld?: string | null } | null;
+    };
+    [section: string]: unknown;
+  };
+  sectionStatuses: {
+    personal: IndividualKycSectionStatus;
+    investment: IndividualKycSectionStatus;
+    sourceOfFunds: IndividualKycSectionStatus;
+    bank: IndividualKycSectionStatus;
+  };
+  documents: IndividualKycDocument[];
+  progression: { nextSection: string | null; canSubmit: boolean };
+};
+export type IndividualKycSectionSaveResult = {
+  version: number;
+  sectionStatuses: IndividualKycProfile["sectionStatuses"];
+  progression: { nextSection: string | null; canSubmit: boolean };
+};
+export type IndividualKycUploadIntent = {
+  documentId: string;
+  version: number;
+  uploadUrl: string;
+  requiredHeaders: Record<string, string>;
+  signedContentLength: number;
+  expiresAt: string;
+  uploadExpiresInSeconds: number;
+};
+export type IndividualKycUploadCompletion = {
+  documentId: string;
+  version: number;
+  status: "UNDER_REVIEW";
+  manualReviewStatus: "UNDER_REVIEW";
+};
+
 /** Exact Phase 2D /me/portfolio holding projection from docs/api/openapi.yaml. */
 export type PortfolioHolding = {
   id: string | null;
@@ -336,15 +399,16 @@ type AuthenticatedRequestOptions = RequestOptions & {
 /** All browser requests use the same-origin /api/v1 Next.js rewrite. */
 async function request(path: string, options: RequestOptions = {}) {
   try {
+    const isMultipart = typeof FormData !== "undefined" && options.body instanceof FormData;
     const response = await fetch(`/api/v1${path}`, {
       method: options.method ?? "GET",
       credentials: "include",
       cache: "no-store",
       headers: {
-        ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(options.body !== undefined && !isMultipart ? { "Content-Type": "application/json" } : {}),
         ...options.headers,
       },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body: options.body === undefined ? undefined : isMultipart ? options.body as FormData : JSON.stringify(options.body),
     });
     const payload = await parseJson(response);
     if (!response.ok) throw errorFromResponse(response, payload);
@@ -811,6 +875,81 @@ export async function getCurrentUser() {
 
 export async function getMyProfile() {
   return normaliseProfile(await authenticatedRequest("/me/profile"));
+}
+
+/** Individual KYC is authenticated, owner-scoped and role/profile guarded by the API. */
+export async function getIndividualKycProfile(): Promise<IndividualKycProfile> {
+  const data = unwrapPayload(await authenticatedRequest("/me/kyc-profile"));
+  if (!Number.isSafeInteger(data.version) || typeof data.status !== "string" || !isRecord(data.sectionStatuses) || !Array.isArray(data.documents)) {
+    throw new ApiError("UNEXPECTED_RESPONSE");
+  }
+  return data as unknown as IndividualKycProfile;
+}
+
+export async function saveIndividualKycPersonal(input: {
+  version: number;
+  dateOfBirth: string;
+  gender: "MALE" | "FEMALE";
+  nationality: string;
+  stateOfResidence: string;
+  residentialAddress: string;
+  idDocumentType: IndividualKycDocumentType;
+  occupation: string;
+  pepStatus: "YES" | "NO";
+  pepDetails?: { fullName: string; position: string; country: string; periodHeld: string };
+}): Promise<IndividualKycSectionSaveResult> {
+  const data = unwrapPayload(await authenticatedRequest("/me/kyc-profile/personal", {
+    method: "PUT",
+    body: input,
+    attemptHeaders: csrfHeaders,
+  }));
+  if (!Number.isSafeInteger(data.version) || !isRecord(data.sectionStatuses) || !isRecord(data.progression)) throw new ApiError("UNEXPECTED_RESPONSE");
+  return data as unknown as IndividualKycSectionSaveResult;
+}
+
+export async function createIndividualKycUploadIntent(input: {
+  version: number;
+  documentType: IndividualKycDocumentType;
+  originalFilename: string;
+  contentType: "application/pdf" | "image/jpeg" | "image/png";
+  sizeBytes: number;
+  checksumSha256: string;
+}): Promise<IndividualKycUploadIntent> {
+  const data = unwrapPayload(await authenticatedMutation("/me/kyc-profile/id-document/upload-intent", input));
+  if (typeof data.uploadUrl !== "string" || !data.uploadUrl.startsWith("https://") || !isRecord(data.requiredHeaders) || !Number.isSafeInteger(data.version) || typeof data.documentId !== "string") {
+    throw new ApiError("UNEXPECTED_RESPONSE");
+  }
+  return data as unknown as IndividualKycUploadIntent;
+}
+
+export async function completeIndividualKycDocument(documentId: string, version: number): Promise<IndividualKycUploadCompletion> {
+  const data = unwrapPayload(await authenticatedMutation(`/me/kyc-profile/id-document/${encodeURIComponent(documentId)}/complete`, { version }));
+  if (!Number.isSafeInteger(data.version) || typeof data.documentId !== "string" || data.status !== "UNDER_REVIEW") throw new ApiError("UNEXPECTED_RESPONSE");
+  return data as unknown as IndividualKycUploadCompletion;
+}
+
+export type VerificationDocumentUploadReceipt = {
+  documentId: string;
+  applicationId: string;
+  requirementId: string;
+  documentKindKey: string;
+  version: number;
+  contentSha256: string;
+  contentLength: number;
+  state: "UNDER_REVIEW";
+  manualReviewStatus: "UNDER_REVIEW";
+};
+
+/** Multipart upload for existing Individual/Joint/Corporate required-document contracts. */
+export async function uploadVerificationDocument(input: { applicationId: string; requirementId: string; file: File; replacesDocumentId?: string }): Promise<VerificationDocumentUploadReceipt> {
+  const form = new FormData();
+  form.append("applicationId", input.applicationId);
+  form.append("requirementId", input.requirementId);
+  if (input.replacesDocumentId) form.append("replacesDocumentId", input.replacesDocumentId);
+  form.append("file", input.file, input.file.name);
+  const data = unwrapPayload(await authenticatedMutation("/verification-documents/upload", form));
+  if (typeof data.documentId !== "string" || data.state !== "UNDER_REVIEW" || data.manualReviewStatus !== "UNDER_REVIEW" || !Number.isSafeInteger(data.contentLength)) throw new ApiError("UNEXPECTED_RESPONSE");
+  return data as unknown as VerificationDocumentUploadReceipt;
 }
 
 export async function updateMyProfile(input: { firstName: string; lastName: string; phone: string | null }) {

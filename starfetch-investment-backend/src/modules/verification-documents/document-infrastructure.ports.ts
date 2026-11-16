@@ -4,9 +4,10 @@ export const PRIVATE_DOCUMENT_STORAGE = Symbol('PRIVATE_DOCUMENT_STORAGE');
 export const DOCUMENT_MALWARE_SCANNER = Symbol('DOCUMENT_MALWARE_SCANNER');
 
 export interface PrivateDocumentStorage {
-  putQuarantined(objectKey: string, bytes: Buffer, metadata: { sha256: string; mediaType: string }): Promise<void>;
-  readQuarantined(objectKey: string): Promise<Buffer>;
-  delete(objectKey: string): Promise<void>;
+  putQuarantined(objectKey: string, bytes: Buffer, metadata: { sha256: string; mediaType: string; documentId: string }): Promise<string>;
+  readQuarantined(objectKey: string, versionId: string): Promise<Buffer>;
+  delete(objectKey: string, versionId: string): Promise<void>;
+  createViewAuthorization(objectKey: string, versionId: string, filename: string, expiresInSeconds: number): Promise<{ viewUrl: string; expiresAt: Date }>;
 }
 
 export interface MalwareScanResult {
@@ -19,12 +20,13 @@ export interface DocumentMalwareScanner {
   scan(bytes: Buffer): Promise<MalwareScanResult>;
 }
 
-/** Production default until private storage and malware scanning are approved and configured. */
+/** Production storage default remains fail-closed until the approved S3 provider reports readiness. */
 @Injectable()
 export class DisabledPrivateDocumentStorage implements PrivateDocumentStorage {
-  async putQuarantined(): Promise<void> { throw unavailable(); }
+  async putQuarantined(): Promise<string> { throw unavailable(); }
   async readQuarantined(): Promise<Buffer> { throw unavailable(); }
   async delete(): Promise<void> { throw unavailable(); }
+  async createViewAuthorization(): Promise<{ viewUrl: string; expiresAt: Date }> { throw unavailable(); }
 }
 
 /** Production default; files can never be marked clean without an approved scanner. */
@@ -41,18 +43,24 @@ export class IsolatedMemoryDocumentStorage implements PrivateDocumentStorage {
     if (nodeEnv !== 'test') throw new Error('Isolated document storage is test-only.');
   }
 
-  async putQuarantined(objectKey: string, bytes: Buffer): Promise<void> {
-    if (this.nodeEnv !== 'test' || this.objects.has(objectKey)) throw unavailable();
+  async putQuarantined(objectKey: string, bytes: Buffer, metadata: { sha256: string; mediaType: string; documentId: string }): Promise<string> {
+    if (this.nodeEnv !== 'test' || this.objects.has(objectKey) || !metadata.documentId) throw unavailable();
     this.objects.set(objectKey, Buffer.from(bytes));
+    return `test-version-${this.objects.size}`;
   }
 
-  async readQuarantined(objectKey: string): Promise<Buffer> {
+  async createViewAuthorization(objectKey: string, versionId: string, filename: string, expiresInSeconds: number): Promise<{ viewUrl: string; expiresAt: Date }> {
+    if (this.nodeEnv !== 'test' || !this.objects.has(objectKey) || !versionId || !filename || expiresInSeconds < 1 || expiresInSeconds > 60) throw unavailable();
+    return { viewUrl: `https://document-view.invalid/${encodeURIComponent(objectKey)}?version=${encodeURIComponent(versionId)}`, expiresAt: new Date(Date.now() + expiresInSeconds * 1000) };
+  }
+
+  async readQuarantined(objectKey: string, versionId: string): Promise<Buffer> {
     const value = this.objects.get(objectKey);
-    if (this.nodeEnv !== 'test' || !value) throw unavailable();
+    if (this.nodeEnv !== 'test' || !value || !/^test-version-[0-9]+$/.test(versionId)) throw unavailable();
     return Buffer.from(value);
   }
 
-  async delete(objectKey: string): Promise<void> {
+  async delete(objectKey: string, versionId: string): Promise<void> {
     const bytes = this.objects.get(objectKey);
     bytes?.fill(0);
     this.objects.delete(objectKey);
@@ -71,5 +79,5 @@ export class SyntheticTestMalwareScanner implements DocumentMalwareScanner {
 }
 
 function unavailable(): ServiceUnavailableException {
-  return new ServiceUnavailableException({ code: 'FEATURE_UNAVAILABLE', message: 'Private document storage and scanning are not configured.' });
+  return new ServiceUnavailableException({ code: 'FEATURE_UNAVAILABLE', message: 'Private document storage is not configured.' });
 }
