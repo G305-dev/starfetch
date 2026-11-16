@@ -27,9 +27,10 @@ assert(
 );
 assert(
   !/(?:window\.)?(?:localStorage|sessionStorage)\s*[.[]/.test(prompt)
-    && !prompt.includes("Dismiss")
-    && !prompt.includes("Not now"),
-  "The required KYC prompt must not persist a dismissal state or expose a dismissal action",
+    && prompt.includes("useState(true)")
+    && prompt.includes('onClick={() => setIsVisible(false)}')
+    && prompt.includes("Maybe later"),
+  "Maybe later must hide the prompt for the current component visit only, without browser-storage persistence",
 );
 assert(
   prompt.includes("Completion status is determined only by Starfetch")
