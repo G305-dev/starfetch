@@ -1,5 +1,5 @@
 import { BarChart3 } from "lucide-react";
-import { featuredNgxEquities, type NgxEquityListing } from "./ngx-market-directory";
+import { featuredNgxEquities, ngxMarketSnapshot, type NgxEquityListing } from "./ngx-market-directory";
 
 const naira = new Intl.NumberFormat("en-NG", {
   style: "currency",
@@ -45,7 +45,7 @@ export function NgxMarketTicker({ markets = featuredNgxEquities }: { markets?: r
       <div className="flex min-h-[58px] w-full">
         <div className="z-10 flex w-[128px] shrink-0 flex-col justify-center bg-star-900 px-3 text-white shadow-[5px_0_12px_rgba(0,59,42,0.08)] sm:w-[172px] sm:px-5">
           <span className="text-[0.58rem] font-extrabold uppercase tracking-[0.15em] text-star-lime">NGX market</span>
-          <span className="mt-0.5 text-[0.6rem] font-semibold text-star-100">{markets.some((market) => market.lastPriceNgn !== null || market.dailyChangePercent !== null) ? "Backend data" : "Quote feed pending"}</span>
+          <span className="mt-0.5 text-[0.6rem] font-semibold text-star-100">{markets.some((market) => market.lastPriceNgn !== null || market.dailyChangePercent !== null) ? "17 Nov snapshot" : "Quote feed pending"}</span>
         </div>
         <div className="ngx-market-slider-viewport min-w-0 flex-1" aria-live="off">
           {markets.length ? (
@@ -58,7 +58,7 @@ export function NgxMarketTicker({ markets = featuredNgxEquities }: { markets?: r
           )}
         </div>
       </div>
-      <p className="sr-only">This moving list shows NGX-listed equities. Quote values are provided by the backend and may be pending.</p>
+      <p className="sr-only">This moving list shows NGX-listed equities with a dated snapshot of closing prices from {ngxMarketSnapshot.dateLabel.toLowerCase()} (source: {ngxMarketSnapshot.sourceLabel}). It is not a live feed.</p>
     </section>
   );
 }
