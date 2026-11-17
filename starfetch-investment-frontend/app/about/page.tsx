@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { AboutCoreValues } from "@/components/about/AboutCoreValues";
-import { StarfetchBoard } from "@/components/about/StarfetchBoard";
 import { Team } from "@/components/about/Team";
 import { AboutPhilosophy } from "@/components/about/AboutPhilosophy";
 import { AboutVision } from "@/components/about/AboutVision";
@@ -22,7 +21,6 @@ export default function AboutPage() {
         <AboutVision />
         <AboutPhilosophy />
         <AboutCoreValues />
-        <StarfetchBoard />
         <Team />
       </main>
       <Footer />
