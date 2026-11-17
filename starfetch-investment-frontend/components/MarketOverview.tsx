@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowUpRight, BarChart3, Database, Search } from "lucide-react";
+import { ArrowUpRight, BarChart3, Database, Landmark, Percent, Search, WalletCards } from "lucide-react";
 import { SectionHeading } from "./ui";
 import { featuredNgxEquities, ngxListedEquitiesUrl, type NgxEquityListing } from "./ngx-market-directory";
 
@@ -21,6 +21,12 @@ function formatChange(value: number | null) {
   const prefix = value > 0 ? "+" : "";
   return `${prefix}${value.toFixed(2)}%`;
 }
+
+const pulse = [
+  { icon: Percent, label: "Inflation (Headline)", detail: "Official source integration pending", value: "Pending" },
+  { icon: Landmark, label: "Monetary Policy Rate", detail: "Official CBN source integration pending", value: "Pending" },
+  { icon: WalletCards, label: "Cash Reserve Ratio", detail: "Official CBN source integration pending", value: "Pending" },
+];
 
 /** Landing-page NGX directory; backend market rows can be passed in without changing the presentation. */
 export function MarketOverview({ markets = featuredNgxEquities }: { markets?: readonly NgxEquityListing[] }) {
@@ -110,17 +116,24 @@ export function MarketOverview({ markets = featuredNgxEquities }: { markets?: re
             </div>
           </article>
 
-          <aside className="rounded-2xl bg-star-900 p-5 text-white sm:p-6">
-            <p className="text-[0.65rem] font-extrabold uppercase tracking-[0.16em] text-star-lime">NGX market data</p>
-            <h3 className="mt-2 font-display text-xl font-bold text-white">Ready for backend quotes</h3>
-            <p className="mt-2 text-sm leading-6 text-star-100">The frontend list can display NGX-supplied prices and daily movement when the backend feed is connected. No global-market prices or invented quotes are shown as Nigerian data.</p>
-            <dl className="mt-5 divide-y divide-white/15 rounded-xl border border-white/15 bg-white/5">
-              <div className="flex items-center justify-between gap-3 p-3.5"><dt className="text-xs font-semibold text-star-100">Directory entries</dt><dd className="text-sm font-extrabold text-star-lime">{markets.length}</dd></div>
-              <div className="flex items-center justify-between gap-3 p-3.5"><dt className="text-xs font-semibold text-star-100">Live quote feed</dt><dd className="text-xs font-extrabold text-star-lime">{hasQuoteData ? "Connected" : "Pending"}</dd></div>
-              <div className="flex items-center justify-between gap-3 p-3.5"><dt className="text-xs font-semibold text-star-100">Currency</dt><dd className="text-sm font-extrabold text-star-lime">NGN</dd></div>
-            </dl>
-            <p className="mt-4 text-xs leading-5 text-star-100">Market data display is separate from investment advice, recommendations, or trade instructions.</p>
-          </aside>
+          <article className="rounded-2xl bg-star-900 p-5 text-white sm:p-6">
+            <h3 className="font-display text-xl font-bold text-white">Market Pulse</h3>
+            <p className="mt-1 text-sm text-star-100">Policy and statistical indicators remain pending until an approved official source is integrated.</p>
+            <div className="mt-5 divide-y divide-white/15 rounded-xl border border-white/15 bg-white/5">
+              {pulse.map(({ icon: Icon, label, detail, value }) => (
+                <div key={label} className="flex items-center justify-between gap-3 p-4">
+                  <div className="flex items-center gap-3">
+                    <Icon size={18} className="shrink-0 text-star-lime" aria-hidden="true" />
+                    <div>
+                      <p className="text-sm font-bold text-white">{label}</p>
+                      <p className="mt-0.5 text-xs text-star-200">{detail}</p>
+                    </div>
+                  </div>
+                  <span className="text-sm font-bold text-star-lime">{value}</span>
+                </div>
+              ))}
+            </div>
+          </article>
         </div>
       </div>
     </section>

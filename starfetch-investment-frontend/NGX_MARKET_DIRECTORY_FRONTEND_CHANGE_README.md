@@ -8,7 +8,8 @@ This is a frontend-only update based on the requested landing-page changes.
 - Removed the TradingView ticker strip and market-overview embed from the landing page.
 - Replaced the global-market panel with a searchable directory of 14 selected NGX-listed equities, showing company names and ticker symbols.
 - Added `MarketOverview`'s `markets` prop and a small display type so a backend-provided list can be passed in when the API is ready.
-- Left quote values blank (`null` rendered as an em dash). No prices, index values, percentage moves, volume, live feed, or backend route were invented.
+- Restored the **Market Pulse** card for headline inflation, Monetary Policy Rate, and Cash Reserve Ratio; all remain clearly marked pending official-source integration.
+- Left NGX quote values blank (`null` rendered as an em dash). No prices, index values, percentage moves, volume, live feed, or backend route were invented.
 - Updated the footer market-data notice to say that live figures await an authorized NGX feed through the backend.
 
 The directory is a **selected starter list**, not a complete/current official universe. It is intended to demonstrate the frontend and should be replaced or populated from the backend's authoritative NGX listings response. The display type in `components/ngx-market-directory.ts` is a frontend view model, not a negotiated API contract.

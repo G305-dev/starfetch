@@ -23,6 +23,7 @@ for (const symbol of ["ACCESSCORP", "DANGCEM", "GTCO", "MTNN", "SEPLAT", "ZENITH
   assert(directory.includes(`symbol: "${symbol}"`), `Expected NGX listing ${symbol} in the starter directory`);
 }
 assert(overview.includes("authorized NGX data source") && overview.includes("backend"), "The market panel must clearly explain that live quotes await the backend data connection");
+assert(overview.includes("Market Pulse") && overview.includes("Official source integration pending") && overview.includes("Official CBN source integration pending"), "The Market Pulse card must remain visible and its unintegrated indicators must stay clearly pending");
 assert(footer.includes("starter directory of selected Nigerian Exchange (NGX)-listed equities") && footer.includes("authorized NGX market-data feed") && !footer.includes("TradingView"), "The footer notice must match the NGX directory and pending quote integration");
 
-console.log("PASS — landing page removes the Fixed Note popup and TradingView widgets, shows selected NGX equities, and leaves prices blank for backend integration");
+console.log("PASS — landing page removes the Fixed Note popup and TradingView widgets, shows selected NGX equities, restores the pending Market Pulse card, and leaves prices blank for backend integration");
