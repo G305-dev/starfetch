@@ -12,7 +12,12 @@ export function CompanyCredentials() {
       <div className="mx-auto grid max-w-[1100px] divide-y divide-star-200 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         {credentials.map(({ icon: Icon, title, detail }) => (
           <div className="flex items-center justify-center gap-3 py-5 text-center sm:justify-start sm:px-7 sm:py-7 first:sm:pl-0" key={title}>
-            <Icon size={22} strokeWidth={2} className="shrink-0 text-star-700" aria-hidden="true" />
+            <span className="credential-orbit-badge" aria-hidden="true">
+              <span className="credential-orbit-decoration" />
+              <span className="credential-orbit-center">
+                <Icon size={22} strokeWidth={2} />
+              </span>
+            </span>
             <div className="text-left">
               <p className="text-[0.72rem] font-bold uppercase tracking-[-0.01em] text-star-900">{title}</p>
               <p className="mt-0.5 text-[0.68rem] text-star-muted">{detail}</p>

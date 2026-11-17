@@ -1,6 +1,6 @@
 # Starfetch Investment Limited — Backend (`starfetch-investment-backend`)
 
-**Phase 2A — backend foundation · Phase 2B — authentication & identity · Phase 2C — investor profile (`/me/profile`) · Phase 2D — investor dashboard read APIs (`/me/portfolio`, `/me/transactions`).** This service contains exactly the approved scope: project wiring, configuration, `/api/v1` prefix, health endpoint, global validation, safe centralized errors, request-ID propagation, HTTP security headers, allowlist CORS (+cookies), the authentication/identity flow, investor self-service profile, and the read-only dashboard endpoints:
+**Backend API · authentication and identity · investor profile/dashboard · gated Corporate services · fail-closed Individual KYC foundation.** This checkout includes the existing API plus a later isolated Individual KYC secure document workflow. For current document scope, routes, gates, setup, and known operational prerequisites, see [`docs/INDIVIDUAL_KYC_SECURE_DOCUMENTS.md`](docs/INDIVIDUAL_KYC_SECURE_DOCUMENTS.md). It preserves existing authentication, ownership, validation, throttling, encrypted persistence/projection, and submission gates. Storage/upload/scanner activation is off by default; code presence does not represent Nigerian residency, vendor, legal, or review approval. The original core API includes project wiring, configuration, `/api/v1` prefix, health endpoint, global validation, safe centralized errors, request-ID propagation, HTTP security headers, allowlist CORS (+cookies), authentication/identity, investor self-service profile, and read-only dashboard endpoints:
 
 ```text
 registration → email verification → login → session → refresh rotation → logout → GET /me
@@ -9,12 +9,11 @@ registration → email verification → login → session → refresh rotation �
 ```
 
 > ⚠️ **Scope statements (read first)**
-> - **Only these endpoints exist:** `POST /auth/register`, `POST /auth/email/verify`, `POST /auth/email/resend`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /me`, `GET /me/profile`, `PUT /me/profile`, `GET /me/portfolio`, `GET /me/transactions`, `GET /health` (all under `/api/v1`).
-> - **Remaining business APIs not yet implemented:** applications, documents/KYC, products, statements, staff/admin workflows, and any live investment, trading or payment functionality. (The Phase 2D portfolio/transactions surface is READ-ONLY dashboard data only.) No OAuth (Google/Apple), no password reset, no email change.
-> - **Firebase is NOT configured** (private-document storage arrives in a later approved phase).
-> - **No external integrations** beyond the replaceable SMTP email adapter (no BVN/NIN/KYC, banking, payments, market data, SMS, push, custodians, external IMS).
-> - **No IMS functionality** (`TBD — REQUIRES FUTURE IMS ARCHITECTURE`).
-> - Implemented Prisma models: `User`, `InvestorProfile`, `EmailVerificationChallenge`, `AuthSession`, `RefreshToken`, `Portfolio`, `Holding`, `Transaction` (+ enum `UserRole`). Only the Phase-2C profile field and the Phase-2D dashboard read models are authorized beyond auth/identity — **no other business schema is approved**; that still waits on **D-08** (OPEN), **D-09** (OPEN), and document/business vocabulary (TBD).
+> - Core auth/profile/dashboard routes remain as listed in the OpenAPI document. Individual KYC routes are now implemented under `/api/v1/me/kyc-profile`; internal signed scanner-worker endpoints are under `/api/v1/internal/individual-kyc/scan-jobs`. See the secure-document guide for complete methods, payload rules, and activation requirements.
+> - This implementation adds KYC profile persistence and encrypted projections, private upload-intent and asynchronous scan workflow, but **does not** implement KYC approval or mark an applicant verified. Scan clearance is only malware-scan status. Existing `/me` completion/approval gates remain intact.
+> - Private S3-compatible storage and the Nigerian ClamAV worker are present as fail-closed infrastructure. Do not enable uploads until provider, residency, retention, scanner location, security controls, and accountable approvals have been verified; no region/provider/approval is selected by default.
+> - AWS KMS/S3 and ClamAV are isolated behind gated integrations. This is not an authorization for other banking, payment, market-data, SMS, push, or external IMS integrations.
+> - Existing Prisma models remain; Individual KYC models, document/worker lifecycle state, and audit events are added in migration history. Corporate TIN keys are never reused for Individual KYC encryption.
 > - Security semantics are recorded in **`docs/backend/auth/AUTH-SECURITY-CONTRACT-v1.md`**, and implemented HTTP contracts in **`docs/api/openapi.yaml`**.
 
 ## Requirements
@@ -67,10 +66,8 @@ npx prisma migrate deploy          # applies prisma/migrations/* (see history be
 npm run prisma:migrate:dev         # prisma migrate dev (creates + applies new migration)
 ```
 
-- Current migration history (three migrations, applied in order):
-  1. `20261026171112_init_auth_identity` — authentication/identity initialization (`User`, `InvestorProfile`, `EmailVerificationChallenge`, `AuthSession`, `RefreshToken` + `UserRole`).
-  2. `20261102105725_add_investor_profile_phone` — Phase 2C nullable `phone` on investor profiles.
-  3. `20261103144118_add_portfolio_holdings_transactions` — Phase 2D dashboard read tables (`portfolios`, `holdings`, `transactions`).
+- `prisma/migrations/` is the authoritative full migration history; the entries below are the original foundation history and are not an exhaustive current list. Individual KYC persistence is in `20261113100000_individual_kyc_profile_persistence`; secure asynchronous document workflow is additive in `20261114100000_individual_kyc_secure_document_workflow`.
+- The secure-document migration has not been applied by this implementation. Review it against the intended non-production database/provider before any migration; see [`docs/INDIVIDUAL_KYC_SECURE_DOCUMENTS.md`](docs/INDIVIDUAL_KYC_SECURE_DOCUMENTS.md).
 - `prisma:generate` regenerates the client after pulling new migrations.
 
 ### Application runtime vs Prisma CLI (`DATABASE_URL`)
@@ -146,10 +143,12 @@ src/
                           #   password (argon2id), access-token (jwt), session (rotation +
                           #   reuse detection), csrf (signed double-submit), email-verification
                           #   (HMAC-bound 6-digit codes) + EmailProvider port (SMTP + fake)
-    me/                   # GET /me · GET/PUT /me/profile · GET /me/portfolio · GET /me/transactions
-                          #   (bearer + RolesGuard/INVESTOR; empty state = normal, never demo data)
-prisma/                   # schema.prisma + migrations (auth/identity + dashboard read models)
-docs/                     # (repo root) api/openapi.yaml · backend/auth/AUTH-SECURITY-CONTRACT-v1.md
+    me/                   # GET /me · profile · dashboard read APIs
+    individual-kyc/       # owner-scoped KYC profile, signed upload, metadata validation,
+                          #   asynchronous scan worker endpoints; storage disabled by default
+  individual-kyc-scanner-worker/ # standalone HMAC-authenticated scanner, exact-version S3 reader, ClamAV
+prisma/                   # schema.prisma + complete migration history, including Individual KYC workflow
+docs/                     # API/security contracts and Individual KYC setup/API guide
 ```
 
 ## Phase roadmap (implementation phases, authorized work only)
@@ -160,7 +159,8 @@ docs/                     # (repo root) api/openapi.yaml · backend/auth/AUTH-SE
 | 2B | Authentication & identity | ✅ Implemented |
 | 2C | Investor profile foundation (`/me/profile`) | ✅ Implemented |
 | 2D | Investor dashboard read APIs (`/me/portfolio`, `/me/transactions`) | ✅ Implemented (this state) |
-| Later | Business APIs (applications, documents/KYC, products, statements, staff/admin workflows, live investment/trading/payments) | ⛔ Not started — pending explicit authorization + D-08/D-09 and vocabulary decisions |
+| Individual KYC | Existing KYC profile persistence plus secure document workflow foundation | ✅ Implemented fail-closed; storage/upload/scanner require verified approvals and stay disabled by default. Does not confer identity verification or approval. |
+| Later | Other business APIs (products, statements, staff/admin workflows, live investment/trading/payments) | ⛔ Out of scope for this change; pending their own explicit authorization and decisions |
 | Later | React Native mobile client (Android/iOS) consuming these same contracts | ⛔ Not started |
 
 **Never** add endpoints, models, integrations or authorized-scope changes without an explicit task assignment from David/Emmanuel.
