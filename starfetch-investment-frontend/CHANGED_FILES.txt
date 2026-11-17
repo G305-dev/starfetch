@@ -1,6 +1,9 @@
 Frontend Updates — Changed / Added Files (frontend only)
 
 BATCH 1 — Individual KYC popup (previous delivery):
+Individual KYC Prompt — Changed / Added Files (frontend only)
+
+BATCH 1 — Individual KYC popup (previous delivery):
 ADDED:
 - lib/individual-kyc-prompt.ts
 - components/portal/IndividualKycPrompt.tsx
