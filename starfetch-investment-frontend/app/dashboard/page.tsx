@@ -25,4 +25,5 @@ export default function DashboardPage() {
       </div>
     </RequireIndividualAuth>
   );
+  return <RequireIndividualAuth><div className="min-h-screen bg-[#fffef9] text-star-900 lg:flex"><PortalSidebar /><div className="min-w-0 flex-1"><PortalHeader /><main className="mx-auto max-w-[1600px] px-5 py-7 sm:px-8 sm:py-8 lg:px-8 xl:px-10"><IndividualDashboardContent /></main></div></div></RequireIndividualAuth>;
 }
