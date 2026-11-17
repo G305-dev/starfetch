@@ -11,6 +11,7 @@ import { AuthenticatedRequest } from '../../common/types/auth-principal';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { AuthService, SafeUser } from '../auth/auth.service';
 import { AccessTokenGuard } from '../auth/guards/access-token.guard';
+import { KycCompletionService, KycCompletionStatus } from './kyc-completion.service';
 
 /**
  * GET /api/v1/me — current-user resource behind the reusable auth guard.
@@ -22,11 +23,12 @@ export class MeController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auth: AuthService,
+    private readonly kycCompletion: KycCompletionService,
   ) {}
 
   @Get()
   @UseGuards(AccessTokenGuard)
-  async me(@Req() req: AuthenticatedRequest): Promise<{ data: SafeUser }> {
+  async me(@Req() req: AuthenticatedRequest): Promise<{ data: SafeUser & { kycCompletion: KycCompletionStatus } }> {
     const principal = req.principal!;
     const user = await this.prisma.user.findUnique({
       where: { id: principal.userId },
@@ -38,6 +40,10 @@ export class MeController {
         HttpStatus.UNAUTHORIZED,
       );
     }
-    return { data: this.auth.safeUser(user) };
+    const kycCompletion = await this.kycCompletion.forPrincipal(principal, {
+      role: user.role,
+      emailVerifiedAt: user.emailVerifiedAt,
+    });
+    return { data: { ...this.auth.safeUser(user), kycCompletion } };
   }
 }

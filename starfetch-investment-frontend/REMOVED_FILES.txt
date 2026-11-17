@@ -1,0 +1,6 @@
+The following unused TradingView-only components were deleted from the frontend project:
+
+components/MarketTicker.tsx
+components/TradingViewWidget.tsx
+
+If applying this ZIP by overlay rather than replacing a project snapshot, delete these paths from the target project if they are present. The landing page no longer imports or renders either component.

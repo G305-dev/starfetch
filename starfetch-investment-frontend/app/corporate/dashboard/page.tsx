@@ -15,4 +15,5 @@ export default function CorporateDashboardPage() {
       <CorporateDashboardContent />
     </CorporatePortalLayout>
   );
+  return <CorporatePortalLayout sectionLabel="Overview"><CorporateDashboardContent /></CorporatePortalLayout>;
 }

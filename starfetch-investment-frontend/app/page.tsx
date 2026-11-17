@@ -1,5 +1,6 @@
 import { Navbar } from "@/components/Navbar";
-import { MarketTicker } from "@/components/MarketTicker";
+import { NgxMarketTicker } from "@/components/NgxMarketTicker";
+import { featuredNgxEquities } from "@/components/ngx-market-directory";
 import { HeroSection } from "@/components/HeroSection";
 import { ValueProposition } from "@/components/ValueProposition";
 import { CompanyCredentials } from "@/components/CompanyCredentials";
@@ -19,8 +20,8 @@ export default function Home() {
   return (
     <>
       <Navbar />
+      <NgxMarketTicker markets={featuredNgxEquities} />
       <main>
-        <MarketTicker />
         <HeroSection />
         <ValueProposition />
         <Reveal><CompanyCredentials /></Reveal>
@@ -28,7 +29,7 @@ export default function Home() {
         <Reveal><InvestmentServices /></Reveal>
         <OurValues />
         <Reveal><WhyStarfetch /></Reveal>
-        <Reveal><MarketOverview /></Reveal>
+        <Reveal><MarketOverview markets={featuredNgxEquities} /></Reveal>
         <Reveal><FreeTools /></Reveal>
         <Reveal><PersonalApproach /></Reveal>
         <FAQSection />

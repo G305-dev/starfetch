@@ -11,7 +11,6 @@ const aboutMenuItems = [
   { label: "Our Core Values", href: "/about#core-values" },
   { label: "Our Vision", href: "/about#vision" },
   { label: "Our Philosophy", href: "/about#philosophy" },
-  { label: "Starfetch Board", href: "/about#starfetch-board" },
   { label: "Team", href: "/about#team" },
 ];
 
