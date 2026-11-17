@@ -4,7 +4,7 @@ import { PeopleSection, type PeopleProfile } from "./PeopleSection";
 const teamMembers: PeopleProfile[] = [
   {
     name: "Sylvia Igwe-Okparaeke",
-    role: "Key Management — Legal, Governance, Risk & Compliance",
+    role: "Managing Director",
     image: "/images/sylvia-igwe-okparaeke.png",
     alt: "Sylvia Igwe-Okparaeke",
     position: "object-center",
@@ -13,7 +13,7 @@ const teamMembers: PeopleProfile[] = [
   },
   {
     name: "Toluwani Adeseri",
-    role: "Key Management — Investments, Strategy & Finance",
+    role: "Executive Director",
     image: "/images/toluwani-adeseri.png",
     alt: "Toluwani Adeseri",
     position: "object-center",
@@ -36,7 +36,20 @@ const institutions = [
 ];
 
 function Institutions() {
-  return <section className="mt-14 border-t border-star-200 pt-10 sm:mt-16" aria-labelledby="leading-institutions-heading"><p id="leading-institutions-heading" className="text-[0.68rem] font-extrabold uppercase tracking-[0.19em] text-star-700">Careers built at leading institutions</p><div className="mt-5 grid max-w-[920px] grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{institutions.map((institution) => <div key={institution.name} className="flex h-[58px] items-center justify-center overflow-hidden rounded-md bg-white"><Image src={institution.image} alt={institution.name} width={161} height={63} className="max-h-10 w-auto max-w-[125px] object-contain" /></div>)}</div></section>;
+  return (
+    <section className="mt-14 border-t border-star-200 pt-10 sm:mt-16" aria-labelledby="leading-institutions-heading">
+      <p id="leading-institutions-heading" className="text-[0.68rem] font-extrabold uppercase tracking-[0.19em] text-star-700">
+        Careers built at leading institutions
+      </p>
+      <div className="mt-5 grid max-w-[920px] grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {institutions.map((institution) => (
+          <div key={institution.name} className="flex h-[58px] items-center justify-center overflow-hidden rounded-md bg-white">
+            <Image src={institution.image} alt={institution.name} width={161} height={63} className="max-h-10 w-auto max-w-[125px] object-contain" />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 export function Team() {
