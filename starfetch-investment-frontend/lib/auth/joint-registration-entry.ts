@@ -1,4 +1,4 @@
-export type JointRegistrationEntryStatus = "loading" | "authenticated" | "unauthenticated";
+export type JointRegistrationEntryStatus = "loading" | "authenticated" | "unauthenticated" | "error";
 export type JointRegistrationEntryAction = "wait" | "continue" | "explain";
 
 /** The sign-in action always returns to the protected Joint creation route. */

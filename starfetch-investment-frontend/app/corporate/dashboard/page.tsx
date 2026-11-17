@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CorporateDashboardContent } from "@/components/corporate/CorporateDashboardContent";
+import { CorporateKycPrompt } from "@/components/corporate/CorporateKycPrompt";
 import { CorporatePortalLayout } from "@/components/corporate/CorporatePortalLayout";
 
 export const metadata: Metadata = {
@@ -8,5 +9,11 @@ export const metadata: Metadata = {
 };
 
 export default function CorporateDashboardPage() {
+  return (
+    <CorporatePortalLayout sectionLabel="Overview">
+      <CorporateKycPrompt />
+      <CorporateDashboardContent />
+    </CorporatePortalLayout>
+  );
   return <CorporatePortalLayout sectionLabel="Overview"><CorporateDashboardContent /></CorporatePortalLayout>;
 }

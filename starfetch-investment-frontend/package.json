@@ -16,6 +16,8 @@
     "test:budget-planner": "node scripts/run-typescript-check.cjs scripts/budget-planner-check.ts",
     "test:returns-calculator": "node scripts/run-typescript-check.cjs scripts/returns-calculator-check.ts",
     "test:corporate-verification": "node scripts/run-typescript-check.cjs scripts/corporate-verification-check.ts",
+    "test:corporate-dashboard": "node scripts/run-typescript-check.cjs scripts/corporate-dashboard-check.ts",
+    "test:corporate-navigation": "node scripts/run-typescript-check.cjs scripts/corporate-navigation-check.ts",
     "test:corporate-api": "node scripts/run-typescript-check.cjs scripts/corporate-api-contract-check.ts",
     "test:corporate-registration": "node scripts/run-typescript-check.cjs scripts/corporate-applicant-registration-check.ts",
     "test:corporate-profile": "node scripts/run-typescript-check.cjs scripts/corporate-profile-local-only-check.ts && node scripts/run-typescript-check.cjs scripts/corporate-profile-sequential-check.ts",
@@ -37,7 +39,8 @@
     "test:market-widgets": "node scripts/run-typescript-check.cjs scripts/market-widgets-check.ts",
     "test:individual-kyc-api-contract": "node scripts/run-typescript-check.cjs scripts/individual-kyc-api-contract-check.ts",
     "test:individual-kyc-api-mapping": "node scripts/run-typescript-check.cjs scripts/individual-kyc-api-mapping-check.ts",
-    "test:individual-kyc-integration": "npm run test:individual-kyc-api-contract && npm run test:individual-kyc-api-mapping && npm run test:individual-profile-local-kyc && npm run test:individual-profile-section-progression && npm run test:investment-objective-risk-profile && npm run test:individual-profile-source-of-funds && npm run test:individual-profile-bank-details && npm run test:individual-profile-pep-declaration"
+    "test:individual-kyc-integration": "npm run test:individual-kyc-api-contract && npm run test:individual-kyc-api-mapping && npm run test:individual-profile-local-kyc && npm run test:individual-profile-section-progression && npm run test:investment-objective-risk-profile && npm run test:individual-profile-source-of-funds && npm run test:individual-profile-bank-details && npm run test:individual-profile-pep-declaration",
+    "test:corporate-products": "node scripts/run-typescript-check.cjs scripts/corporate-products-check.ts"
   },
   "dependencies": {
     "@types/node": "22.13.10",

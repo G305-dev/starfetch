@@ -48,9 +48,11 @@ assert(
 );
 
 assert(
-  dashboard.includes("This protected view is available to a signed-in Corporate applicant without an Individual profile.")
-    && dashboard.includes("An approved Corporate investment account, verification evidence and portfolio remain separate backend outcomes."),
-  "The Corporate dashboard must distinguish an authenticated applicant from an approved Corporate investment account",
+  dashboard.includes("getCorporateDashboardHeading")
+    && dashboard.includes("isCorporateVerified")
+    && dashboard.includes("Verified Applicant")
+    && !dashboard.includes("Your corporate investment dashboard"),
+  "The Corporate dashboard must use the first-timer/time greeting with company name, show Verified Applicant only when approved, and omit the removed subtitle",
 );
 
 console.log("PASS — Corporate verified-login, legacy return-path normalisation, authenticated registration entry, and applicant empty-state routing all resolve to the protected dashboard without entering unavailable O2");

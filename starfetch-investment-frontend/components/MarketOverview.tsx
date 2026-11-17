@@ -1,6 +1,6 @@
 import { BarChart3, Database, Landmark, Percent, WalletCards } from "lucide-react";
 import { SectionHeading } from "./ui";
-import { featuredNgxEquities, type NgxEquityListing } from "./ngx-market-directory";
+import { featuredNgxEquities, ngxMarketSnapshot, type NgxEquityListing } from "./ngx-market-directory";
 
 const naira = new Intl.NumberFormat("en-NG", {
   style: "currency",
@@ -20,9 +20,9 @@ function formatChange(value: number | null) {
 }
 
 const pulse = [
-  { icon: Percent, label: "Inflation (Headline)", detail: "Official source integration pending", value: "Pending" },
-  { icon: Landmark, label: "Monetary Policy Rate", detail: "Official CBN source integration pending", value: "Pending" },
-  { icon: WalletCards, label: "Cash Reserve Ratio", detail: "Official CBN source integration pending", value: "Pending" },
+  { icon: Percent, label: "Inflation (Headline)", detail: "NBS · October 2026 (Sep: 14.63%)", value: "14.06%" },
+  { icon: Landmark, label: "Monetary Policy Rate", detail: "CBN · Sep 2026 MPC (cut from 26.5%)", value: "23%" },
+  { icon: WalletCards, label: "Cash Reserve Ratio", detail: "CBN · Deposit Money Banks", value: "45%" },
 ];
 
 /** Number of rows shown in the at-a-glance table (the full directory has 14). */
@@ -39,7 +39,7 @@ export function MarketOverview({ markets = featuredNgxEquities }: { markets?: re
         <SectionHeading
           eyebrow="Nigerian Exchange (NGX)"
           title="NGX markets at a glance"
-          description="A selected snapshot of Nigerian Exchange-listed equities. Live prices and daily movements will appear when the backend market-data feed is connected."
+          description={`A selected snapshot of Nigerian Exchange-listed equities at the ${ngxMarketSnapshot.dateLabel.toLowerCase()}. The NGX All-Share Index closed at ${ngxMarketSnapshot.allShareIndex.toLocaleString("en-NG")} (${ngxMarketSnapshot.allShareIndexChangePercent.toFixed(2)}%) with market capitalisation of ₦${(ngxMarketSnapshot.marketCapitalisationNgn / 1e12).toFixed(2)} trillion. Source: ${ngxMarketSnapshot.sourceLabel}.`}
         />
 
         <div className="mt-10 grid items-start gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.7fr)]">
@@ -82,7 +82,7 @@ export function MarketOverview({ markets = featuredNgxEquities }: { markets?: re
               <Database size={16} className="mt-0.5 shrink-0 text-star-700" aria-hidden="true" />
               <p className="text-xs leading-5 text-star-muted">
                 {hasQuoteData
-                  ? "Prices and daily changes are shown as supplied by the connected backend market-data feed."
+                  ? `Prices and daily changes are a dated snapshot of the ${ngxMarketSnapshot.dateLabel.toLowerCase()} (source: ${ngxMarketSnapshot.sourceLabel}), not a live feed. A live backend market-data feed will replace this snapshot when connected.`
                   : "This is a starter directory, not live market data. Quote values are intentionally blank until the backend connects an authorized NGX data source."}
               </p>
             </div>
@@ -90,7 +90,7 @@ export function MarketOverview({ markets = featuredNgxEquities }: { markets?: re
 
           <article className="rounded-2xl bg-star-900 p-5 text-white sm:p-6">
             <h3 className="font-display text-xl font-bold text-white">Market Pulse</h3>
-            <p className="mt-1 text-sm text-star-100">Policy and statistical indicators remain pending until an approved official source is integrated.</p>
+            <p className="mt-1 text-sm text-star-100">Latest official policy and statistical indicators.</p>
             <div className="mt-5 divide-y divide-white/15 rounded-xl border border-white/15 bg-white/5">
               {pulse.map(({ icon: Icon, label, detail, value }) => (
                 <div key={label} className="flex items-center justify-between gap-3 p-4">

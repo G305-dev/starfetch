@@ -46,3 +46,36 @@ MODIFIED:
 - components/portal/WelcomeBanner.tsx (time-aware greeting)
 - components/portal/DashboardGreeting.tsx (time-aware greeting)
 - package.json (adds test:dashboard-greeting, test:mobile-menu-visibility)
+
+BATCH 5 — Corporate dashboard redesign (this delivery):
+ADDED:
+- lib/corporate/dashboard.ts
+- scripts/corporate-dashboard-check.ts
+- CORPORATE_DASHBOARD_CHANGE_README.md
+MODIFIED:
+- components/corporate/CorporateDashboardContent.tsx (rewritten)
+- components/corporate/CorporateTopbar.tsx (rewritten — dropdown)
+- scripts/corporate-post-login-routing-check.ts
+- package.json (adds test:corporate-dashboard)
+
+BATCH 6 — KYC popup separation, corporate-work (this delivery):
+ADDED:
+- components/corporate/CorporateKycPrompt.tsx
+- scripts/kyc-dashboard-prompt-check.ts
+- KYC_POPUP_SEPARATION_CHANGE_README.md
+MODIFIED:
+- app/corporate/dashboard/page.tsx
+
+BATCH 7 — Corporate navigation login-redirect fix (this delivery):
+MODIFIED:
+- components/corporate/CorporateSidebar.tsx (next/link)
+- components/corporate/CorporateQuickActions.tsx (next/link)
+- components/ui.tsx (Logo + Button use next/link)
+- components/auth/AuthProvider.tsx (error status, transient-safe restore)
+- components/auth/RequireIndividualAuth.tsx (retry screen, redirect only on confirmed unauthenticated)
+- lib/auth/joint-registration-entry.ts (error status waits)
+ADDED:
+- scripts/corporate-navigation-check.ts
+- CORPORATE_NAVIGATION_FIX_README.md
+MODIFIED:
+- package.json (adds test:corporate-navigation)

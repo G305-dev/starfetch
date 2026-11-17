@@ -1,0 +1,54 @@
+starfetch-investment-backend/docs/api/INDIVIDUAL-KYC-PERSISTENCE-v1.md:3: trailing whitespace.
+[32m+[m[32m**Base:** `/api/v1/me/kyc-profile`[m[41m  [m
+starfetch-investment-backend/docs/api/INDIVIDUAL-KYC-PERSISTENCE-v1.md:4: trailing whitespace.
+[32m+[m[32m**Authentication:** session-aware bearer token; every route is tied to `principal.userId`. The role must be `INVESTOR` and the account must have an `InvestorProfile`. A Corporate applicant with role `INVESTOR` but no `InvestorProfile` is excluded. No owner ID is accepted in any request.[m[41m  [m
+starfetch-investment-backend/docs/api/INDIVIDUAL-KYC-PERSISTENCE-v1.md:5: trailing whitespace.
+[32m+[m[32m**Mutation security:** `CookieMutationGuard` (Origin policy and session-bound signed double-submit CSRF) and per-user keyed rate limits run after authentication/authorization.[m[41m  [m
+starfetch-investment-backend/docs/api/INVESTOR-ADMIN-MVP-v1.md:3: trailing whitespace.
+[32m+[m[32m**Status:** implemented additive response field; no new route.[m[41m  [m
+starfetch-investment-backend/docs/api/INVESTOR-ADMIN-MVP-v1.md:4: trailing whitespace.
+[32m+[m[32m**Endpoint:** `GET /api/v1/me` (existing route; authenticated bearer token and live session required)[m[41m  [m
+starfetch-investment-backend/docs/api/INVESTOR-ADMIN-MVP-v1.md:5: trailing whitespace.
+[32m+[m[32m**Response change:** `data.kycCompletion` with the only public values `REQUIRED` and `COMPLETE`.[m[41m  [m
+starfetch-investment-backend/docs/api/INVESTOR-ADMIN-MVP-v1.md:6: trailing whitespace.
+[32m+[m[32m**Schema/migrations:** none.[m[41m  [m
+starfetch-investment-backend/docs/operations/CORPORATE-O2-PRODUCTION-READINESS.md:3: trailing whitespace.
+[32m+[m[32m**Audience:** David (backend) and Emmanuel (frontend/management coordination)[m[41m  [m
+starfetch-investment-backend/docs/operations/CORPORATE-O2-PRODUCTION-READINESS.md:4: trailing whitespace.
+[32m+[m[32m**Assessment date:** 22 October 2026[m[41m  [m
+starfetch-investment-backend/docs/operations/CORPORATE-O2-PRODUCTION-READINESS.md:5: trailing whitespace.
+[32m+[m[32m**Repository branch:** `feature/corporate-o2-production-readiness` (local only; not pushed or merged)[m[41m  [m
+starfetch-investment-backend/docs/operations/CORPORATE-O2-RELEASE-BLOCKERS-AND-REGISTRATION.md:3: trailing whitespace.
+[32m+[m[32m**Assessment date:** 22 October 2026 (Africa/Lagos)[m[41m  [m
+starfetch-investment-backend/docs/operations/CORPORATE-O2-RELEASE-BLOCKERS-AND-REGISTRATION.md:4: trailing whitespace.
+[32m+[m[32m**Baseline commit:** `5a674e35d8876972221472e91ec04c627fd00133` (reviewed readiness changes on latest checked `main`)[m[41m  [m
+starfetch-investment-backend/docs/operations/INDIVIDUAL-KYC-BACKEND-INTEGRATION-STATUS.md:3: trailing whitespace.
+[32m+[m[32m**Repository:** `G305-dev/starfetch`, backend only[m[41m  [m
+starfetch-investment-backend/docs/operations/INDIVIDUAL-KYC-BACKEND-INTEGRATION-STATUS.md:4: trailing whitespace.
+[32m+[m[32m**Preserved implementation baseline:** `Starfetch-KYC-Completion-Full-Backend.zip`[m[41m  [m
+starfetch-investment-backend/docs/operations/INDIVIDUAL-KYC-BACKEND-INTEGRATION-STATUS.md:5: trailing whitespace.
+[32m+[m[32m**Changed-files comparison base:** GitHub `main` snapshot `47e4bbbd25ad2f2abcfdff16f4c8b75d5708dabe`[m[41m  [m
+starfetch-investment-backend/docs/operations/INDIVIDUAL-KYC-EMMANUEL-HANDOFF.md:3: trailing whitespace.
+[32m+[m[32m**Status:** safe backend integration implemented; not production-ready for real submission/document collection.[m[41m  [m
+starfetch-investment-backend/docs/operations/INDIVIDUAL-KYC-EMMANUEL-HANDOFF.md:4: trailing whitespace.
+[32m+[m[32m**GitHub main comparison snapshot:** `G305-dev/starfetch` default branch, commit `47e4bbbd25ad2f2abcfdff16f4c8b75d5708dabe` (retrieved from the public GitHub API; no checkout or push).[m[41m  [m
+starfetch-investment-backend/docs/operations/ME-KYC-COMPLETION-STATUS-REPORT.md:3: trailing whitespace.
+[32m+[m[32m**Repository:** `G305-dev/starfetch`[m[41m  [m
+starfetch-investment-backend/docs/operations/ME-KYC-COMPLETION-STATUS-REPORT.md:4: trailing whitespace.
+[32m+[m[32m**Scope:** backend only, `starfetch-investment-backend`[m[41m  [m
+starfetch-investment-backend/docs/operations/ME-KYC-COMPLETION-STATUS-REPORT.md:5: trailing whitespace.
+[32m+[m[32m**Endpoint:** existing authenticated `GET /api/v1/me`[m[41m  [m
+starfetch-investment-backend/docs/operations/ME-KYC-COMPLETION-STATUS-REPORT.md:6: trailing whitespace.
+[32m+[m[32m**Contract:** `docs/api/INVESTOR-ADMIN-MVP-v1.md` (`v1.1`)[m[41m  [m
+starfetch-investment-frontend/CHANGED_FILES.txt:4: leftover conflict marker
+starfetch-investment-frontend/CHANGED_FILES.txt:5: leftover conflict marker
+starfetch-investment-frontend/CHANGED_FILES.txt:9: leftover conflict marker
+starfetch-investment-frontend/CHANGED_FILES.txt:52: leftover conflict marker
+starfetch-investment-frontend/CHANGED_FILES.txt:86: leftover conflict marker
+starfetch-investment-frontend/CHANGED_FILES.txt:87: leftover conflict marker
+starfetch-investment-frontend/app/corporate/dashboard/page.tsx:12: leftover conflict marker
+starfetch-investment-frontend/app/corporate/dashboard/page.tsx:19: leftover conflict marker
+starfetch-investment-frontend/app/corporate/dashboard/page.tsx:21: leftover conflict marker
+starfetch-investment-frontend/package.json:42: leftover conflict marker
+starfetch-investment-frontend/package.json:45: leftover conflict marker
+starfetch-investment-frontend/package.json:47: leftover conflict marker
