@@ -54,3 +54,11 @@ MODIFIED:
 - components/corporate/CorporateTopbar.tsx (rewritten — dropdown)
 - scripts/corporate-post-login-routing-check.ts
 - package.json (adds test:corporate-dashboard)
+
+BATCH 6 — KYC popup separation, corporate-work (this delivery):
+ADDED:
+- components/corporate/CorporateKycPrompt.tsx
+- scripts/kyc-dashboard-prompt-check.ts
+- KYC_POPUP_SEPARATION_CHANGE_README.md
+MODIFIED:
+- app/corporate/dashboard/page.tsx
