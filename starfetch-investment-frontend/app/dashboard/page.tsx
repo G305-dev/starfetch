@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { RequireIndividualAuth } from "@/components/auth/RequireIndividualAuth";
 import { IndividualDashboardContent } from "@/components/portal/IndividualDashboardContent";
+import { IndividualKycPrompt } from "@/components/portal/IndividualKycPrompt";
 import { PortalHeader } from "@/components/portal/PortalHeader";
 import { PortalSidebar } from "@/components/portal/PortalSidebar";
 
@@ -10,5 +11,19 @@ export const metadata: Metadata = {
 };
 
 export default function DashboardPage() {
+  return (
+    <RequireIndividualAuth>
+      <IndividualKycPrompt />
+      <div className="min-h-screen bg-[#fffef9] text-star-900 lg:flex">
+        <PortalSidebar />
+        <div className="min-w-0 flex-1">
+          <PortalHeader />
+          <main className="mx-auto max-w-[1600px] px-5 py-7 sm:px-8 sm:py-8 lg:px-8 xl:px-10">
+            <IndividualDashboardContent />
+          </main>
+        </div>
+      </div>
+    </RequireIndividualAuth>
+  );
   return <RequireIndividualAuth><div className="min-h-screen bg-[#fffef9] text-star-900 lg:flex"><PortalSidebar /><div className="min-w-0 flex-1"><PortalHeader /><main className="mx-auto max-w-[1600px] px-5 py-7 sm:px-8 sm:py-8 lg:px-8 xl:px-10"><IndividualDashboardContent /></main></div></div></RequireIndividualAuth>;
 }
