@@ -1,7 +1,24 @@
-Starfetch About Us — Board section removal only
+Starfetch homepage and About navigation visual update
 
-This patch contains only the About Us Board-section removal and its regression check. Extract the files into the root of the existing starfetch-investment-frontend project, preserving their paths.
+What changed
+- Moved the slow rotating circular orbit decorations from the homepage value-proposition strip to the Company Credentials section immediately below it.
+- Removed the supporting subtext from the three value-proposition items while keeping their headings and static icons.
+- Removed the stale “Starfetch Board” link from the About navigation menu; the About page had already stopped rendering that section. The global Starfetch logo/home link is unchanged.
+- Added regression checks for the homepage layout and About navigation.
 
-The About page no longer imports or renders StarfetchBoard. The Board component and data are retained. No KYC prompt files, API client files, or backend files are included. This archive does not fix the separate Vercel KYC import error.
+Files
+- app/globals.css
+- components/ValueProposition.tsx
+- components/CompanyCredentials.tsx
+- components/Navbar.tsx
+- scripts/about-profile-cards-check.ts
+- scripts/homepage-value-proposition-check.ts
+- package.json
 
-Verified: npm run test:about-profile-cards
+Validation completed in the workspace
+- npm run test:homepage-value-proposition
+- npm run test:about-profile-cards
+- npm run typecheck
+- npm run build
+
+No changes were deployed to Vercel. Apply the included files to the matching paths in the frontend project, then deploy through the project's normal process when ready.

@@ -10,6 +10,7 @@ const peopleSection = read("components/about/PeopleSection.tsx");
 const board = read("components/about/StarfetchBoard.tsx");
 const team = read("components/about/Team.tsx");
 const about = read("app/about/page.tsx");
+const navbar = read("components/Navbar.tsx");
 
 assert(peopleSection.includes('import Image from "next/image"') && peopleSection.includes("lg:grid-cols-2") && !peopleSection.includes("xl:grid-cols-4"), "Profile cards must use Next Image and two equal desktop columns rather than the old four-column layout");
 assert(peopleSection.indexOf("<Image") < peopleSection.indexOf("<h3") && peopleSection.includes("person.biography") && peopleSection.includes("person.qualifications"), "A card must place the portrait before name/designation and render biography/qualifications");
@@ -36,6 +37,7 @@ assert(!team.includes("Name to be provided") && !team.includes("executive-placeh
 assert(peopleSection.includes("showBiographies && person.biography"), "The shared profile renderer must be able to suppress biography copy for an approved section without affecting Leadership biographies");
 assert(board.includes("Board of Directors") && board.includes("Sylvia Igwe-Okparaeke") && board.includes("Toluwani Adeseri") && board.includes("Co founder") && board.includes("showBiographies={false}") && !board.includes("biography"), "The separate Board section must include the two approved people and intentionally omit descriptions after their designation");
 assert(!about.includes("StarfetchBoard") && about.includes("<Team />"), "About Us must omit the Board section while retaining the Leadership team section");
+assert(!navbar.includes('label: "Starfetch Board"') && !navbar.includes("/about#starfetch-board"), "The About navigation must not retain a stale Starfetch Board link after the section was removed");
 
 for (const asset of [
   "sylvia-igwe-okparaeke.png", "toluwani-adeseri.png", "institution-page.png", "institution-united-capital.png", "institution-arm.png", "institution-ngx.png", "institution-kpmg.png", "institution-renaissance-capital.png", "institution-renmoney.png", "institution-accelerex.png", "institution-aipec.png", "institution-aca.png",
