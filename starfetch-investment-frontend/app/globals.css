@@ -85,8 +85,8 @@
   }
 }
 
-/* Slow, circular ornament for the homepage feature icons. The center stays still. */
-.feature-orbit-badge {
+/* Slow circular ornament moved to the credentials section below the value proposition. */
+.credential-orbit-badge {
   position: relative;
   isolation: isolate;
   display: grid;
@@ -96,19 +96,19 @@
   place-items: center;
 }
 
-.feature-orbit-decoration {
+.credential-orbit-decoration {
   position: absolute;
   inset: 0;
   z-index: 0;
   border: 1.5px solid #B9ED1D;
   border-radius: 9999px;
   transform-origin: center;
-  animation: feature-orbit-rotate 10s linear infinite;
+  animation: credential-orbit-rotate 10s linear infinite;
   will-change: transform;
 }
 
-.feature-orbit-decoration::before,
-.feature-orbit-decoration::after {
+.credential-orbit-decoration::before,
+.credential-orbit-decoration::after {
   position: absolute;
   display: block;
   width: 0.44rem;
@@ -118,17 +118,17 @@
   content: "";
 }
 
-.feature-orbit-decoration::before {
+.credential-orbit-decoration::before {
   top: -0.22rem;
   left: 22%;
 }
 
-.feature-orbit-decoration::after {
+.credential-orbit-decoration::after {
   right: 22%;
   bottom: -0.22rem;
 }
 
-.feature-orbit-center {
+.credential-orbit-center {
   position: relative;
   z-index: 1;
   display: grid;
@@ -140,7 +140,7 @@
   color: #003B2A;
 }
 
-@keyframes feature-orbit-rotate {
+@keyframes credential-orbit-rotate {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
@@ -152,18 +152,18 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .feature-orbit-decoration { animation: none; }
+  .credential-orbit-decoration { animation: none; }
 }
 
 @media (min-width: 640px) {
-  .feature-orbit-badge {
+  .credential-orbit-badge {
     width: 4.125rem;
     height: 4.125rem;
   }
 }
 
 @media (min-width: 1024px) {
-  .feature-orbit-badge {
+  .credential-orbit-badge {
     width: 4.5rem;
     height: 4.5rem;
   }

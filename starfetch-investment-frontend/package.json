@@ -30,6 +30,7 @@
     "test:individual-profile-source-of-funds": "node scripts/run-typescript-check.cjs scripts/individual-profile-source-of-funds-draft-check.ts",
     "test:individual-products-invest-now": "node scripts/run-typescript-check.cjs scripts/individual-products-invest-now-check.ts",
     "test:about-profile-cards": "node scripts/run-typescript-check.cjs scripts/about-profile-cards-check.ts",
+    "test:homepage-value-proposition": "node scripts/run-typescript-check.cjs scripts/homepage-value-proposition-check.ts",
     "test:market-widgets": "node scripts/run-typescript-check.cjs scripts/market-widgets-check.ts",
     "test:individual-kyc-api-contract": "node scripts/run-typescript-check.cjs scripts/individual-kyc-api-contract-check.ts",
     "test:individual-kyc-api-mapping": "node scripts/run-typescript-check.cjs scripts/individual-kyc-api-mapping-check.ts",
