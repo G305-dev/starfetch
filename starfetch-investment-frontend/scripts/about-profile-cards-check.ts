@@ -35,10 +35,10 @@ assert(team.includes("max-w-[920px]") && team.includes("h-[58px]") && team.inclu
 assert(!team.includes("Name to be provided") && !team.includes("executive-placeholder") && !board.includes("Name to be provided") && !board.includes("executive-placeholder"), "Board/Leadership sections must not create or retain placeholder people");
 assert(peopleSection.includes("showBiographies && person.biography"), "The shared profile renderer must be able to suppress biography copy for an approved section without affecting Leadership biographies");
 assert(board.includes("Board of Directors") && board.includes("Sylvia Igwe-Okparaeke") && board.includes("Toluwani Adeseri") && board.includes("Co founder") && board.includes("showBiographies={false}") && !board.includes("biography"), "The separate Board section must include the two approved people and intentionally omit descriptions after their designation");
-assert(about.includes("<StarfetchBoard />") && about.includes("<Team />"), "About Us must preserve both Board and Leadership sections");
+assert(!about.includes("StarfetchBoard") && about.includes("<Team />"), "About Us must omit the Board section while retaining the Leadership team section");
 
 for (const asset of [
   "sylvia-igwe-okparaeke.png", "toluwani-adeseri.png", "institution-page.png", "institution-united-capital.png", "institution-arm.png", "institution-ngx.png", "institution-kpmg.png", "institution-renaissance-capital.png", "institution-renmoney.png", "institution-accelerex.png", "institution-aipec.png", "institution-aca.png",
 ]) assert(existsSync(resolve(root, "public/images", asset)), `Approved supplied visual asset is missing: ${asset}`);
 
-console.log("PASS — About Us Board and Leadership cards use clean vertical two-column desktop structure, preserve supplied people/bios/credentials, retain distinct sections and institution marks, and remove placeholder personnel");
+console.log("PASS — About Us omits the Board section while retaining the Leadership team and its approved profile cards, supplied assets, and no-placeholder checks");
