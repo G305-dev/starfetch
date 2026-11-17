@@ -7,7 +7,7 @@
 
   html { scroll-behavior: smooth; }
 
-  body { @apply min-w-0 overflow-x-hidden bg-[#fffef9] font-body text-base text-star-ink antialiased; }
+  body { @apply min-w-0 overflow-x-hidden bg-[#fffef9] font-body text-base text-star-ink antialiased; overflow-x: clip; }
 
   ::selection { @apply bg-star-lime text-star-900; }
 
