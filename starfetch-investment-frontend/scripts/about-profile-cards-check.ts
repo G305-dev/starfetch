@@ -14,16 +14,17 @@ const navbar = read("components/Navbar.tsx");
 
 assert(peopleSection.includes('import Image from "next/image"') && peopleSection.includes("lg:grid-cols-2") && !peopleSection.includes("xl:grid-cols-4"), "Profile cards must use Next Image and two equal desktop columns rather than the old four-column layout");
 assert(peopleSection.indexOf("<Image") < peopleSection.indexOf("<h3") && peopleSection.includes("person.biography") && peopleSection.includes("person.qualifications"), "A card must place the portrait before name/designation and render biography/qualifications");
+assert(peopleSection.indexOf("{person.name}") < peopleSection.indexOf("{person.role}"), "Leadership designations must display directly below each name");
 assert(peopleSection.includes("grid gap-5 lg:grid-cols-2") && peopleSection.includes("aspect-square") && peopleSection.includes("rounded-xl border border-star-200 bg-white"), "The vertical cards must retain responsive single-column mobile behaviour and the new white/bordered visual treatment");
 
 for (const required of [
   "Sylvia Igwe-Okparaeke",
-  "Key Management — Legal, Governance, Risk & Compliance",
+  "Managing Director Designate*",
   "A senior executive who sits at the intersection of investment strategy and regulatory discipline.",
   "LLB",
   "ACIArb (UK)",
   "Toluwani Adeseri",
-  "Key Management — Investments, Strategy & Finance",
+  "Executive Director Designate*",
   "A strategic finance and investment leader who has built his career where capital markets meet balance-sheet discipline.",
   "CFA Charterholder",
   "Led by industry",
@@ -33,6 +34,11 @@ for (const required of [
 ]) assert(team.includes(required), `Approved Leadership content is missing: ${required}`);
 
 assert(team.includes("max-w-[920px]") && team.includes("h-[58px]") && team.includes("max-w-[125px]") && !team.includes("The management team is supported by an experienced and professional advisory board."), "Institution tiles must use the smaller clear logo treatment and omit the removed supporting text");
+assert(
+  team.includes("* These positions are pending SEC approval which is currently in progress.")
+    && team.indexOf("* These positions are pending SEC approval which is currently in progress.") > team.indexOf("institutions.map"),
+  "The SEC approval footnote must appear after the career institution logos",
+);
 assert(!team.includes("Name to be provided") && !team.includes("executive-placeholder") && !board.includes("Name to be provided") && !board.includes("executive-placeholder"), "Board/Leadership sections must not create or retain placeholder people");
 assert(peopleSection.includes("showBiographies && person.biography"), "The shared profile renderer must be able to suppress biography copy for an approved section without affecting Leadership biographies");
 assert(board.includes("Board of Directors") && board.includes("Sylvia Igwe-Okparaeke") && board.includes("Toluwani Adeseri") && board.includes("Co founder") && board.includes("showBiographies={false}") && !board.includes("biography"), "The separate Board section must include the two approved people and intentionally omit descriptions after their designation");
