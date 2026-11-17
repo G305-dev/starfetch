@@ -1,9 +1,25 @@
-Frontend source and tests
-- components/auth/SignInForm.tsx
-- scripts/corporate-applicant-registration-check.ts
-- scripts/corporate-post-login-routing-check.ts
-- scripts/general-corporate-login-check.ts (new)
-- package.json
+Frontend Updates — Changed / Added Files (frontend only)
 
-Delivery document
-- Starfetch_General_Business_Corporate_Login_Completion_Report.md
+BATCH 1 — Individual KYC popup (previous delivery):
+ADDED:
+- lib/individual-kyc-prompt.ts
+- components/portal/IndividualKycPrompt.tsx
+- scripts/individual-kyc-prompt-check.ts
+- INDIVIDUAL_KYC_PROMPT_CHANGE_README.md
+MODIFIED:
+- app/dashboard/page.tsx
+- package.json (adds test:individual-kyc-prompt)
+
+BATCH 2 — Homepage + About fixes (this delivery):
+MODIFIED:
+- components/ValueProposition.tsx (aligned dividers)
+- components/CompanyCredentials.tsx (aligned dividers)
+- components/MarketOverview.tsx (5-row subset, no search, no NGX link)
+- components/about/Team.tsx (removed Designate* + footnote)
+- scripts/homepage-value-proposition-check.ts
+- scripts/market-widgets-check.ts
+- scripts/about-profile-cards-check.ts
+ADDED:
+- HOMEPAGE_FIXES_CHANGE_README.md
+
+No backend files changed.

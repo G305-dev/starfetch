@@ -49,5 +49,19 @@ assert(
   home.indexOf("<ValueProposition />") < home.indexOf("<Reveal><CompanyCredentials /></Reveal>"),
   "Company Credentials must remain the section immediately following the homepage value proposition",
 );
+assert(
+  valueProposition.includes("max-w-[1100px]") && credentials.includes("max-w-[1100px]"),
+  "Value proposition and credentials must share the same container width so their dividers align",
+);
+assert(
+  valueProposition.includes("px-5") && valueProposition.includes("lg:px-7")
+    && credentials.includes("px-5") && credentials.includes("lg:px-7"),
+  "Value proposition and credentials must share the same horizontal padding so their dividers align",
+);
+assert(
+  valueProposition.includes("sm:px-7") && valueProposition.includes("first:sm:pl-0")
+    && credentials.includes("sm:px-7") && credentials.includes("first:sm:pl-0"),
+  "Value proposition and credentials cells must share the same padding so their dividers align",
+);
 
 console.log("PASS — value-proposition subtext is removed and circular motion is assigned to the credentials section below");
