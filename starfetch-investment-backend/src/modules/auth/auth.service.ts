@@ -67,10 +67,11 @@ export class AuthService {
   ) {}
 
   /**
-   * Investor registration — atomic User + InvestorProfile + verification
-   * challenge creation. NEVER issues a session or credentials, NEVER marks
-   * the email verified. Public registration hard-codes role=INVESTOR; there is
-   * no public STAFF/ADMIN self-registration surface.
+   * Applicant registration — atomically creates the INVESTOR-role auth user,
+   * optional Individual InvestorProfile, and email-verification challenge.
+   * CORPORATE is only onboarding intent and never a caller-controlled role.
+   * Registration NEVER issues a session or marks email verified; STAFF/ADMIN
+   * self-registration remains impossible.
    */
   async register(dto: RegisterDto): Promise<RegisterResult> {
     const email = dto.email.trim();
@@ -83,9 +84,20 @@ export class AuthService {
         const user = await tx.user.create({
           data: { email, normalizedEmail, passwordHash, role: UserRole.INVESTOR },
         });
-        await tx.investorProfile.create({
-          data: { userId: user.id, firstName: dto.firstName.trim(), lastName: dto.lastName.trim() },
-        });
+        if ((dto.registrationType ?? 'INDIVIDUAL') === 'INDIVIDUAL') {
+          // The DTO requires these fields for the backwards-compatible default
+          // Individual flow. Corporate auth users intentionally have no
+          // InvestorProfile and acquire Corporate ownership only via O2.
+          if (!dto.firstName || !dto.lastName) {
+            throw new HttpException(
+              { code: ERROR_CODES.VALIDATION_FAILED, message: 'First and last name are required for Individual registration.' },
+              HttpStatus.BAD_REQUEST,
+            );
+          }
+          await tx.investorProfile.create({
+            data: { userId: user.id, firstName: dto.firstName.trim(), lastName: dto.lastName.trim() },
+          });
+        }
         const challenge = await this.verification.createChallenge(tx, user.id);
         return { user, challenge };
       });
@@ -106,7 +118,7 @@ export class AuthService {
     // Post-commit delivery: account persists even if mail transport fails
     // (the client can use the resend endpoint).
     await this.verification.sendCode(outcome.user.email, outcome.challenge);
-    this.logger.log(`Registered investor ${outcome.user.id} (${maskEmail(email)}).`);
+    this.logger.log(`Registered ${dto.registrationType === 'CORPORATE' ? 'corporate applicant' : 'individual investor'} ${outcome.user.id} (${maskEmail(email)}).`);
 
     return {
       data: {
@@ -212,6 +224,8 @@ export class AuthService {
   safeUser(user: User & { investorProfile?: InvestorProfile | null }): SafeUser {
     return {
       id: user.id,
+      // Corporate applicant accounts intentionally have no InvestorProfile;
+      // keep the shared auth response shape stable with empty display names.
       firstName: user.investorProfile?.firstName ?? '',
       lastName: user.investorProfile?.lastName ?? '',
       email: user.email,
