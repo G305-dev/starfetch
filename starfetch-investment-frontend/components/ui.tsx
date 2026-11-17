@@ -1,9 +1,10 @@
 import Image from "next/image";
+import Link from "next/link";
 import type { AnchorHTMLAttributes, ReactNode } from "react";
 
 export function Logo({ light = false, href = "#home" }: { light?: boolean; href?: string }) {
   return (
-    <a href={href} className="group inline-flex shrink-0 items-center gap-2" aria-label="Starfetch Investment Limited home">
+    <Link href={href} className="group inline-flex shrink-0 items-center gap-2" aria-label="Starfetch Investment Limited home">
       <Image
         src="/images/logo-icon.svg"
         alt=""
@@ -16,11 +17,12 @@ export function Logo({ light = false, href = "#home" }: { light?: boolean; href?
         STARFETCH
         <span className={`mt-0.5 block text-[0.42rem] font-bold tracking-[0.13em] ${light ? "text-star-100" : "text-star-700"}`}>INVESTMENT LIMITED</span>
       </span>
-    </a>
+    </Link>
   );
 }
 
 type ButtonProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
+  href: string;
   children: ReactNode;
   variant?: "lime" | "outline" | "outlineLight" | "light" | "dark";
   className?: string;
@@ -36,9 +38,9 @@ export function Button({ children, variant = "lime", className = "", ...props }:
   };
 
   return (
-    <a {...props} className={`inline-flex items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-bold no-underline transition duration-200 ease-out hover:-translate-y-px hover:shadow-[0_5px_14px_rgba(0,59,42,0.16)] active:translate-y-0 active:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${variants[variant]} ${className}`}>
+    <Link {...props} className={`inline-flex items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-bold no-underline transition duration-200 ease-out hover:-translate-y-px hover:shadow-[0_5px_14px_rgba(0,59,42,0.16)] active:translate-y-0 active:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${variants[variant]} ${className}`}>
       {children}
-    </a>
+    </Link>
   );
 }
 

@@ -6,6 +6,8 @@ import {
   ApiError,
   clearAccessToken,
   getCurrentUser,
+  hasAccessToken,
+  isApiError,
   type AuthUser,
   loginInvestor,
   logoutSession,
@@ -14,7 +16,7 @@ import {
   setSessionExpiredListener,
 } from "@/lib/api/client";
 
-type AuthStatus = "loading" | "authenticated" | "unauthenticated";
+type AuthStatus = "loading" | "authenticated" | "unauthenticated" | "error";
 
 type AuthContextValue = {
   status: AuthStatus;
@@ -36,6 +38,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
   const operationRef = useRef(0);
+  const statusRef = useRef<AuthStatus>("loading");
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   const commitUnauthenticated = useCallback(() => {
     clearAccessToken();
@@ -51,8 +58,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshSession = useCallback(async () => {
     const operation = operationRef.current + 1;
     operationRef.current = operation;
-    setUser(null);
-    setStatus("loading");
+    const wasAuthenticated = statusRef.current === "authenticated";
+    // Keep the current session visible during a background re-refresh so a
+    // transient failure cannot flash protected UI away or log the user out.
+    if (!wasAuthenticated) {
+      setUser(null);
+      setStatus("loading");
+    }
 
     try {
       await refreshAccessToken();
@@ -60,9 +72,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (operation !== operationRef.current) return;
       setUser(currentUser);
       setStatus("authenticated");
-    } catch {
+    } catch (error) {
       if (operation !== operationRef.current) return;
-      commitUnauthenticated();
+      // Only a backend-confirmed UNAUTHENTICATED ends the session. Network
+      // errors, 5xx and rate limits are not proof of logout.
+      if (isApiError(error) && error.code === "UNAUTHENTICATED") {
+        commitUnauthenticated();
+        return;
+      }
+      if (wasAuthenticated && hasAccessToken()) {
+        setStatus("authenticated");
+        return;
+      }
+      // Initial restore failed transiently: surface a retryable error
+      // instead of redirecting to login.
+      setUser(null);
+      setStatus("error");
     }
   }, [commitUnauthenticated]);
 

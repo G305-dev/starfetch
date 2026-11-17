@@ -62,3 +62,17 @@ ADDED:
 - KYC_POPUP_SEPARATION_CHANGE_README.md
 MODIFIED:
 - app/corporate/dashboard/page.tsx
+
+BATCH 7 — Corporate navigation login-redirect fix (this delivery):
+MODIFIED:
+- components/corporate/CorporateSidebar.tsx (next/link)
+- components/corporate/CorporateQuickActions.tsx (next/link)
+- components/ui.tsx (Logo + Button use next/link)
+- components/auth/AuthProvider.tsx (error status, transient-safe restore)
+- components/auth/RequireIndividualAuth.tsx (retry screen, redirect only on confirmed unauthenticated)
+- lib/auth/joint-registration-entry.ts (error status waits)
+ADDED:
+- scripts/corporate-navigation-check.ts
+- CORPORATE_NAVIGATION_FIX_README.md
+MODIFIED:
+- package.json (adds test:corporate-navigation)

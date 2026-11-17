@@ -1,6 +1,7 @@
 "use client";
 
 import { Menu, X } from "lucide-react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Logo } from "@/components/ui";
@@ -13,7 +14,7 @@ function CorporateNavigation({ onNavigate }: { onNavigate?: () => void }) {
       {corporateSidebarNavigation.map(({ label, href, icon: Icon }) => {
         const routePath = href.split("#")[0];
         const active = !href.includes("#") && pathname === routePath;
-        return <a key={label} href={href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={`relative flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold no-underline transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-lime focus-visible:ring-offset-2 focus-visible:ring-offset-star-900 ${active ? "bg-white/10 text-white" : "text-white/80 hover:bg-white/10 hover:text-white"}`}><span className={`absolute bottom-1 left-0 top-1 w-1 rounded-r-full ${active ? "bg-star-lime" : "bg-transparent"}`} aria-hidden="true" /><Icon size={20} strokeWidth={1.9} aria-hidden="true" /><span>{label}</span></a>;
+        return <Link key={label} href={href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={`relative flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold no-underline transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-lime focus-visible:ring-offset-2 focus-visible:ring-offset-star-900 ${active ? "bg-white/10 text-white" : "text-white/80 hover:bg-white/10 hover:text-white"}`}><span className={`absolute bottom-1 left-0 top-1 w-1 rounded-r-full ${active ? "bg-star-lime" : "bg-transparent"}`} aria-hidden="true" /><Icon size={20} strokeWidth={1.9} aria-hidden="true" /><span>{label}</span></Link>;
       })}
     </nav>
   );
