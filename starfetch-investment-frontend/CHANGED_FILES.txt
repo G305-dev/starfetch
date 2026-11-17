@@ -26,3 +26,10 @@ ADDED:
 - HOMEPAGE_FIXES_CHANGE_README.md
 
 No backend files changed.
+
+BATCH 3 — Institution logos (this delivery):
+REPLACED (same filenames, new artwork):
+- public/images/institution-united-capital.png
+- public/images/institution-renaissance-capital.png
+MODIFIED:
+- HOMEPAGE_FIXES_CHANGE_README.md (documents batch 3)
