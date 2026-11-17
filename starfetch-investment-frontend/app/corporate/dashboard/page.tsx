@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { KycCompletionPrompt } from "@/components/auth/KycCompletionPrompt";
 import { CorporateDashboardContent } from "@/components/corporate/CorporateDashboardContent";
 import { CorporatePortalLayout } from "@/components/corporate/CorporatePortalLayout";
 
@@ -9,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function CorporateDashboardPage() {
-  return <CorporatePortalLayout sectionLabel="Overview"><CorporateDashboardContent /><KycCompletionPrompt accountType="corporate" /></CorporatePortalLayout>;
+  return <CorporatePortalLayout sectionLabel="Overview"><CorporateDashboardContent /></CorporatePortalLayout>;
 }
