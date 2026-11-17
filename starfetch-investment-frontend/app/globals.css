@@ -168,3 +168,38 @@
     height: 4.5rem;
   }
 }
+
+/* Continuous NGX market strip; the feed values are supplied by the backend. */
+.ngx-market-slider-viewport {
+  overflow: hidden;
+}
+
+.ngx-market-slider-track {
+  display: flex;
+  width: max-content;
+  animation: ngx-market-slider-scroll 52s linear infinite;
+}
+
+.ngx-market-slider-group {
+  display: flex;
+  flex-shrink: 0;
+  width: max-content;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ngx-market-strip:hover .ngx-market-slider-track {
+  animation-play-state: paused;
+}
+
+@keyframes ngx-market-slider-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ngx-market-slider-track {
+    animation: none;
+  }
+}

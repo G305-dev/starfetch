@@ -1,28 +1,37 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { AuthUser } from "../lib/api/client";
+import type { NgxEquityListing } from "../components/ngx-market-directory";
 
-// Keeps this standalone source check on the same project-root compilation path as the other checks.
-type _AuthUserContract = AuthUser;
-
+type _NgxListingContract = NgxEquityListing;
 const root = process.cwd();
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-const embed = read("components/TradingViewWidget.tsx");
-const ticker = read("components/MarketTicker.tsx");
+const home = read("app/page.tsx");
+const ticker = read("components/NgxMarketTicker.tsx");
 const overview = read("components/MarketOverview.tsx");
+const directory = read("components/ngx-market-directory.ts");
 const footer = read("components/Footer.tsx");
-const siteData = read("components/site-data.ts");
+const styles = read("app/globals.css");
+const entryLines = directory.split("\n").filter((line) => line.includes("{ symbol:"));
 
-assert(embed.includes("useEffect") && embed.includes("container.replaceChildren()") && embed.includes("script.async = true") && embed.includes("script.textContent = configurationJson"), "TradingView embeds must mount their official script once after hydration and clean up on unmount");
-assert(ticker.includes("embed-widget-ticker-tape.js") && ticker.includes("displayMode: \"adaptive\"") && ticker.includes("FOREXCOM:SPXUSD") && ticker.includes("FOREXCOM:NSXUSD") && ticker.includes("FOREXCOM:DJI") && ticker.includes("FX:EURUSD") && ticker.includes("TVC:GOLD") && ticker.includes("BITSTAMP:BTCUSD") && ticker.includes("BITSTAMP:ETHUSD"), "Ticker Tape must use official TradingView-supported global instruments");
-assert(!ticker.includes("marketTickerItems") && !ticker.includes("animate-"), "Ticker values and movement must come from TradingView, not local placeholders or manual animation");
-assert(overview.includes("embed-widget-market-overview.js") && overview.includes("Supported global markets") && overview.includes("does not currently include Nigerian Exchange (NGX) equities") && !overview.includes("marketEquities") && !overview.includes("<table"), "Market overview must replace the NGX placeholder table with clearly labelled supported global data");
-assert(overview.includes("Official source integration pending") && overview.includes("Official CBN source integration pending"), "Market Pulse must retain pending official-data states rather than map policy indicators to TradingView prices");
-assert(!siteData.includes("marketTickerItems") && !siteData.includes("marketEquities"), "Replaced market placeholders must not remain in shared site data");
-assert(footer.includes("supplied through TradingView widgets") && footer.includes("Nigerian Exchange (NGX) prices are not displayed") && !footer.includes("licensed redistributor of Nigerian Exchange data"), "Footer market-data notice must describe the actual widget provider and avoid an unverified NGX claim");
+assert(!home.includes("FixedNoteRatesPopup"), "The Starfetch Fixed Note rates popup must not render on the landing page");
+const navbarPosition = home.indexOf("<Navbar />");
+const tickerPosition = home.indexOf("<NgxMarketTicker");
+const heroPosition = home.indexOf("<HeroSection />");
+assert(navbarPosition >= 0 && tickerPosition > navbarPosition && heroPosition > tickerPosition, "The NGX slider must sit below the navbar and above the hero");
+assert(!home.includes("@/components/MarketTicker") && !ticker.includes("TradingViewWidget") && !ticker.includes("tradingview.com") && !overview.includes("TradingViewWidget") && !overview.includes("tradingview.com"), "Landing-page market panels must use NGX values rather than TradingView embeds");
+assert(ticker.includes("markets = featuredNgxEquities") && ticker.includes("lastPriceNgn") && ticker.includes("dailyChangePercent") && ticker.includes("Quote pending"), "The navbar slider must be ready for backend-provided NGX quotes without inventing values");
+assert(styles.includes("@keyframes ngx-market-slider-scroll") && styles.includes("ngx-market-strip:hover") && styles.includes(".ngx-market-slider-track {\n    animation: none;"), "The NGX slider must move, pause on hover, and respect reduced-motion preferences");
+assert(overview.includes("featuredNgxEquities") && overview.includes("Search NGX equities") && overview.includes("lastPriceNgn") && overview.includes("dailyChangePercent"), "The market panel must render and search NGX equities with fields ready for backend quotes");
+assert(entryLines.length >= 10 && entryLines.every((line) => line.includes("lastPriceNgn: null") && line.includes("dailyChangePercent: null")), "The starter directory must contain selected NGX listings without fabricated quote values");
+for (const symbol of ["ACCESSCORP", "DANGCEM", "GTCO", "MTNN", "SEPLAT", "ZENITHBANK"]) {
+  assert(directory.includes(`symbol: "${symbol}"`), `Expected NGX listing ${symbol} in the starter directory`);
+}
+assert(overview.includes("authorized NGX data source") && overview.includes("backend"), "The market panel must clearly explain that live quotes await the backend data connection");
+assert(overview.includes("Market Pulse") && overview.includes("Official source integration pending") && overview.includes("Official CBN source integration pending"), "The Market Pulse card must remain visible and its unintegrated indicators must stay clearly pending");
+assert(footer.includes("starter directory of selected Nigerian Exchange (NGX)-listed equities") && footer.includes("authorized NGX market-data feed") && !footer.includes("TradingView"), "The footer notice must match the NGX directory and pending quote integration");
 
-console.log("PASS — official TradingView ticker/market widgets replace local market placeholders, avoid unsupported NGX claims, and preserve pending policy indicators");
+console.log("PASS — landing page keeps the Fixed Note popup removed, restores the moving NGX navbar slider and Market Pulse card, and leaves quotes blank for backend integration");
