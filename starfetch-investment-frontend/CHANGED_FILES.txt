@@ -1,9 +1,13 @@
-Frontend source and tests
-- components/auth/SignInForm.tsx
-- scripts/corporate-applicant-registration-check.ts
-- scripts/corporate-post-login-routing-check.ts
-- scripts/general-corporate-login-check.ts (new)
-- package.json
+Individual KYC Prompt — Changed / Added Files (frontend only)
 
-Delivery document
-- Starfetch_General_Business_Corporate_Login_Completion_Report.md
+ADDED:
+- lib/individual-kyc-prompt.ts
+- components/portal/IndividualKycPrompt.tsx
+- scripts/individual-kyc-prompt-check.ts
+- INDIVIDUAL_KYC_PROMPT_CHANGE_README.md
+
+MODIFIED:
+- app/dashboard/page.tsx
+- package.json (adds test:individual-kyc-prompt)
+
+No backend files changed.
