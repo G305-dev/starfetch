@@ -6,8 +6,9 @@ This is a frontend-only update based on the requested landing-page changes.
 
 - Removed the Starfetch Fixed Note rates popup from the landing page. The hero carousel and other product content remain unchanged.
 - Removed the TradingView ticker strip and market-overview embed from the landing page.
+- Restored the moving strip directly below the navbar as an NGX market slider, using the same NGX listing model as the directory. It shows ticker symbols, company names, and pending quote placeholders until the backend supplies data. It pauses on hover and respects reduced-motion settings.
 - Replaced the global-market panel with a searchable directory of 14 selected NGX-listed equities, showing company names and ticker symbols.
-- Added `MarketOverview`'s `markets` prop and a small display type so a backend-provided list can be passed in when the API is ready.
+- Added a shared `markets` prop and display type so the backend engineer can pass the same NGX data to both the navbar slider and the directory.
 - Restored the **Market Pulse** card for headline inflation, Monetary Policy Rate, and Cash Reserve Ratio; all remain clearly marked pending official-source integration.
 - Left NGX quote values blank (`null` rendered as an em dash). No prices, index values, percentage moves, volume, live feed, or backend route were invented.
 - Updated the footer market-data notice to say that live figures await an authorized NGX feed through the backend.
@@ -16,7 +17,7 @@ The directory is a **selected starter list**, not a complete/current official un
 
 ## Backend handoff
 
-The backend engineer can pass NGX rows to `MarketOverview` using the `NgxEquityListing` display shape: `symbol`, `companyName`, `lastPriceNgn`, and `dailyChangePercent`. Quote fields may remain `null` while unavailable. Adapt the backend's real response in the backend/client integration; this package adds no API route and makes no live-data request.
+The backend engineer can pass NGX rows to both `NgxMarketTicker` and `MarketOverview` using the `NgxEquityListing` display shape: `symbol`, `companyName`, `lastPriceNgn`, and `dailyChangePercent`. The landing page currently passes the shared frontend starter list to both. Quote fields may remain `null` while unavailable. Adapt the backend's real response in the backend/client integration; this package adds no API route and makes no live-data request.
 
 NGX's official market-data page describes authorized vendors and states that market-data redistribution requires the appropriate license. Confirm the authorized source and redistribution permissions before displaying live prices:
 
@@ -37,8 +38,10 @@ Passed in the workspace:
 ## Files in the patch
 
 - `app/page.tsx`
+- `app/globals.css`
 - `components/Footer.tsx`
 - `components/MarketOverview.tsx`
+- `components/NgxMarketTicker.tsx`
 - `components/ngx-market-directory.ts`
 - `scripts/market-widgets-check.ts`
 - `REMOVED_FILES.txt` — identifies the two unused TradingView-only components removed from the source tree
