@@ -1,5 +1,4 @@
 import { Navbar } from "@/components/Navbar";
-import { MarketTicker } from "@/components/MarketTicker";
 import { HeroSection } from "@/components/HeroSection";
 import { ValueProposition } from "@/components/ValueProposition";
 import { CompanyCredentials } from "@/components/CompanyCredentials";
@@ -14,14 +13,12 @@ import { FAQSection } from "@/components/FAQSection";
 import { CTASection } from "@/components/CTASection";
 import { Footer } from "@/components/Footer";
 import { Reveal } from "@/components/Reveal";
-import { FixedNoteRatesPopup } from "@/components/FixedNoteRatesPopup";
 
 export default function Home() {
   return (
     <>
       <Navbar />
       <main>
-        <MarketTicker />
         <HeroSection />
         <ValueProposition />
         <Reveal><CompanyCredentials /></Reveal>
@@ -36,7 +33,6 @@ export default function Home() {
         <Reveal><CTASection /></Reveal>
       </main>
       <Footer />
-      <FixedNoteRatesPopup />
     </>
   );
 }
