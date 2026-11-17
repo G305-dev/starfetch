@@ -4,7 +4,7 @@ import { CorporateProductsContent } from "@/components/corporate/CorporateProduc
 
 export const metadata: Metadata = {
   title: "Products | Starfetch Corporate Portal",
-  description: "Review Corporate product-access availability.",
+  description: "Explore Starfetch investment products in the Corporate Portal.",
 };
 
 export default function CorporateProductsPage() {
