@@ -1,7 +1,13 @@
-Starfetch About Us — Board section removal only
+Starfetch — Individual Profile Original Layout Restore
 
-This patch contains only the About Us Board-section removal and its regression check. Extract the files into the root of the existing starfetch-investment-frontend project, preserving their paths.
+Apply
+Copy components/portal/IndividualProfileContent.tsx from this archive over the same path in the frontend project.
 
-The About page no longer imports or renders StarfetchBoard. The Board component and data are retained. No KYC prompt files, API client files, or backend files are included. This archive does not fix the separate Vercel KYC import error.
+What is included
+- Restores the original horizontal section progress and form-first profile layout.
+- Keeps main's existing Individual KYC status, personal-save, and secure-upload integrations.
+- Leaves out the obsolete Additional onboarding notice and standalone Documents placeholder.
+- Contains no backend changes. The existing API client and matching structured PEP component from main are required.
 
-Verified: npm run test:about-profile-cards
+Validation
+The TSX syntax was checked and no merge-conflict markers remain. A full build was not run against this workspace because main's KYC API exports are not present here.

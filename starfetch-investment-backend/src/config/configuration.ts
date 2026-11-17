@@ -1,3 +1,5 @@
+import { INDIVIDUAL_KYC_DOCUMENT_RETENTION_DAYS } from './document-retention-policy';
+
 export default () => {
   const nodeEnv = process.env.NODE_ENV ?? 'development';
   const productionLike = nodeEnv === 'production' || nodeEnv === 'staging';
@@ -5,6 +7,10 @@ export default () => {
   return {
     nodeEnv,
     productionLike,
+    platform: {
+      isVercel: process.env.VERCEL === '1',
+      vercelEnvironment: process.env.VERCEL_ENV,
+    },
     port: parseInt(process.env.PORT ?? '4000', 10),
     api: {
       prefix: process.env.API_PREFIX ?? 'api/v1',
@@ -51,6 +57,86 @@ export default () => {
     },
     // Phase 3B joint invitations (DEV defaults — pending business approval;
     // hard failure for invalid/critical values happens in env.validation).
+    // Purpose-isolated fingerprint key for the internal non-TIN draft
+    // bootstrap only. Never reuse auth HMAC secrets. Public O2/TIN fingerprint
+    // handling has a separate unresolved approval gate and is not configured.
+    corporate: {
+      nonTinDraftFingerprintHmacSecret: process.env.CORPORATE_DRAFT_BOOTSTRAP_FINGERPRINT_HMAC_SECRET,
+      o2: {
+        enabled: process.env.CORPORATE_O2_ENABLED === 'true',
+        lawfulBasisApproved: process.env.CORPORATE_O2_LAWFUL_BASIS_APPROVED === 'true',
+        privacyNoticeApproved: process.env.CORPORATE_O2_PRIVACY_NOTICE_APPROVED === 'true',
+        retentionApproved: process.env.CORPORATE_O2_RETENTION_APPROVED === 'true',
+        kmsKeyId: process.env.CORPORATE_O2_KMS_KEY_ID,
+        kmsKeyVersion: process.env.CORPORATE_O2_KMS_KEY_VERSION,
+        awsRoleArn: process.env.AWS_ROLE_ARN,
+        awsRegion: process.env.AWS_REGION,
+        hmacActiveVersion: process.env.CORPORATE_O2_HMAC_ACTIVE_KEY_VERSION,
+        hmacKeysJson: process.env.CORPORATE_O2_HMAC_KEYS_JSON,
+        rateLimitRedisRestUrl: process.env.CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL,
+        rateLimitRedisRestToken: process.env.CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN,
+        rateLimitHmacSecret: process.env.CORPORATE_O2_RATE_LIMIT_HMAC_SECRET,
+      },
+      mono: {
+        enabled: process.env.MONO_PROVE_ENABLED === 'true',
+        environment: process.env.MONO_PROVE_ENVIRONMENT ?? 'sandbox',
+        secretKey: process.env.MONO_SEC_KEY,
+        webhookSecret: process.env.MONO_WEBHOOK_SECRET,
+        redirectUrl: process.env.MONO_PROVE_REDIRECT_URL,
+        consentTextVersion: process.env.MONO_PROVE_CONSENT_TEXT_VERSION,
+        consentTextSha256: process.env.MONO_PROVE_CONSENT_TEXT_SHA256,
+        privacyNoticeVersion: process.env.MONO_PROVE_PRIVACY_NOTICE_VERSION,
+        lawfulBasisVersion: process.env.MONO_PROVE_LAWFUL_BASIS_VERSION,
+        lawfulBasisApproved: process.env.MONO_PROVE_LAWFUL_BASIS_APPROVED === 'true',
+        privacyNoticeApproved: process.env.MONO_PROVE_PRIVACY_NOTICE_APPROVED === 'true',
+        consentTextApproved: process.env.MONO_PROVE_CONSENT_TEXT_APPROVED === 'true',
+      },
+      monoLookup: {
+        enabled: process.env.MONO_LOOKUP_ENABLED === 'true',
+        environment: process.env.MONO_LOOKUP_ENVIRONMENT,
+        secretKey: process.env.MONO_LOOKUP_SEC_KEY,
+        consentTextApproved: process.env.MONO_LOOKUP_CONSENT_TEXT_APPROVED === 'true',
+        consentTextVersion: process.env.MONO_LOOKUP_CONSENT_TEXT_VERSION,
+        consentTextSha256: process.env.MONO_LOOKUP_CONSENT_TEXT_SHA256,
+        privacyNoticeVersion: process.env.MONO_LOOKUP_PRIVACY_NOTICE_VERSION,
+        lawfulBasisVersion: process.env.MONO_LOOKUP_LAWFUL_BASIS_VERSION,
+        lawfulBasisApproved: process.env.MONO_LOOKUP_LAWFUL_BASIS_APPROVED === 'true',
+        privacyNoticeApproved: process.env.MONO_LOOKUP_PRIVACY_NOTICE_APPROVED === 'true',
+      },
+    },
+    individualKyc: {
+      // Separate KMS key domain; never fall back to the Corporate O2 TIN key.
+      kmsKeyId: process.env.INDIVIDUAL_KYC_KMS_KEY_ID,
+      kmsKeyVersion: process.env.INDIVIDUAL_KYC_KMS_KEY_VERSION,
+      dataResidencyApproved: process.env.INDIVIDUAL_KYC_DATA_RESIDENCY_APPROVED === 'true',
+      awsRoleArn: process.env.AWS_ROLE_ARN,
+      documentUploadEnabled: process.env.INDIVIDUAL_KYC_DOCUMENT_UPLOAD_ENABLED === 'true',
+      scannerWorkerEnabled: false, // malware scanning is deferred and cannot be enabled via environment flags
+      workerHmacKey: process.env.INDIVIDUAL_KYC_WORKER_HMAC_KEY,
+      s3: {
+        enabled: process.env.INDIVIDUAL_KYC_S3_STORAGE_ENABLED === 'true',
+        endpoint: process.env.INDIVIDUAL_KYC_S3_ENDPOINT,
+        bucket: process.env.INDIVIDUAL_KYC_S3_BUCKET,
+        region: process.env.INDIVIDUAL_KYC_S3_REGION,
+        credentialReference: process.env.INDIVIDUAL_KYC_S3_CREDENTIAL_REFERENCE,
+        forcePathStyle: (process.env.INDIVIDUAL_KYC_S3_FORCE_PATH_STYLE ?? 'true') === 'true',
+        storageResidencyApproved: process.env.INDIVIDUAL_KYC_STORAGE_RESIDENCY_APPROVED === 'true',
+        privateBucketApproved: process.env.INDIVIDUAL_KYC_STORAGE_PRIVATE_BUCKET_APPROVED === 'true',
+        tlsPolicyApproved: process.env.INDIVIDUAL_KYC_STORAGE_TLS_POLICY_APPROVED === 'true',
+        retentionApproved: process.env.INDIVIDUAL_KYC_STORAGE_RETENTION_APPROVED === 'true',
+        retentionDays: INDIVIDUAL_KYC_DOCUMENT_RETENTION_DAYS,
+      },
+      scanner: {
+        residencyApproved: process.env.INDIVIDUAL_KYC_SCANNER_RESIDENCY_APPROVED === 'true',
+        approvalReference: process.env.INDIVIDUAL_KYC_SCANNER_APPROVAL_REFERENCE,
+      },
+    },
+    verification: {
+      operationHmacActiveVersion: process.env.VERIFICATION_OPERATION_HMAC_ACTIVE_KEY_VERSION,
+      operationHmacKeysJson: process.env.VERIFICATION_OPERATION_HMAC_KEYS_JSON,
+      documentCollectionEnabled: process.env.VERIFICATION_DOCUMENT_COLLECTION_ENABLED === 'true',
+      staffReviewEnabled: process.env.CORPORATE_STAFF_REVIEW_ENABLED === 'true',
+    },
     joint: {
       invitationTtlHours: (() => {
         const n = parseFloat(process.env.JOINT_INVITATION_TTL_HOURS ?? '168'); // 7 days
