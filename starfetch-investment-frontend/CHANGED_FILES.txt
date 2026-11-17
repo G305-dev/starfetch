@@ -1,13 +1,45 @@
-Individual KYC Prompt — Changed / Added Files (frontend only)
+Frontend Updates — Changed / Added Files (frontend only)
 
+BATCH 1 — Individual KYC popup (previous delivery):
 ADDED:
 - lib/individual-kyc-prompt.ts
 - components/portal/IndividualKycPrompt.tsx
 - scripts/individual-kyc-prompt-check.ts
 - INDIVIDUAL_KYC_PROMPT_CHANGE_README.md
-
 MODIFIED:
 - app/dashboard/page.tsx
 - package.json (adds test:individual-kyc-prompt)
 
+BATCH 2 — Homepage + About fixes (this delivery):
+MODIFIED:
+- components/ValueProposition.tsx (aligned dividers)
+- components/CompanyCredentials.tsx (aligned dividers)
+- components/MarketOverview.tsx (5-row subset, no search, no NGX link)
+- components/about/Team.tsx (removed Designate* + footnote)
+- scripts/homepage-value-proposition-check.ts
+- scripts/market-widgets-check.ts
+- scripts/about-profile-cards-check.ts
+ADDED:
+- HOMEPAGE_FIXES_CHANGE_README.md
+
 No backend files changed.
+
+BATCH 3 — Institution logos (this delivery):
+REPLACED (same filenames, new artwork):
+- public/images/institution-united-capital.png
+- public/images/institution-renaissance-capital.png
+MODIFIED:
+- HOMEPAGE_FIXES_CHANGE_README.md (documents batch 3)
+
+BATCH 4 — Mobile menu visibility + time-aware greeting (this delivery):
+ADDED:
+- lib/greeting.ts
+- scripts/dashboard-greeting-check.ts
+- scripts/mobile-menu-visibility-check.ts
+- MOBILE_NAV_GREETING_CHANGE_README.md
+MODIFIED:
+- app/globals.css (overflow-x: clip for sticky navbar)
+- components/portal/PortalSidebar.tsx (fixed mobile toggle)
+- components/portal/WelcomeBanner.tsx (time-aware greeting)
+- components/portal/DashboardGreeting.tsx (time-aware greeting)
+- package.json (adds test:dashboard-greeting, test:mobile-menu-visibility)

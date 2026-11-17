@@ -23,6 +23,8 @@
     "test:general-corporate-login": "node scripts/run-typescript-check.cjs scripts/general-corporate-login-check.ts",
     "test:kyc-dashboard-prompt": "node scripts/run-typescript-check.cjs scripts/kyc-dashboard-prompt-check.ts",
     "test:individual-kyc-prompt": "node scripts/run-typescript-check.cjs scripts/individual-kyc-prompt-check.ts",
+    "test:dashboard-greeting": "node scripts/run-typescript-check.cjs scripts/dashboard-greeting-check.ts",
+    "test:mobile-menu-visibility": "node scripts/run-typescript-check.cjs scripts/mobile-menu-visibility-check.ts",
     "test:individual-profile-local-kyc": "node scripts/run-typescript-check.cjs scripts/individual-profile-local-kyc-draft-check.ts",
     "test:individual-profile-section-progression": "node scripts/run-typescript-check.cjs scripts/individual-profile-section-progression-check.ts",
     "test:investment-objective-risk-profile": "node scripts/run-typescript-check.cjs scripts/investment-objective-risk-profile-draft-check.ts",

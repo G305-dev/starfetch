@@ -1,9 +1,6 @@
-"use client";
-
-import { useMemo, useState } from "react";
-import { ArrowUpRight, BarChart3, Database, Landmark, Percent, Search, WalletCards } from "lucide-react";
+import { BarChart3, Database, Landmark, Percent, WalletCards } from "lucide-react";
 import { SectionHeading } from "./ui";
-import { featuredNgxEquities, ngxListedEquitiesUrl, type NgxEquityListing } from "./ngx-market-directory";
+import { featuredNgxEquities, type NgxEquityListing } from "./ngx-market-directory";
 
 const naira = new Intl.NumberFormat("en-NG", {
   style: "currency",
@@ -28,56 +25,31 @@ const pulse = [
   { icon: WalletCards, label: "Cash Reserve Ratio", detail: "Official CBN source integration pending", value: "Pending" },
 ];
 
-/** Landing-page NGX directory; backend market rows can be passed in without changing the presentation. */
+/** Number of rows shown in the at-a-glance table (the full directory has 14). */
+const AT_A_GLANCE_LIMIT = 5;
+
+/** Landing-page NGX at-a-glance subset; backend market rows can be passed in without changing the presentation. */
 export function MarketOverview({ markets = featuredNgxEquities }: { markets?: readonly NgxEquityListing[] }) {
-  const [query, setQuery] = useState("");
-  const filteredMarkets = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return markets;
-    return markets.filter(({ companyName, symbol }) => `${companyName} ${symbol}`.toLowerCase().includes(normalizedQuery));
-  }, [markets, query]);
-  const hasQuoteData = markets.some((market) => market.lastPriceNgn !== null || market.dailyChangePercent !== null);
+  const visibleMarkets = markets.slice(0, AT_A_GLANCE_LIMIT);
+  const hasQuoteData = visibleMarkets.some((market) => market.lastPriceNgn !== null || market.dailyChangePercent !== null);
 
   return (
     <section id="ngx-markets" className="bg-white py-16 sm:py-20 lg:py-24">
       <div className="mx-auto max-w-7xl px-5 lg:px-8">
-        <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
-          <SectionHeading
-            eyebrow="Nigerian Exchange (NGX)"
-            title="NGX markets at a glance"
-            description="Browse selected Nigerian Exchange-listed equities. Live prices and daily movements will appear when the backend market-data feed is connected."
-          />
-          <a
-            href={ngxListedEquitiesUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex shrink-0 items-center gap-1.5 text-sm font-bold text-star-700 no-underline transition hover:text-star-limeDark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2"
-          >
-            Official NGX listings <ArrowUpRight size={16} aria-hidden="true" />
-          </a>
-        </div>
+        <SectionHeading
+          eyebrow="Nigerian Exchange (NGX)"
+          title="NGX markets at a glance"
+          description="A selected snapshot of Nigerian Exchange-listed equities. Live prices and daily movements will appear when the backend market-data feed is connected."
+        />
 
         <div className="mt-10 grid items-start gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.7fr)]">
           <article className="min-w-0 overflow-hidden rounded-2xl border border-star-200 bg-white shadow-[0_4px_18px_rgba(0,59,42,0.04)]">
-            <div className="flex flex-col gap-4 border-b border-star-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-              <div className="flex items-center gap-3">
-                <span className="grid size-10 place-items-center rounded-full bg-star-100 text-star-700"><BarChart3 size={19} aria-hidden="true" /></span>
-                <div>
-                  <h3 className="font-display text-lg font-bold text-star-900">Selected NGX-listed equities</h3>
-                  <p className="text-xs leading-5 text-star-muted">{filteredMarkets.length} of {markets.length} listings</p>
-                </div>
+            <div className="flex items-center gap-3 border-b border-star-200 px-5 py-4 sm:px-6">
+              <span className="grid size-10 place-items-center rounded-full bg-star-100 text-star-700"><BarChart3 size={19} aria-hidden="true" /></span>
+              <div>
+                <h3 className="font-display text-lg font-bold text-star-900">Selected NGX-listed equities</h3>
+                <p className="text-xs leading-5 text-star-muted">Showing {visibleMarkets.length} of {markets.length} listings</p>
               </div>
-              <label className="relative block w-full sm:max-w-[260px]">
-                <span className="sr-only">Search NGX equities</span>
-                <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-star-muted" />
-                <input
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search company or ticker"
-                  className="min-h-10 w-full rounded-lg border border-star-200 bg-white pl-9 pr-3 text-sm text-star-900 outline-none transition placeholder:font-normal placeholder:text-star-muted focus:border-star-700 focus:ring-2 focus:ring-star-100"
-                />
-              </label>
             </div>
 
             <div className="overflow-x-auto">
@@ -91,7 +63,7 @@ export function MarketOverview({ markets = featuredNgxEquities }: { markets?: re
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-star-100">
-                  {filteredMarkets.map((market) => (
+                  {visibleMarkets.map((market) => (
                     <tr key={market.symbol} className="transition hover:bg-star-50/70">
                       <th scope="row" className="px-5 py-3.5 text-sm font-bold text-star-900 sm:px-6">{market.companyName}</th>
                       <td className="px-4 py-3.5"><span className="rounded-md bg-star-50 px-2 py-1 text-[0.68rem] font-extrabold tracking-wide text-star-700">{market.symbol}</span></td>
@@ -99,8 +71,8 @@ export function MarketOverview({ markets = featuredNgxEquities }: { markets?: re
                       <td className={`px-5 py-3.5 text-right text-sm font-bold tabular-nums sm:px-6 ${market.dailyChangePercent === null ? "text-star-muted" : market.dailyChangePercent > 0 ? "text-emerald-700" : market.dailyChangePercent < 0 ? "text-red-700" : "text-star-muted"}`}>{formatChange(market.dailyChangePercent)}</td>
                     </tr>
                   ))}
-                  {filteredMarkets.length === 0 ? (
-                    <tr><td colSpan={4} className="px-5 py-10 text-center text-sm text-star-muted">No NGX listings match “{query.trim()}”.</td></tr>
+                  {visibleMarkets.length === 0 ? (
+                    <tr><td colSpan={4} className="px-5 py-10 text-center text-sm text-star-muted">No NGX listings available.</td></tr>
                   ) : null}
                 </tbody>
               </table>

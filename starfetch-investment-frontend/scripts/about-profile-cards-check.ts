@@ -19,12 +19,12 @@ assert(peopleSection.includes("grid gap-5 lg:grid-cols-2") && peopleSection.incl
 
 for (const required of [
   "Sylvia Igwe-Okparaeke",
-  "Managing Director Designate*",
+  "Managing Director",
   "A senior executive who sits at the intersection of investment strategy and regulatory discipline.",
   "LLB",
   "ACIArb (UK)",
   "Toluwani Adeseri",
-  "Executive Director Designate*",
+  "Executive Director",
   "A strategic finance and investment leader who has built his career where capital markets meet balance-sheet discipline.",
   "CFA Charterholder",
   "Led by industry",
@@ -34,11 +34,7 @@ for (const required of [
 ]) assert(team.includes(required), `Approved Leadership content is missing: ${required}`);
 
 assert(team.includes("max-w-[920px]") && team.includes("h-[58px]") && team.includes("max-w-[125px]") && !team.includes("The management team is supported by an experienced and professional advisory board."), "Institution tiles must use the smaller clear logo treatment and omit the removed supporting text");
-assert(
-  team.includes("* These positions are pending SEC approval which is currently in progress.")
-    && team.indexOf("* These positions are pending SEC approval which is currently in progress.") > team.indexOf("institutions.map"),
-  "The SEC approval footnote must appear after the career institution logos",
-);
+assert(!team.includes("Designate") && !team.includes("pending SEC approval"), "Team roles must not show Designate or the SEC-approval asterisk footnote");
 assert(!team.includes("Name to be provided") && !team.includes("executive-placeholder") && !board.includes("Name to be provided") && !board.includes("executive-placeholder"), "Board/Leadership sections must not create or retain placeholder people");
 assert(peopleSection.includes("showBiographies && person.biography"), "The shared profile renderer must be able to suppress biography copy for an approved section without affecting Leadership biographies");
 assert(board.includes("Board of Directors") && board.includes("Sylvia Igwe-Okparaeke") && board.includes("Toluwani Adeseri") && board.includes("Co founder") && board.includes("showBiographies={false}") && !board.includes("biography"), "The separate Board section must include the two approved people and intentionally omit descriptions after their designation");

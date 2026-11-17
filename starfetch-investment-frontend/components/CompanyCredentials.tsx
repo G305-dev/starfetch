@@ -8,8 +8,8 @@ const credentials = [
 
 export function CompanyCredentials() {
   return (
-    <section id="about" className="border-y border-star-200 bg-white px-5 py-5 lg:px-7 lg:py-0">
-      <div className="mx-auto grid max-w-[1100px] divide-y divide-star-200 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+    <section id="about" className="border-y border-star-200 bg-white py-5 lg:py-0">
+      <div className="mx-auto grid max-w-[1100px] divide-y divide-star-200 px-5 sm:grid-cols-3 sm:divide-x sm:divide-y-0 lg:px-7">
         {credentials.map(({ icon: Icon, title, detail }) => (
           <div className="flex items-center justify-center gap-3 py-5 text-center sm:justify-start sm:px-7 sm:py-7 first:sm:pl-0" key={title}>
             <span className="credential-orbit-badge" aria-hidden="true">
