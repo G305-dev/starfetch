@@ -47,3 +47,12 @@ npm run build
 ```
 
 Manual QA: homepage — dividers align across the dark/white strips; "NGX markets at a glance" shows 5 rows, no search box, no NGX link; `/about` team cards show "Managing Director" / "Executive Director" with no footnote.
+
+## 4. Institution logos — United Capital + Renaissance Capital replaced
+
+The two logos in **Careers built at leading institutions** (`components/about/Team.tsx` → `Institutions()`) were replaced with the supplied images:
+
+- `public/images/institution-united-capital.png` ← supplied United Capital logo (white padding auto-trimmed, 900×150)
+- `public/images/institution-renaissance-capital.png` ← supplied Renaissance Capital Africa logo (white padding auto-trimmed, 900×452)
+
+Filenames are unchanged, so `Team.tsx` needed no code change — the tiles (`max-h-10 max-w-[125px] object-contain`) pick up the new artwork automatically. Alt text remains "United Capital" / "Renaissance Capital".
