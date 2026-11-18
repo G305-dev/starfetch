@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, CalendarDays, ChevronDown, X } from "lucide-react";
+import { AdminSectionCard } from "@/components/admin/AdminDataStates";
 import { AdminAccountTypeBadge, AdminStatusBadge } from "./AdminBadges";
 import { AdminAllocationChart, AdminAumChart } from "./AdminCharts";
 import { investmentSummaryStats } from "./fixtures/admin-investments-data";
@@ -8,7 +9,6 @@ import { adminStats, pendingActions, quickActions, recentRegistrations, recentSy
 
 const card = "min-w-0 rounded-xl border border-[#e7ece7] bg-white shadow-[0_3px_12px_rgba(23,51,30,0.035)]";
 const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-star-700";
-export function AdminSectionCard({ children, className = "" }: { children: React.ReactNode; className?: string }) { return <section className={`${card} ${className}`}>{children}</section>; }
 function CardHeading({ title, action }: { title: string; action?: () => void }) { return <div className="flex items-center justify-between gap-2"><h2 className="text-[15px] font-extrabold tracking-[-.025em] text-[#111e15]">{title}</h2>{action && <button onClick={action} className={`inline-flex items-center gap-1 whitespace-nowrap text-[10px] font-extrabold text-[#24722d] hover:underline ${focus}`}>View all <ArrowRight size={13} /></button>}</div>; }
 function IconBubble({ children }: { children: React.ReactNode }) { return <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#eef9d8] text-[#063b25]">{children}</span>; }
 export function AdminStatCard({ stat }: { stat: AdminStat }) { const Icon = stat.icon; return <article className={`${card} flex min-h-[118px] items-start gap-3 p-4`}><IconBubble><Icon size={20}/></IconBubble><div className="min-w-0 flex-1"><p className="text-[11px] font-bold text-[#202d24]">{stat.title}</p><p className="mt-1 whitespace-nowrap text-[clamp(16px,1.45vw,23px)] font-extrabold tracking-[-.04em] text-[#101b13]">{stat.value}</p>{stat.valueDescription && <p className="mt-2 text-[10px] text-[#748078]">{stat.valueDescription}</p>}{stat.change && <div className="mt-2 flex items-end justify-between gap-1"><div><p className={`text-xs font-extrabold ${stat.changeTone === "warning" ? "text-red-700" : stat.changeTone === "amber" ? "text-amber-700" : "text-[#238a24]"}`}>{stat.showChangeArrow !== false && (stat.changeDirection === "down" ? "▼ " : "▲ ")}{stat.change}</p>{stat.comparisonLabel !== "" && <p className="mt-0.5 whitespace-nowrap text-[10px] text-[#748078]">{stat.comparisonLabel ?? "vs. previous period"}</p>}</div>{stat.showSparkline !== false && <svg viewBox="0 0 90 32" aria-hidden="true" className="hidden w-[82px] shrink-0 sm:block"><path d="M1 28 C12 25 14 26 23 21 S38 18 44 20 S54 16 63 13 S75 5 89 11 L89 32 L1 32Z" fill="#e8f6df"/><path d="M1 28 C12 25 14 26 23 21 S38 18 44 20 S54 16 63 13 S75 5 89 11" fill="none" stroke="#73bb49" strokeWidth="2"/></svg>}</div>}</div></article>; }

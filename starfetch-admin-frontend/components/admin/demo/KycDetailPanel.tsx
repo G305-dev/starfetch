@@ -2,7 +2,7 @@
 import { useRef, useState } from "react";
 import { BriefcaseBusiness, Check, CheckCircle2, ChevronDown, CircleX, ClipboardList, FileText, House, IdCard, ShieldCheck, SquarePen, UserRound, X, type LucideIcon } from "lucide-react";
 import { AdminAccountTypeBadge, AdminStatusBadge } from "./AdminBadges";
-import { AdminSectionCard } from "./AdminDashboard";
+import { AdminSectionCard } from "@/components/admin/AdminDataStates";
 import { UserAvatar } from "./AdminUsersTable";
 import type { KycChecklistKey, KycInvestor } from "./fixtures/admin-kyc-data";
 

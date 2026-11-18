@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { AdminSectionCard } from "./AdminDashboard";
+import { AdminSectionCard } from "@/components/admin/AdminDataStates";
 import { portfolioAllocation, portfolioPerformanceData, type PortfolioPeriod } from "./fixtures/admin-portfolios-data";
 
 export function PortfolioPerformanceChart() {

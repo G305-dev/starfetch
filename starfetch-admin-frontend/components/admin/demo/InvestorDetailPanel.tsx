@@ -1,7 +1,7 @@
 "use client";
 import { BadgeCheck, Ban, CalendarDays, Check, Eye, FileText, KeyRound, Layers3, Mail, MapPin, Phone, UserRound } from "lucide-react";
 import { AdminAccountStatusBadge, AdminAccountTypeBadge } from "./AdminBadges";
-import { AdminSectionCard } from "./AdminDashboard";
+import { AdminSectionCard } from "@/components/admin/AdminDataStates";
 import { UserAvatar } from "./AdminUsersTable";
 import { formatMockDate, formatMockMoney, type AdminUser } from "./fixtures/admin-users-data";
 

@@ -1,7 +1,7 @@
 "use client";
 import { ArrowRight } from "lucide-react";
 import { AdminStatusBadge } from "./AdminBadges";
-import { AdminSectionCard } from "./AdminDashboard";
+import { AdminSectionCard } from "@/components/admin/AdminDataStates";
 import { UserAvatar } from "./AdminUsersTable";
 import { accountTypeBreakdown, adminUsers, usersRecentRegistrations, verificationQueue, type QueueItem } from "./fixtures/admin-users-data";
 

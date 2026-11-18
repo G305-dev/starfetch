@@ -1,7 +1,8 @@
 "use client";
 import { useMemo,useState } from "react";
 import { X } from "lucide-react";
-import { AdminSectionCard,AdminStatCard } from "./AdminDashboard";
+import { AdminSectionCard } from "@/components/admin/AdminDataStates";
+import { AdminStatCard } from "./AdminDashboard";
 import { PortfolioAllocationChart,PortfolioPerformanceChart } from "./PortfolioCharts";
 import { PortfolioFilters,PortfolioTabs,type PortfolioFiltersState,type PortfolioTab } from "./PortfolioFilters";
 import { AdminHoldingsTable,PortfolioInvestorTypeBreakdown,PortfolioMaturityView,PortfolioPerformanceView,PortfolioSolutionBreakdown,RecentPortfolioActivities } from "./PortfolioViews";

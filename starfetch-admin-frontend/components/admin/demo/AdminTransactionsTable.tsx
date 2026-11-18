@@ -1,7 +1,7 @@
 "use client";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AdminAccountTypeBadge, AdminStatusBadge } from "./AdminBadges";
-import { AdminSectionCard } from "./AdminDashboard";
+import { AdminSectionCard } from "@/components/admin/AdminDataStates";
 import { UserAvatar } from "./AdminUsersTable";
 import { formatMockMoney } from "./fixtures/admin-users-data";
 import type { AdminTransaction } from "./fixtures/admin-transactions-data";

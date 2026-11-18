@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
-import { AdminSectionCard } from "./AdminDashboard";
+import { AdminSectionCard } from "@/components/admin/AdminDataStates";
 import { adminRoles, recentConfigurationChanges, systemStatus, type MockServiceState } from "./fixtures/admin-settings-data";
 
 const focus="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-star-700";

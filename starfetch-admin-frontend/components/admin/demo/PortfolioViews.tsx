@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { ArrowRight, FileText, MoreVertical } from "lucide-react";
 import { AdminAccountTypeBadge, AdminStatusBadge } from "./AdminBadges";
-import { AdminSectionCard } from "./AdminDashboard";
+import { AdminSectionCard } from "@/components/admin/AdminDataStates";
 import { formatMockDate, formatMockMoney } from "./fixtures/admin-users-data";
 import { portfolioByInvestorType, portfolioBySolution, portfolioMaturities, portfolioPerformanceMetrics, recentPortfolioActivities, type PortfolioHolding } from "./fixtures/admin-portfolios-data";
 

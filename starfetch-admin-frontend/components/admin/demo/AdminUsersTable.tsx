@@ -1,7 +1,7 @@
 "use client";
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, MoreVertical } from "lucide-react";
 import { AdminAccountStatusBadge, AdminAccountTypeBadge } from "./AdminBadges";
-import { AdminSectionCard } from "./AdminDashboard";
+import { AdminSectionCard } from "@/components/admin/AdminDataStates";
 import { formatMockDate, formatMockMoney, type AdminUser } from "./fixtures/admin-users-data";
 
 export type SortKey = "name" | "accountType" | "email" | "accountStatus" | "portfolio" | "joined" | "lastActivity";
