@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { @apply border-star-200; }
+  html { scroll-behavior: smooth; }
+  body { @apply min-w-0 overflow-x-hidden bg-[#fffef9] font-body text-base text-star-ink antialiased; }
+  ::selection { @apply bg-star-lime text-star-900; }
+  a, button { -webkit-tap-highlight-color: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
