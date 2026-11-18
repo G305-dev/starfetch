@@ -1,13 +1,7 @@
 "use client";
-
-import { AdminStatCard } from "./AdminDashboard";
+import { Layers3, Settings, Shield, Users } from "lucide-react";
+import { AdminSectionCard, DataState, SummaryCards } from "./AdminDataStates";
 import { SettingsCategoriesGrid } from "./SettingsCategories";
-import { AdminRolesCard, RecentConfigurationChanges, SystemStatusCard } from "./SettingsOverviewCards";
-import { settingsSummaryStats } from "./admin-settings-data";
-
-export function SettingsSummaryCards() {
-  return <section aria-label="Settings summary" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">{settingsSummaryStats.map(stat=><AdminStatCard key={stat.title} stat={stat}/>)}</section>;
-}
 export function AdminSettingsPage() {
-  return <main className="mt-4"><p className="mb-1 text-[10px] font-semibold text-[#6f8073]">Development preview · All counts, security events, changes, integrations and statuses are synthetic.</p><p className="mb-4 text-[10px] text-[#7c897e]">No configuration is changed, no integrations are connected, and no infrastructure checks are performed.</p><SettingsSummaryCards/><div className="mt-5"><SettingsCategoriesGrid/></div><div className="mt-5 grid items-start gap-4 xl:grid-cols-3"><RecentConfigurationChanges/><AdminRolesCard/><SystemStatusCard/></div></main>;
+ return <main className="mt-5"><SummaryCards items={[{title:"Admin Users",icon:Users},{title:"Security Events",icon:Shield},{title:"Active Integrations",icon:Layers3},{title:"System Uptime",icon:Settings}]}/><div className="mt-5"><SettingsCategoriesGrid/></div><div className="mt-5 grid gap-4 xl:grid-cols-3">{["Recent Configuration Changes","Admin Users & Roles","System Status"].map(title=><AdminSectionCard key={title} className="p-4"><h2 className="text-[15px] font-extrabold">{title}</h2><DataState state="unavailable" title={`${title} unavailable`}/></AdminSectionCard>)}</div></main>;
 }

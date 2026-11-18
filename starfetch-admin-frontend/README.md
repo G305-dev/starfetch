@@ -1,34 +1,41 @@
-# Starfetch Admin Portal — standalone frontend preview
+# Starfetch Admin Frontend — development demo
 
-This is an admin-only export of the existing Starfetch frontend. It includes the admin sign-in, dashboard, users, investments, KYC, transactions, portfolios and settings previews. It does not include the investor portal, backend, database, API client, secrets, dependencies or generated build files. No separate Git repository is included.
+Standalone Next.js, TypeScript and Tailwind admin frontend. It does not include or modify the investor frontend or backend. The original demo fixtures are isolated in `components/admin/demo/fixtures`; demo components are loaded only in explicitly enabled development mode. Existing financial values, counts, names, documents, statuses, charts and activity are synthetic examples, not live data. Some totals and chart series are independent of sample rows.
 
-## Important: preview only
+## Security and access
 
-**There is no authentication or access control. All admin pages are unprotected. Do not deploy publicly or enter real credentials or personal/financial information.** The login accepts any correctly formatted email and any nonempty password, then navigates locally to the mock dashboard. No credentials are verified, sent or saved and no session is created. Remember me does not persist a session.
+There is **no real staff authentication or authorization**. By default, admin routes fail closed with HTTP 503 and the sign-in form is disabled. This blocker is not an authentication implementation. David must provide approved backend staff authentication and server-side authorization before any public deployment or real data use. Never enter real credentials into this preview.
 
-All financial, user, KYC, transaction and system-health information is synthetic, not live. Actions are UI previews, not real approvals, payments, configuration changes, identity checks or ledger operations.
+For local-only development, `ADMIN_DEMO_MODE=1` enables a clearly marked demo bypass **only when `NODE_ENV` is development**. It does not authenticate, verify, transmit or store credentials and creates no session. Any valid-format placeholder email and nonempty placeholder password open the demo. Keep this mode private: it exposes synthetic fixtures without access control. Production denies access and ignores the flag even when set; demo modules are not loaded by production pages.
 
-## Run locally
+No demo operation uses an API, database, localStorage or sessionStorage. Transaction **Edit** changes only the example product/funding purpose in React memory, resets on reload, and cannot change amount, balance, status, settlement, ledger entries or approval results. KYC is view-only. No real approval, payment, portfolio update or notification is performed.
 
-Install Node.js 20.9 or later (Node 20 LTS recommended), and npm. Extract the ZIP into a writable folder, open a terminal in `Starfetch-Admin-Portal`, then run:
+## Run the demo locally
+
+Install Node.js 20.9+ and npm; extract the ZIP to a writable directory, then:
 
 ```sh
 npm ci
-npm run dev
 ```
 
-Open http://localhost:3000/ (redirects to `/admin/login`). To use another port, run `npm run dev -- --port 3002`. If you see a port-in-use message, choose a free port.
+macOS/Linux:
+```sh
+ADMIN_DEMO_MODE=1 npm run dev -- --port 3002
+```
 
-For a production-mode build check:
+Windows PowerShell:
+```powershell
+$env:ADMIN_DEMO_MODE = '1'
+npm run dev -- --port 3002
+```
+
+Open `http://localhost:3002/admin/login`, enter any valid-format **placeholder** email and any nonempty **placeholder** password, then select Open demo. No real credentials should be used. Without `ADMIN_DEMO_MODE=1`, admin routes return 503 and sign-in is disabled even during development. Running `npm run build` and `npm run start` cannot enable demo mode.
+
+## Checks and integration
 
 ```sh
 npm run typecheck
 npm run build
-npm run start
 ```
 
-Installing packages and downloading the Manrope font at build time require network access. This archive intentionally excludes `node_modules` and `.next`; install and build on the destination machine.
-
-## Future backend integration
-
-**BACKEND CONTRACT REQUIRED:** David must supply approved admin authentication, staff authorization, and the relevant administrative API contracts before production use. Server-enforced protection is required on every admin route and API. This export does not implement those integrations and must remain a private preview until then.
+Package installation and build-time Manrope font download require network access. The ZIP excludes `node_modules`, `.next`, environment files and caches. Review `BACKEND-INTEGRATION.md` for required contracts and `CHANGES.md` for a complete list of changes relative to `Starfetch-Admin-Cleanup.zip`. When applying the ZIP, replace the admin directory or explicitly remove paths listed in `CHANGES.md`; overlaying can retain obsolete files. Back up independent local changes first.

@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
-import { AdminSectionCard } from "./AdminDashboard";
+import { AdminSectionCard } from "./AdminDataStates";
 import { settingsCategories, type SettingsCategory } from "./admin-settings-data";
 
 export function SettingsCategoryCard({ category, selected, onSelect }: { category: SettingsCategory; selected: boolean; onSelect: () => void }) {
