@@ -1,0 +1,9 @@
+"use client";
+import { useState } from "react";
+import { BriefcaseBusiness, ChartNoAxesCombined, Coins, Layers3 } from "lucide-react";
+import { AdminSectionCard, DataState, SummaryCards, UnavailableTable } from "./AdminDataStates";
+import { PortfolioFilters, PortfolioTabs, type PortfolioFiltersState, type PortfolioTab } from "./PortfolioFilters";
+export function AdminPortfoliosPage() {
+ const [tab,setTab]=useState<PortfolioTab>("holdings");const [filters,setFilters]=useState<PortfolioFiltersState>({search:"",solution:"All Solutions",status:"All Statuses",maturity:"all"});
+ return <main className="mt-5"><SummaryCards items={[{title:"Total Portfolio Value",icon:Coins},{title:"Total Holdings",icon:Layers3},{title:"Total Returns",icon:ChartNoAxesCombined},{title:"Active Portfolios",icon:BriefcaseBusiness}]}/><div className="mt-5 grid gap-4 lg:grid-cols-2"><AdminSectionCard className="p-4"><h2 className="text-[15px] font-extrabold">Portfolio Performance</h2><DataState state="unavailable" title="Portfolio information unavailable"/></AdminSectionCard><AdminSectionCard className="p-4"><h2 className="text-[15px] font-extrabold">Portfolio Allocation</h2><DataState state="unavailable" title="Allocation unavailable"/></AdminSectionCard></div><AdminSectionCard className="mt-5 p-4"><p className="mb-3 text-xs text-[#738078]">Portfolio filters and views require an approved data source.</p><fieldset disabled aria-label="Portfolio filters unavailable" className="opacity-60"><PortfolioTabs value={tab} onChange={setTab}/><div className="mt-4"><PortfolioFilters filters={filters} onChange={setFilters}/></div></fieldset></AdminSectionCard><div className="mt-4"><UnavailableTable title="Portfolio Holdings" columns={["Holding / Instrument","Investment Solution","Amount Invested","Current Value","Return","Maturity Date","Status"]} message="Portfolio information unavailable"/></div></main>;
+}
