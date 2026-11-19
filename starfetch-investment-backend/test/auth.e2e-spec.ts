@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { randomUUID } from 'crypto';
+import { PrimaryAccountType } from '@prisma/client';
 import { EmailVerificationService } from '../src/modules/auth/services/email-verification.service';
 import {
   TestApp,
@@ -71,7 +72,7 @@ describe('Phase 2B — authentication & identity (e2e, real PostgreSQL)', () => 
     it('registers a Corporate applicant without an InvestorProfile or elevated role', async () => {
       const res = await request(t.server)
         .post('/api/v1/auth/register')
-        .send({ registrationType: 'CORPORATE', email: 'corp-applicant@example.com', password: PASSWORD })
+        .send({ registrationType: 'CORPORATE', companyName: 'Example Holdings Limited', companyPhoneNumber: '+2348000000000', email: 'corp-applicant@example.com', password: PASSWORD })
         .expect(201);
 
       expect(res.body.data.nextAction).toBe('VERIFY_EMAIL');
@@ -79,10 +80,12 @@ describe('Phase 2B — authentication & identity (e2e, real PostgreSQL)', () => 
       expect(res.headers['set-cookie']).toBeUndefined();
       const user = await t.prisma.user.findUnique({
         where: { id: res.body.data.userId },
-        include: { investorProfile: true, emailVerificationChallenges: true, authSessions: true },
+        include: { investorProfile: true, corporateApplicantProfile: true, emailVerificationChallenges: true, authSessions: true },
       });
       expect(user?.role).toBe('INVESTOR');
+      expect(user?.primaryAccountType).toBe(PrimaryAccountType.CORPORATE);
       expect(user?.investorProfile).toBeNull();
+      expect(user?.corporateApplicantProfile).toMatchObject({ companyName: 'Example Holdings Limited', companyPhoneNumber: '+2348000000000' });
       expect(user?.emailVerifiedAt).toBeNull();
       expect(user?.emailVerificationChallenges).toHaveLength(1);
       expect(user?.authSessions).toHaveLength(0);
@@ -95,21 +98,44 @@ describe('Phase 2B — authentication & identity (e2e, real PostgreSQL)', () => 
         .send({ email: 'corp-applicant@example.com', password: PASSWORD }).expect(200);
       expect(login.body.data.user).toMatchObject({
         role: 'INVESTOR', emailVerified: true, firstName: '', lastName: '',
+        primaryAccountType: 'CORPORATE',
+        companyName: 'Example Holdings Limited', companyPhoneNumber: '+2348000000000',
+        authorizedContexts: ['CORPORATE'], jointMembershipCount: 0,
       });
-      expect(login.body.data.accessToken).toEqual(expect.any(String));
+      expect(login.body.data.accessToken).toMatch(/^[\w-]+\.[\w-]+\.[\w-]+$/);
+      expect(login.body.data.user).not.toHaveProperty('passwordHash');
+      expect(login.body.data.user).not.toHaveProperty('normalizedEmail');
+      expect(login.body.data.user).not.toHaveProperty('accessToken');
+      expect(login.body.data.user).not.toHaveProperty('refreshToken');
+      expect(login.body.data.user).not.toHaveProperty('csrfToken');
+      expect(JSON.stringify(login.body.data.user)).not.toMatch(/passwordHash|normalizedEmail|tokenHash|refreshToken|csrfToken|sessionId|taxIdentificationNumber|accountNumber|\bbvn\b/i);
 
       const me = await request(t.server).get('/api/v1/me')
         .set('Authorization', `Bearer ${login.body.data.accessToken}`).expect(200);
-      expect(me.body.data).toMatchObject({ role: 'INVESTOR', firstName: '', lastName: '' });
+      expect(me.body.data).toMatchObject({
+        role: 'INVESTOR', firstName: '', lastName: '', emailVerified: true,
+        primaryAccountType: 'CORPORATE',
+        companyName: 'Example Holdings Limited', companyPhoneNumber: '+2348000000000',
+        authorizedContexts: ['CORPORATE'], jointMembershipCount: 0,
+        kycCompletion: { individual: 'REQUIRED', corporate: 'REQUIRED' },
+      });
+      for (const field of ['passwordHash', 'normalizedEmail', 'accessToken', 'refreshToken', 'csrfToken', 'sessionId', 'authSessions', 'refreshTokens', 'taxIdentificationNumber', 'accountNumber', 'bvn']) {
+        expect(me.body.data).not.toHaveProperty(field);
+      }
+      expect(JSON.stringify(me.body)).not.toMatch(/argon2|passwordHash|normalizedEmail|tokenHash|refreshToken|csrfToken|sessionId|taxIdentificationNumber|accountNumber|\bbvn\b/i);
+      expect(JSON.stringify(me.body)).not.toContain(login.body.data.accessToken);
 
       const profile = await request(t.server).get('/api/v1/me/profile')
-        .set('Authorization', `Bearer ${login.body.data.accessToken}`).expect(404);
-      expect(profile.body.error.code).toBe('NOT_FOUND');
+        .set('Authorization', `Bearer ${login.body.data.accessToken}`).expect(403);
+      expect(profile.body.error.code).toBe('FORBIDDEN');
     });
 
     it('rejects caller-supplied roles and unknown registration types', async () => {
       await request(t.server).post('/api/v1/auth/register')
-        .send({ registrationType: 'CORPORATE', role: 'ADMIN', email: 'role@example.com', password: PASSWORD })
+        .send({ registrationType: 'CORPORATE', companyName: 'Example Holdings Limited', companyPhoneNumber: '+2348000000000', role: 'ADMIN', email: 'role@example.com', password: PASSWORD })
+        .expect(400);
+      await request(t.server).post('/api/v1/auth/register')
+        .send({ registrationType: 'CORPORATE', companyName: 'Example Holdings Limited', companyPhoneNumber: '+2348000000000', primaryAccountType: 'INDIVIDUAL', email: 'escalation@example.com', password: PASSWORD })
         .expect(400);
       await request(t.server).post('/api/v1/auth/register')
         .send({ registrationType: 'STAFF', email: 'type@example.com', password: PASSWORD })
@@ -367,7 +393,14 @@ describe('Phase 2B — authentication & identity (e2e, real PostgreSQL)', () => 
         email: 'login@example.com',
         emailVerified: true,
         role: 'INVESTOR',
+        primaryAccountType: 'INDIVIDUAL',
+        authorizedContexts: ['INDIVIDUAL'],
+        jointMembershipCount: 0,
       });
+      for (const field of ['passwordHash', 'normalizedEmail', 'accessToken', 'refreshToken', 'csrfToken', 'sessionId', 'taxIdentificationNumber', 'accountNumber', 'bvn']) {
+        expect(res.body.data.user).not.toHaveProperty(field);
+      }
+      expect(JSON.stringify(res.body.data.user)).not.toMatch(/argon2|passwordHash|normalizedEmail|tokenHash|refreshToken|csrfToken|sessionId|taxIdentificationNumber|accountNumber|\bbvn\b/i);
 
       const jar = cookieJar(res);
       const refresh = jar.get(REFRESH_COOKIE);
@@ -489,10 +522,16 @@ describe('Phase 2B — authentication & identity (e2e, real PostgreSQL)', () => 
         email: 'me@example.com',
         emailVerified: true,
         role: 'INVESTOR',
+        primaryAccountType: 'INDIVIDUAL',
+        authorizedContexts: ['INDIVIDUAL'],
+        jointMembershipCount: 0,
+        kycCompletion: { individual: 'REQUIRED', corporate: 'REQUIRED' },
       });
-      expect(res.body.data.passwordHash).toBeUndefined();
-      expect(res.body.data.normalizedEmail).toBeUndefined();
-      expect(JSON.stringify(res.body)).not.toMatch(/argon2|tokenHash|codeHmac/i);
+      for (const field of ['passwordHash', 'normalizedEmail', 'accessToken', 'refreshToken', 'csrfToken', 'sessionId', 'authSessions', 'refreshTokens', 'taxIdentificationNumber', 'accountNumber', 'bvn']) {
+        expect(res.body.data).not.toHaveProperty(field);
+      }
+      expect(JSON.stringify(res.body)).not.toMatch(/argon2|passwordHash|normalizedEmail|tokenHash|codeHmac|refreshToken|csrfToken|sessionId|taxIdentificationNumber|accountNumber|\bbvn\b/i);
+      expect(JSON.stringify(res.body)).not.toContain(access);
     });
   });
 

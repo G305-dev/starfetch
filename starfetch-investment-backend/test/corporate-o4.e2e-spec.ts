@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { OnboardingApplicationKind, OnboardingApplicationStatus, UserRole, VerificationRulesetLifecycle, VerificationSubjectTargetKind } from '@prisma/client';
+import { OnboardingApplicationKind, OnboardingApplicationStatus, PrimaryAccountType, UserRole, VerificationRulesetLifecycle, VerificationSubjectTargetKind } from '@prisma/client';
 import request from 'supertest';
 import { AccessTokenService } from '../src/modules/auth/services/access-token.service';
 import { CsrfService } from '../src/modules/auth/services/csrf.service';
@@ -93,6 +93,7 @@ describe('Corporate O4 draft amendments (synthetic data, isolated PostgreSQL)', 
         normalizedEmail: `o4-${userId}@example.invalid`,
         passwordHash: 'synthetic-o4-test-only-not-a-real-password-hash',
         role: UserRole.INVESTOR,
+        primaryAccountType: PrimaryAccountType.CORPORATE,
         emailVerifiedAt: new Date('2025-01-01T00:00:00.000Z'),
       },
     });

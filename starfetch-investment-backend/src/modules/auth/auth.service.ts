@@ -1,6 +1,6 @@
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InvestorProfile, Prisma, User, UserRole } from '@prisma/client';
+import { InvestorProfile, PrimaryAccountType, Prisma, User, UserRole } from '@prisma/client';
 import { ERROR_CODES } from '../../common/errors/error-codes';
 import { maskEmail, normalizeEmail } from '../../common/utils/email-mask';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
@@ -18,6 +18,14 @@ export interface SafeUser {
   email: string;
   emailVerified: boolean;
   role: UserRole;
+  /** Safe account family; null means legacy classification requires review. */
+  primaryAccountType?: PrimaryAccountType | null;
+  /** Present only for the authenticated Corporate applicant. */
+  companyName?: string;
+  companyPhoneNumber?: string;
+  /** Server-derived allowed contexts; never reflects a UI selector value. */
+  authorizedContexts?: Array<'INDIVIDUAL' | 'CORPORATE' | 'JOINT'>;
+  jointMembershipCount?: number;
 }
 
 export interface RegisterResult {
@@ -74,6 +82,12 @@ export class AuthService {
    * self-registration remains impossible.
    */
   async register(dto: RegisterDto): Promise<RegisterResult> {
+    if ((dto.registrationType ?? 'INDIVIDUAL') === 'CORPORATE' && (dto.firstName !== undefined || dto.lastName !== undefined)) {
+      throw new HttpException({ code: ERROR_CODES.VALIDATION_FAILED, message: 'Individual name fields are not accepted for Corporate registration.' }, HttpStatus.BAD_REQUEST);
+    }
+    if ((dto.registrationType ?? 'INDIVIDUAL') === 'INDIVIDUAL' && (dto.companyName !== undefined || dto.companyPhoneNumber !== undefined)) {
+      throw new HttpException({ code: ERROR_CODES.VALIDATION_FAILED, message: 'Corporate applicant fields are not accepted for Individual registration.' }, HttpStatus.BAD_REQUEST);
+    }
     const email = dto.email.trim();
     const normalizedEmail = normalizeEmail(email);
     const passwordHash = await this.passwords.hash(dto.password);
@@ -82,9 +96,19 @@ export class AuthService {
     try {
       outcome = await this.prisma.$transaction(async (tx) => {
         const user = await tx.user.create({
-          data: { email, normalizedEmail, passwordHash, role: UserRole.INVESTOR },
+          data: { email, normalizedEmail, passwordHash, role: UserRole.INVESTOR, primaryAccountType: (dto.registrationType ?? 'INDIVIDUAL') === 'CORPORATE' ? PrimaryAccountType.CORPORATE : PrimaryAccountType.INDIVIDUAL },
         });
-        if ((dto.registrationType ?? 'INDIVIDUAL') === 'INDIVIDUAL') {
+        if ((dto.registrationType ?? 'INDIVIDUAL') === 'CORPORATE') {
+          if (!dto.companyName || !dto.companyPhoneNumber) {
+            throw new HttpException(
+              { code: ERROR_CODES.VALIDATION_FAILED, message: 'Company name and company phone number are required for Corporate registration.' },
+              HttpStatus.BAD_REQUEST,
+            );
+          }
+          await tx.corporateApplicantProfile.create({
+            data: { userId: user.id, companyName: dto.companyName.trim(), companyPhoneNumber: dto.companyPhoneNumber.trim() },
+          });
+        } else {
           // The DTO requires these fields for the backwards-compatible default
           // Individual flow. Corporate auth users intentionally have no
           // InvestorProfile and acquire Corporate ownership only via O2.
@@ -145,7 +169,7 @@ export class AuthService {
     const normalizedEmail = normalizeEmail(dto.email);
     const user = await this.prisma.user.findUnique({
       where: { normalizedEmail },
-      include: { investorProfile: true },
+      include: { investorProfile: true, corporateApplicantProfile: true, jointMemberships: { select: { id: true } }, initiatedOnboardingApplications: { where: { kind: 'CORPORATE', ownerCorporateAccountId: { not: null } }, select: { id: true }, take: 100 } },
     });
 
     // Identical public outcome for unknown email vs wrong password, with
@@ -221,7 +245,17 @@ export class AuthService {
   }
 
   /** Safe profile projection — never leaks hashes/normalized email/secrets. */
-  safeUser(user: User & { investorProfile?: InvestorProfile | null }): SafeUser {
+  safeUser(user: User & {
+    investorProfile?: InvestorProfile | null;
+    corporateApplicantProfile?: { companyName: string; companyPhoneNumber: string } | null;
+    jointMemberships?: Array<{ id: string }>;
+    initiatedOnboardingApplications?: Array<{ id: string }>;
+  }): SafeUser {
+    const contexts: Array<'INDIVIDUAL' | 'CORPORATE' | 'JOINT'> = [];
+    if (user.primaryAccountType === PrimaryAccountType.INDIVIDUAL || user.investorProfile) contexts.push('INDIVIDUAL');
+    if (user.primaryAccountType === PrimaryAccountType.CORPORATE || user.corporateApplicantProfile || user.initiatedOnboardingApplications?.length) contexts.push('CORPORATE');
+    const jointMembershipCount = user.jointMemberships?.length ?? 0;
+    if (jointMembershipCount > 0 && user.primaryAccountType !== PrimaryAccountType.CORPORATE) contexts.push('JOINT');
     return {
       id: user.id,
       // Corporate applicant accounts intentionally have no InvestorProfile;
@@ -231,6 +265,13 @@ export class AuthService {
       email: user.email,
       emailVerified: Boolean(user.emailVerifiedAt),
       role: user.role,
+      primaryAccountType: user.primaryAccountType ?? null,
+      ...(user.corporateApplicantProfile ? {
+        companyName: user.corporateApplicantProfile.companyName,
+        companyPhoneNumber: user.corporateApplicantProfile.companyPhoneNumber,
+      } : {}),
+      authorizedContexts: contexts,
+      jointMembershipCount,
     };
   }
 }

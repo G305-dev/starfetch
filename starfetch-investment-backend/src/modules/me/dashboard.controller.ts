@@ -4,6 +4,7 @@ import { Roles } from '../../common/guards/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { AuthenticatedRequest } from '../../common/types/auth-principal';
 import { AccessTokenGuard } from '../auth/guards/access-token.guard';
+import { IndividualAccountGuard } from '../../common/guards/individual-account.guard';
 import { DashboardService, PortfolioView, TransactionView } from './dashboard.service';
 import { TransactionsQueryDto } from './dto/transactions-query.dto';
 
@@ -18,7 +19,7 @@ import { TransactionsQueryDto } from './dto/transactions-query.dto';
  *   empty dashboard — never seeded/demo data.
  */
 @Controller('me')
-@UseGuards(AccessTokenGuard, RolesGuard)
+@UseGuards(AccessTokenGuard, RolesGuard, IndividualAccountGuard)
 @Roles(UserRole.INVESTOR)
 export class DashboardController {
   constructor(private readonly dashboard: DashboardService) {}

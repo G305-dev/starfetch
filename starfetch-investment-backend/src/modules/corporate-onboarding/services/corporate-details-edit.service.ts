@@ -195,7 +195,7 @@ export class CorporateDetailsEditService {
   }
 }
 
-function detailsSnapshot(details: {
+export function detailsSnapshot(details: {
   institutionName: string;
   dateOfIncorporation: Date;
   rcNumber: string;

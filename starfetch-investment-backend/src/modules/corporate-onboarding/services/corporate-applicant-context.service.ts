@@ -1,5 +1,5 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { PrimaryAccountType, UserRole } from '@prisma/client';
 import { ERROR_CODES } from '../../../common/errors/error-codes';
 import { AuthPrincipal } from '../../../common/types/auth-principal';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
@@ -35,7 +35,18 @@ export class CorporateApplicantContextService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: principal.userId },
-      select: { id: true, role: true, emailVerifiedAt: true },
+      select: {
+        id: true,
+        role: true,
+        emailVerifiedAt: true,
+        primaryAccountType: true,
+        corporateApplicantProfile: { select: { id: true } },
+        initiatedOnboardingApplications: {
+          where: { kind: 'CORPORATE', ownerCorporateAccountId: { not: null } },
+          select: { id: true },
+          take: 1,
+        },
+      },
     });
     if (!user) {
       throw new HttpException(
@@ -55,6 +66,20 @@ export class CorporateApplicantContextService {
           code: ERROR_CODES.EMAIL_NOT_VERIFIED,
           message: 'Verify your email before accessing Corporate applications.',
         },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    // Registration classification is authoritative for new users. For legacy
+    // rows only, allow unclassified access when the database proves Corporate
+    // applicant identity (profile) or an existing initiator-owned Corporate
+    // application. An Individual-only session never obtains Corporate access
+    // by selecting a different portal in the browser.
+    const hasCorporateEvidence = Boolean(user.corporateApplicantProfile) || (user.initiatedOnboardingApplications?.length ?? 0) > 0;
+    if (user.primaryAccountType === PrimaryAccountType.INDIVIDUAL ||
+        (user.primaryAccountType !== PrimaryAccountType.CORPORATE && !hasCorporateEvidence)) {
+      throw new HttpException(
+        { code: ERROR_CODES.FORBIDDEN, message: 'Corporate applications are not available for this account.' },
         HttpStatus.FORBIDDEN,
       );
     }

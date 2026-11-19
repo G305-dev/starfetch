@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { OnboardingApplicationStatus, UserRole } from '@prisma/client';
+import { OnboardingApplicationStatus, PrimaryAccountType, UserRole } from '@prisma/client';
 import { ServiceUnavailableException } from '@nestjs/common';
 import request from 'supertest';
 import { AccessTokenService } from '../src/modules/auth/services/access-token.service';
@@ -94,6 +94,7 @@ describe('Corporate O2 DRAFT API (synthetic data, verified local PostgreSQL only
         normalizedEmail: `o2-${userId}@example.invalid`,
         passwordHash: 'synthetic-e2e-test-only-not-a-real-password-hash',
         role,
+        ...(role === UserRole.INVESTOR ? { primaryAccountType: PrimaryAccountType.CORPORATE } : {}),
         emailVerifiedAt: verified ? new Date('2025-01-01T00:00:00.000Z') : null,
       },
     });

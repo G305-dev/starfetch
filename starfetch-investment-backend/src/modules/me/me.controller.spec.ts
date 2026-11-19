@@ -1,4 +1,5 @@
 import { UserRole } from '@prisma/client';
+jest.mock('../auth/services/password.service', () => ({ PasswordService: class PasswordService {} }));
 import { AuthenticatedRequest } from '../../common/types/auth-principal';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { AuthService } from '../auth/auth.service';
@@ -62,7 +63,7 @@ describe('MeController GET /api/v1/me KYC projection', () => {
     });
     expect(prisma.user.findUnique).toHaveBeenCalledWith({
       where: { id: USER_ID },
-      include: { investorProfile: true },
+      include: { investorProfile: true, corporateApplicantProfile: true, jointMemberships: { select: { id: true } }, initiatedOnboardingApplications: { where: { kind: 'CORPORATE', ownerCorporateAccountId: { not: null } }, select: { id: true }, take: 100 } },
     });
     expect(kycCompletion.forPrincipal).toHaveBeenCalledWith(principal, {
       role: UserRole.INVESTOR,

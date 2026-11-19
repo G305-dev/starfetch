@@ -15,6 +15,8 @@ export const CSRF_COOKIE = 'sf_csrf';
 
 const TEST_RESET_APPEND_ONLY_GUARDS = [
   ['corporate_details_revisions', 'corporate_details_revisions_immutable_trigger'],
+  ['corporate_profile_revisions', 'corporate_profile_revisions_append_only'],
+  ['account_type_recovery_audits', 'account_type_recovery_audits_append_only'],
   ['verification_consent_events', 'verification_consent_events_immutable_trigger'],
   ['provider_verification_attempts', 'provider_verification_attempts_immutable_trigger'],
   ['provider_verification_evidence_events', 'provider_verification_evidence_events_immutable_trigger'],
@@ -165,6 +167,10 @@ export async function cleanDatabase(prisma: PrismaService): Promise<void> {
     }
     await tx.corporateDraftIdempotencyKey.deleteMany();
     await tx.corporateDraftCreation.deleteMany();
+    await tx.corporateProfileRevision.deleteMany();
+    await tx.corporateProfile.deleteMany();
+    await tx.accountTypeRecoveryAudit.deleteMany();
+    await tx.corporateApplicantProfile.deleteMany();
     await tx.onboardingApplicationHistory.deleteMany();
     await tx.corporateDetailsRevision.deleteMany();
     await tx.corporateOnboardingDetails.deleteMany();

@@ -33,6 +33,8 @@ export interface ValidatedEnv {
   CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL?: string;
   CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN?: string;
   CORPORATE_O2_RATE_LIMIT_HMAC_SECRET?: string;
+  CORPORATE_PROFILE_BANK_KMS_KEY_ID?: string;
+  CORPORATE_PROFILE_BANK_KMS_KEY_VERSION?: string;
 }
 
 const MIN_SECRET_LENGTH = 32;
@@ -189,6 +191,22 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
     validateVerificationOperationKeyring(errors, raw.VERIFICATION_OPERATION_HMAC_ACTIVE_KEY_VERSION, raw.VERIFICATION_OPERATION_HMAC_KEYS_JSON);
   }
 
+  // Corporate Profile bank account numbers use a separate, purpose-isolated KMS key.
+  // Keep it optional for backwards-compatible boot; bank-detail writes fail closed until configured.
+  const corporateBankKmsKeyId = stringOrUndefined(raw.CORPORATE_PROFILE_BANK_KMS_KEY_ID);
+  const corporateBankKmsKeyVersion = stringOrUndefined(raw.CORPORATE_PROFILE_BANK_KMS_KEY_VERSION);
+  if (Boolean(corporateBankKmsKeyId) !== Boolean(corporateBankKmsKeyVersion)) errors.push('CORPORATE_PROFILE_BANK_KMS_KEY_ID and CORPORATE_PROFILE_BANK_KMS_KEY_VERSION must be configured together.');
+  if (corporateBankKmsKeyId && !/^(?:arn:(?:aws|aws-us-gov|aws-cn):kms:[a-z0-9-]+:\d{12}:(?:key|alias)\/[A-Za-z0-9/_-]+|[A-Za-z0-9-]{16,128}|alias\/[A-Za-z0-9/_-]+)$/.test(corporateBankKmsKeyId)) errors.push('CORPORATE_PROFILE_BANK_KMS_KEY_ID must be a KMS key ID, key ARN, or alias.');
+  if (corporateBankKmsKeyVersion && !/^[A-Za-z0-9._-]{1,64}$/.test(corporateBankKmsKeyVersion)) errors.push('CORPORATE_PROFILE_BANK_KMS_KEY_VERSION must be a version token of at most 64 safe characters.');
+  const corporateTinKeyId = stringOrUndefined(raw.CORPORATE_O2_KMS_KEY_ID);
+  if (corporateBankKmsKeyId && corporateTinKeyId && corporateBankKmsKeyId === corporateTinKeyId) errors.push('Corporate Profile bank and Corporate O2 TIN KMS keys must be distinct.');
+  if (corporateBankKmsKeyId) {
+    const bankRegion = stringOrUndefined(raw.AWS_REGION);
+    if (!bankRegion || !/^[a-z]{2}(-gov)?-[a-z]+-\d$/.test(bankRegion)) errors.push('AWS_REGION is required for Corporate Profile bank KMS encryption.');
+    if (raw.VERCEL === '1' && !stringOrUndefined(raw.AWS_ROLE_ARN)) errors.push('AWS_ROLE_ARN is required for Corporate Profile KMS access through Vercel OIDC.');
+    if (stringOrUndefined(raw.AWS_ACCESS_KEY_ID) || stringOrUndefined(raw.AWS_SECRET_ACCESS_KEY)) errors.push('Static AWS access-key environment credentials are not allowed for Corporate Profile KMS; use workload identity.');
+  }
+
   // SMTP must be configured for real delivery in staging/production.
   const smtpHost = stringOrUndefined(raw.SMTP_HOST);
   if (productionLike && !smtpHost) {
@@ -342,6 +360,8 @@ export function validateEnv(raw: Record<string, unknown>): ValidatedEnv {
     CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL: stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_REDIS_REST_URL),
     CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN: stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_REDIS_REST_TOKEN),
     CORPORATE_O2_RATE_LIMIT_HMAC_SECRET: stringOrUndefined(raw.CORPORATE_O2_RATE_LIMIT_HMAC_SECRET),
+    CORPORATE_PROFILE_BANK_KMS_KEY_ID: corporateBankKmsKeyId,
+    CORPORATE_PROFILE_BANK_KMS_KEY_VERSION: corporateBankKmsKeyVersion,
   };
 }
 

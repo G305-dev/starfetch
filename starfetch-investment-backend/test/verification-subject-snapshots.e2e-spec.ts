@@ -6,6 +6,7 @@ import {
   ApplicationVerificationRequirementState,
   OnboardingApplicationKind,
   OnboardingApplicationStatus,
+  PrimaryAccountType,
   UserRole,
   VerificationRulesetLifecycle,
   VerificationSubjectResolutionState,
@@ -39,6 +40,8 @@ describe('C1.4 subject resolution, staged snapshots, and C1.3 append-only securi
   let corporateDetailsEdit: CorporateDetailsEditService;
   let freshness: ApplicationVerificationSnapshotFreshnessService;
   let ownerId: string;
+  let jointOwnerId: string;
+  let corporateOwnerId: string;
   let secondMemberId: string;
   let outsiderId: string;
   let governanceActorId: string;
@@ -100,17 +103,20 @@ describe('C1.4 subject resolution, staged snapshots, and C1.3 append-only securi
     allowedBindings.clear();
     testOnlyAuthoringAuthorizer.authorizeDraftWrite.mockClear();
     testOnlyBindingAuthorizer.authorizeInitialBinding.mockClear();
-    ownerId = randomUUID();
+    ownerId = randomUUID(); // Individual applicant identity.
+    jointOwnerId = randomUUID();
+    corporateOwnerId = randomUUID();
     secondMemberId = randomUUID();
     outsiderId = randomUUID();
     governanceActorId = randomUUID();
     await t.prisma.user.createMany({
-      data: [ownerId, secondMemberId, outsiderId, governanceActorId].map((id) => ({
+      data: [ownerId, jointOwnerId, corporateOwnerId, secondMemberId, outsiderId, governanceActorId].map((id) => ({
         id,
         email: `synthetic-${id}@example.invalid`,
         normalizedEmail: `synthetic-${id}@example.invalid`,
         passwordHash: 'synthetic-e2e-not-used-for-auth',
         role: UserRole.INVESTOR,
+        primaryAccountType: id === corporateOwnerId ? PrimaryAccountType.CORPORATE : PrimaryAccountType.INDIVIDUAL,
         emailVerifiedAt: new Date('2025-01-01T00:00:00.000Z'),
       })),
     });
@@ -118,11 +124,12 @@ describe('C1.4 subject resolution, staged snapshots, and C1.3 append-only securi
 
   async function createApplication(
     kind: OnboardingApplicationKind,
-    individualOwnerId: string = ownerId,
+    ownerUserId?: string,
   ): Promise<string> {
     if (kind === OnboardingApplicationKind.CORPORATE) {
+      const corporateApplicantId = ownerUserId ?? corporateOwnerId;
       const suffix = randomUUID();
-      const draft = await corporateBootstrap.createDraft(principal(ownerId), {
+      const draft = await corporateBootstrap.createDraft(principal(corporateApplicantId), {
         institutionName: 'Synthetic Snapshot Holdings Ltd',
         dateOfIncorporation: '2020-01-02',
         rcNumber: `RC-${suffix.slice(0, 12)}`,
@@ -136,24 +143,25 @@ describe('C1.4 subject resolution, staged snapshots, and C1.3 append-only securi
       const application = await t.prisma.onboardingApplication.create({
         data: {
           kind,
-          ownerUserId: individualOwnerId,
-          initiatingUserId: individualOwnerId,
+          ownerUserId: ownerUserId ?? ownerId,
+          initiatingUserId: ownerUserId ?? ownerId,
         },
       });
       return application.id;
     }
 
+    const jointApplicantId = ownerUserId ?? jointOwnerId;
     const account = await t.prisma.jointAccount.create({
-      data: { displayName: 'Synthetic Joint Snapshot', createdByUserId: ownerId },
+      data: { displayName: 'Synthetic Joint Snapshot', createdByUserId: jointApplicantId },
     });
     await t.prisma.jointAccountMember.createMany({
-      data: [ownerId, secondMemberId].map((userId) => ({ jointAccountId: account.id, userId })),
+      data: [jointApplicantId, secondMemberId].map((userId) => ({ jointAccountId: account.id, userId })),
     });
     const application = await t.prisma.onboardingApplication.create({
       data: {
         kind,
         ownerJointAccountId: account.id,
-        initiatingUserId: ownerId,
+        initiatingUserId: jointApplicantId,
       },
     });
     return application.id;
@@ -277,13 +285,13 @@ describe('C1.4 subject resolution, staged snapshots, and C1.3 append-only securi
     const version = await createPublishedPolicy(OnboardingApplicationKind.JOINT);
     await bind(applicationId, version.id);
 
-    const snapshot = await snapshotService.createOrGetSnapshot(principal(ownerId), applicationId);
+    const snapshot = await snapshotService.createOrGetSnapshot(principal(jointOwnerId), applicationId);
     expect(snapshot).toMatchObject({ subjectCount: 2, resolvedSubjectCount: 2, unresolvedSubjectCount: 0, submissionEligible: false });
     const stored = await t.prisma.applicationVerificationSnapshot.findFirstOrThrow({
       where: { applicationId }, orderBy: { generation: 'desc' },
       include: { subjects: true, requirements: true },
     });
-    expect(stored.subjects.map((subject) => subject.resolvedUserId).sort()).toEqual([ownerId, secondMemberId].sort());
+    expect(stored.subjects.map((subject) => subject.resolvedUserId).sort()).toEqual([jointOwnerId, secondMemberId].sort());
     expect(stored.subjects.every((subject) => subject.sourceJointMembershipId !== null)).toBe(true);
     expect(stored.requirements.filter((r) => r.requirementKind === ApplicationVerificationRequirementKind.VERIFICATION_CHECK)).toHaveLength(2);
     await expect(snapshotService.createOrGetSnapshot(principal(outsiderId), applicationId))
@@ -299,7 +307,11 @@ describe('C1.4 subject resolution, staged snapshots, and C1.3 append-only securi
     ]);
     await bind(applicationId, version.id);
 
-    const result = await snapshotService.createOrGetSnapshot(principal(ownerId), applicationId);
+    // Corporate application access must follow the Corporate principal, not an
+    // Individual-only identity that happens to exist in the same fixture.
+    await expect(snapshotService.createOrGetSnapshot(principal(ownerId), applicationId))
+      .rejects.toMatchObject({ status: 404 });
+    const result = await snapshotService.createOrGetSnapshot(principal(corporateOwnerId), applicationId);
     expect(result).toMatchObject({
       accountKind: OnboardingApplicationKind.CORPORATE,
       subjectCount: 3,
@@ -339,18 +351,18 @@ describe('C1.4 subject resolution, staged snapshots, and C1.3 append-only securi
     const corporateApplicationId = await createApplication(OnboardingApplicationKind.CORPORATE);
     const corporateVersion = await createPublishedPolicy(OnboardingApplicationKind.CORPORATE);
     await bind(corporateApplicationId, corporateVersion.id);
-    const corporateReceipt = await snapshotService.createOrGetSnapshot(principal(ownerId), corporateApplicationId);
-    await corporateDetailsEdit.updateDetails(principal(ownerId), corporateApplicationId, 1, {
+    const corporateReceipt = await snapshotService.createOrGetSnapshot(principal(corporateOwnerId), corporateApplicationId);
+    await corporateDetailsEdit.updateDetails(principal(corporateOwnerId), corporateApplicationId, 1, {
       institutionName: 'Synthetic Updated Snapshot Holdings Ltd',
     });
-    await expect(freshness.assess(principal(ownerId), corporateApplicationId)).resolves.toMatchObject({
+    await expect(freshness.assess(principal(corporateOwnerId), corporateApplicationId)).resolves.toMatchObject({
       snapshotId: corporateReceipt.snapshotId,
       isFresh: false,
       issues: ['CORPORATE_DETAILS_VERSION_CHANGED'],
     });
-    const regeneratedCorporate = await snapshotService.createOrGetSnapshot(principal(ownerId), corporateApplicationId);
+    const regeneratedCorporate = await snapshotService.createOrGetSnapshot(principal(corporateOwnerId), corporateApplicationId);
     expect(regeneratedCorporate).toMatchObject({ generation: 2, idempotentReplay: false });
-    await expect(freshness.assess(principal(ownerId), corporateApplicationId)).resolves.toMatchObject({
+    await expect(freshness.assess(principal(corporateOwnerId), corporateApplicationId)).resolves.toMatchObject({
       snapshotId: regeneratedCorporate.snapshotId,
       generation: 2,
       isFresh: true,
@@ -361,7 +373,7 @@ describe('C1.4 subject resolution, staged snapshots, and C1.3 append-only securi
     const jointApplicationId = await createApplication(OnboardingApplicationKind.JOINT);
     const jointVersion = await createPublishedPolicy(OnboardingApplicationKind.JOINT);
     await bind(jointApplicationId, jointVersion.id);
-    const jointReceipt = await snapshotService.createOrGetSnapshot(principal(ownerId), jointApplicationId);
+    const jointReceipt = await snapshotService.createOrGetSnapshot(principal(jointOwnerId), jointApplicationId);
     const jointApplication = await t.prisma.onboardingApplication.findUniqueOrThrow({
       where: { id: jointApplicationId }, select: { ownerJointAccountId: true },
     });
@@ -378,14 +390,14 @@ describe('C1.4 subject resolution, staged snapshots, and C1.3 append-only securi
     await expect(t.prisma.jointAccount.update({
       where: { id: jointApplication.ownerJointAccountId! }, data: { membershipVersion: 999 },
     })).rejects.toThrow();
-    await expect(freshness.assess(principal(ownerId), jointApplicationId)).resolves.toMatchObject({
+    await expect(freshness.assess(principal(jointOwnerId), jointApplicationId)).resolves.toMatchObject({
       snapshotId: jointReceipt.snapshotId,
       isFresh: false,
       issues: ['JOINT_MEMBERSHIP_VERSION_CHANGED'],
     });
-    const regeneratedJoint = await snapshotService.createOrGetSnapshot(principal(ownerId), jointApplicationId);
+    const regeneratedJoint = await snapshotService.createOrGetSnapshot(principal(jointOwnerId), jointApplicationId);
     expect(regeneratedJoint).toMatchObject({ generation: 2, idempotentReplay: false });
-    await expect(freshness.assess(principal(ownerId), jointApplicationId)).resolves.toMatchObject({
+    await expect(freshness.assess(principal(jointOwnerId), jointApplicationId)).resolves.toMatchObject({
       snapshotId: regeneratedJoint.snapshotId,
       generation: 2,
       isFresh: true,
