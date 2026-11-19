@@ -62,6 +62,11 @@ export default () => {
     // handling has a separate unresolved approval gate and is not configured.
     corporate: {
       nonTinDraftFingerprintHmacSecret: process.env.CORPORATE_DRAFT_BOOTSTRAP_FINGERPRINT_HMAC_SECRET,
+      bank: {
+        // Purpose-isolated KMS key for Corporate Profile bank account numbers.
+        kmsKeyId: process.env.CORPORATE_PROFILE_BANK_KMS_KEY_ID,
+        kmsKeyVersion: process.env.CORPORATE_PROFILE_BANK_KMS_KEY_VERSION,
+      },
       o2: {
         enabled: process.env.CORPORATE_O2_ENABLED === 'true',
         lawfulBasisApproved: process.env.CORPORATE_O2_LAWFUL_BASIS_APPROVED === 'true',

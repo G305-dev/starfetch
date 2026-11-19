@@ -1,3 +1,4 @@
+import { IndividualAccountGuard } from '../../common/guards/individual-account.guard';
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CorporateOnboardingModule } from '../corporate-onboarding/corporate-onboarding.module';
@@ -11,6 +12,6 @@ import { KycCompletionService } from './kyc-completion.service';
 @Module({
   imports: [AuthModule, CorporateOnboardingModule],
   controllers: [MeController, ProfileController, DashboardController],
-  providers: [ProfileService, DashboardService, KycCompletionService],
+  providers: [IndividualAccountGuard, ProfileService, DashboardService, KycCompletionService],
 })
 export class MeModule {}

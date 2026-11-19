@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { randomUUID } from 'crypto';
+import { PrimaryAccountType } from '@prisma/client';
 import { EmailVerificationService } from '../src/modules/auth/services/email-verification.service';
 import {
   TestApp,
@@ -71,7 +72,7 @@ describe('Phase 2B — authentication & identity (e2e, real PostgreSQL)', () => 
     it('registers a Corporate applicant without an InvestorProfile or elevated role', async () => {
       const res = await request(t.server)
         .post('/api/v1/auth/register')
-        .send({ registrationType: 'CORPORATE', email: 'corp-applicant@example.com', password: PASSWORD })
+        .send({ registrationType: 'CORPORATE', companyName: 'Example Holdings Limited', companyPhoneNumber: '+2348000000000', email: 'corp-applicant@example.com', password: PASSWORD })
         .expect(201);
 
       expect(res.body.data.nextAction).toBe('VERIFY_EMAIL');
@@ -79,10 +80,12 @@ describe('Phase 2B — authentication & identity (e2e, real PostgreSQL)', () => 
       expect(res.headers['set-cookie']).toBeUndefined();
       const user = await t.prisma.user.findUnique({
         where: { id: res.body.data.userId },
-        include: { investorProfile: true, emailVerificationChallenges: true, authSessions: true },
+        include: { investorProfile: true, corporateApplicantProfile: true, emailVerificationChallenges: true, authSessions: true },
       });
       expect(user?.role).toBe('INVESTOR');
+      expect(user?.primaryAccountType).toBe(PrimaryAccountType.CORPORATE);
       expect(user?.investorProfile).toBeNull();
+      expect(user?.corporateApplicantProfile).toMatchObject({ companyName: 'Example Holdings Limited', companyPhoneNumber: '+2348000000000' });
       expect(user?.emailVerifiedAt).toBeNull();
       expect(user?.emailVerificationChallenges).toHaveLength(1);
       expect(user?.authSessions).toHaveLength(0);
@@ -109,7 +112,10 @@ describe('Phase 2B — authentication & identity (e2e, real PostgreSQL)', () => 
 
     it('rejects caller-supplied roles and unknown registration types', async () => {
       await request(t.server).post('/api/v1/auth/register')
-        .send({ registrationType: 'CORPORATE', role: 'ADMIN', email: 'role@example.com', password: PASSWORD })
+        .send({ registrationType: 'CORPORATE', companyName: 'Example Holdings Limited', companyPhoneNumber: '+2348000000000', role: 'ADMIN', email: 'role@example.com', password: PASSWORD })
+        .expect(400);
+      await request(t.server).post('/api/v1/auth/register')
+        .send({ registrationType: 'CORPORATE', companyName: 'Example Holdings Limited', companyPhoneNumber: '+2348000000000', primaryAccountType: 'INDIVIDUAL', email: 'escalation@example.com', password: PASSWORD })
         .expect(400);
       await request(t.server).post('/api/v1/auth/register')
         .send({ registrationType: 'STAFF', email: 'type@example.com', password: PASSWORD })

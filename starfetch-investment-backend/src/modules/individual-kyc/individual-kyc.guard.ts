@@ -1,5 +1,5 @@
 import { CanActivate, ExecutionContext, HttpException, HttpStatus, Injectable } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { PrimaryAccountType, UserRole } from '@prisma/client';
 import { ERROR_CODES } from '../../common/errors/error-codes';
 import { AuthenticatedRequest } from '../../common/types/auth-principal';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
@@ -18,11 +18,11 @@ export class IndividualKycGuard implements CanActivate {
 
     const user = await this.prisma.user.findUnique({
       where: { id: principal.userId },
-      select: { role: true, investorProfile: { select: { id: true } } },
+      select: { role: true, primaryAccountType: true, investorProfile: { select: { id: true } } },
     });
     // Corporate applicants share INVESTOR auth but intentionally have no
     // InvestorProfile. Role alone therefore never grants Individual KYC access.
-    if (!user || user.role !== UserRole.INVESTOR || !user.investorProfile) throw this.forbidden();
+    if (!user || user.role !== UserRole.INVESTOR || user.primaryAccountType === PrimaryAccountType.CORPORATE || !user.investorProfile) throw this.forbidden();
     return true;
   }
 

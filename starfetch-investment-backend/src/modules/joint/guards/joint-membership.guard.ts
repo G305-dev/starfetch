@@ -5,7 +5,6 @@ import {
   HttpStatus,
   Injectable,
 } from '@nestjs/common';
-import { Request } from 'express';
 import { ERROR_CODES } from '../../../common/errors/error-codes';
 import { AuthenticatedRequest } from '../../../common/types/auth-principal';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';

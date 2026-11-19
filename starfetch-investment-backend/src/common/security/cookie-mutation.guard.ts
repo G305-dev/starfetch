@@ -6,7 +6,6 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Request } from 'express';
 import { ERROR_CODES } from '../errors/error-codes';
 import { AuthenticatedRequest } from '../types/auth-principal';
 import { CookieOriginGuard } from '../../modules/auth/guards/cookie-origin.guard';

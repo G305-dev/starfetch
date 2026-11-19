@@ -12,6 +12,7 @@ import { Roles } from '../../common/guards/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { AuthenticatedRequest } from '../../common/types/auth-principal';
 import { AccessTokenGuard } from '../auth/guards/access-token.guard';
+import { IndividualAccountGuard } from '../../common/guards/individual-account.guard';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { InvestorProfileView, ProfileService } from './profile.service';
 
@@ -27,7 +28,7 @@ import { InvestorProfileView, ProfileService } from './profile.service';
  * - Email is owned by the User record and is read-only on this surface.
  */
 @Controller('me/profile')
-@UseGuards(AccessTokenGuard, RolesGuard)
+@UseGuards(AccessTokenGuard, RolesGuard, IndividualAccountGuard)
 @Roles(UserRole.INVESTOR)
 export class ProfileController {
   constructor(private readonly profiles: ProfileService) {}

@@ -1,4 +1,4 @@
-import { UserRole } from '@prisma/client';
+import { PrimaryAccountType, UserRole } from '@prisma/client';
 jest.mock('./services/password.service', () => ({ PasswordService: class PasswordService {} }));
 import { AuthService } from './auth.service';
 
@@ -15,6 +15,7 @@ describe('AuthService applicant registration', () => {
     const tx = {
       user: { create: jest.fn().mockResolvedValue(user) },
       investorProfile: { create: jest.fn().mockResolvedValue({}) },
+      corporateApplicantProfile: { create: jest.fn().mockResolvedValue({}) },
     };
     const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)) };
     const verification = {
@@ -37,14 +38,17 @@ describe('AuthService applicant registration', () => {
     const { instance, tx, verification } = service();
     const result = await instance.register({
       registrationType: 'CORPORATE',
+      companyName: 'Example Holdings Limited',
+      companyPhoneNumber: '+2348000000000',
       email: 'applicant@example.invalid',
       password: 'synthetic valid passphrase',
     });
 
     expect(tx.user.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ role: UserRole.INVESTOR }),
+      data: expect.objectContaining({ role: UserRole.INVESTOR, primaryAccountType: PrimaryAccountType.CORPORATE }),
     }));
     expect(tx.investorProfile.create).not.toHaveBeenCalled();
+    expect(tx.corporateApplicantProfile.create).toHaveBeenCalledWith({ data: { userId: user.id, companyName: 'Example Holdings Limited', companyPhoneNumber: '+2348000000000' } });
     expect(verification.createChallenge).toHaveBeenCalledWith(tx, user.id);
     expect(verification.sendCode).toHaveBeenCalledWith(user.email, challenge);
     expect(result.data).toMatchObject({ emailVerified: false, nextAction: 'VERIFY_EMAIL' });
@@ -88,6 +92,9 @@ describe('AuthService applicant registration', () => {
       lastName: ' Lovelace ',
       password: 'synthetic valid passphrase',
     });
+    expect(tx.user.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ primaryAccountType: PrimaryAccountType.INDIVIDUAL }),
+    }));
     expect(tx.investorProfile.create).toHaveBeenCalledWith({
       data: { userId: user.id, firstName: 'Ada', lastName: 'Lovelace' },
     });
