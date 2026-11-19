@@ -98,16 +98,36 @@ describe('Phase 2B — authentication & identity (e2e, real PostgreSQL)', () => 
         .send({ email: 'corp-applicant@example.com', password: PASSWORD }).expect(200);
       expect(login.body.data.user).toMatchObject({
         role: 'INVESTOR', emailVerified: true, firstName: '', lastName: '',
+        primaryAccountType: 'CORPORATE',
+        companyName: 'Example Holdings Limited', companyPhoneNumber: '+2348000000000',
+        authorizedContexts: ['CORPORATE'], jointMembershipCount: 0,
       });
-      expect(login.body.data.accessToken).toEqual(expect.any(String));
+      expect(login.body.data.accessToken).toMatch(/^[\w-]+\.[\w-]+\.[\w-]+$/);
+      expect(login.body.data.user).not.toHaveProperty('passwordHash');
+      expect(login.body.data.user).not.toHaveProperty('normalizedEmail');
+      expect(login.body.data.user).not.toHaveProperty('accessToken');
+      expect(login.body.data.user).not.toHaveProperty('refreshToken');
+      expect(login.body.data.user).not.toHaveProperty('csrfToken');
+      expect(JSON.stringify(login.body.data.user)).not.toMatch(/passwordHash|normalizedEmail|tokenHash|refreshToken|csrfToken|sessionId|taxIdentificationNumber|accountNumber|\bbvn\b/i);
 
       const me = await request(t.server).get('/api/v1/me')
         .set('Authorization', `Bearer ${login.body.data.accessToken}`).expect(200);
-      expect(me.body.data).toMatchObject({ role: 'INVESTOR', firstName: '', lastName: '' });
+      expect(me.body.data).toMatchObject({
+        role: 'INVESTOR', firstName: '', lastName: '', emailVerified: true,
+        primaryAccountType: 'CORPORATE',
+        companyName: 'Example Holdings Limited', companyPhoneNumber: '+2348000000000',
+        authorizedContexts: ['CORPORATE'], jointMembershipCount: 0,
+        kycCompletion: { individual: 'REQUIRED', corporate: 'REQUIRED' },
+      });
+      for (const field of ['passwordHash', 'normalizedEmail', 'accessToken', 'refreshToken', 'csrfToken', 'sessionId', 'authSessions', 'refreshTokens', 'taxIdentificationNumber', 'accountNumber', 'bvn']) {
+        expect(me.body.data).not.toHaveProperty(field);
+      }
+      expect(JSON.stringify(me.body)).not.toMatch(/argon2|passwordHash|normalizedEmail|tokenHash|refreshToken|csrfToken|sessionId|taxIdentificationNumber|accountNumber|\bbvn\b/i);
+      expect(JSON.stringify(me.body)).not.toContain(login.body.data.accessToken);
 
       const profile = await request(t.server).get('/api/v1/me/profile')
-        .set('Authorization', `Bearer ${login.body.data.accessToken}`).expect(404);
-      expect(profile.body.error.code).toBe('NOT_FOUND');
+        .set('Authorization', `Bearer ${login.body.data.accessToken}`).expect(403);
+      expect(profile.body.error.code).toBe('FORBIDDEN');
     });
 
     it('rejects caller-supplied roles and unknown registration types', async () => {
@@ -373,7 +393,14 @@ describe('Phase 2B — authentication & identity (e2e, real PostgreSQL)', () => 
         email: 'login@example.com',
         emailVerified: true,
         role: 'INVESTOR',
+        primaryAccountType: 'INDIVIDUAL',
+        authorizedContexts: ['INDIVIDUAL'],
+        jointMembershipCount: 0,
       });
+      for (const field of ['passwordHash', 'normalizedEmail', 'accessToken', 'refreshToken', 'csrfToken', 'sessionId', 'taxIdentificationNumber', 'accountNumber', 'bvn']) {
+        expect(res.body.data.user).not.toHaveProperty(field);
+      }
+      expect(JSON.stringify(res.body.data.user)).not.toMatch(/argon2|passwordHash|normalizedEmail|tokenHash|refreshToken|csrfToken|sessionId|taxIdentificationNumber|accountNumber|\bbvn\b/i);
 
       const jar = cookieJar(res);
       const refresh = jar.get(REFRESH_COOKIE);
@@ -495,10 +522,16 @@ describe('Phase 2B — authentication & identity (e2e, real PostgreSQL)', () => 
         email: 'me@example.com',
         emailVerified: true,
         role: 'INVESTOR',
+        primaryAccountType: 'INDIVIDUAL',
+        authorizedContexts: ['INDIVIDUAL'],
+        jointMembershipCount: 0,
+        kycCompletion: { individual: 'REQUIRED', corporate: 'REQUIRED' },
       });
-      expect(res.body.data.passwordHash).toBeUndefined();
-      expect(res.body.data.normalizedEmail).toBeUndefined();
-      expect(JSON.stringify(res.body)).not.toMatch(/argon2|tokenHash|codeHmac/i);
+      for (const field of ['passwordHash', 'normalizedEmail', 'accessToken', 'refreshToken', 'csrfToken', 'sessionId', 'authSessions', 'refreshTokens', 'taxIdentificationNumber', 'accountNumber', 'bvn']) {
+        expect(res.body.data).not.toHaveProperty(field);
+      }
+      expect(JSON.stringify(res.body)).not.toMatch(/argon2|passwordHash|normalizedEmail|tokenHash|codeHmac|refreshToken|csrfToken|sessionId|taxIdentificationNumber|accountNumber|\bbvn\b/i);
+      expect(JSON.stringify(res.body)).not.toContain(access);
     });
   });
 

@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { OnboardingApplicationKind, OnboardingApplicationStatus, PrimaryAccountType, UserRole } from '@prisma/client';
+import { OnboardingApplicationHistoryEvent, OnboardingApplicationKind, OnboardingApplicationStatus, PrimaryAccountType, UserRole } from '@prisma/client';
 import request from 'supertest';
 import { CorporateApplicantContextService } from '../src/modules/corporate-onboarding/services/corporate-applicant-context.service';
 import { CorporateProfileService } from '../src/modules/corporate-onboarding/services/corporate-profile.service';
@@ -55,25 +55,40 @@ describe('Corporate registration recovery and profile persistence (isolated loca
     });
     const corporateAccount = await t.prisma.corporateAccount.create({ data: {} });
     corporateAccountId = corporateAccount.id;
-    const application = await t.prisma.onboardingApplication.create({
-      data: {
-        kind: OnboardingApplicationKind.CORPORATE,
-        ownerCorporateAccountId: corporateAccountId,
-        initiatingUserId: user.id,
-        status: OnboardingApplicationStatus.DRAFT,
-      },
+    const application = await t.prisma.$transaction(async (tx) => {
+      const created = await tx.onboardingApplication.create({
+        data: {
+          kind: OnboardingApplicationKind.CORPORATE,
+          ownerCorporateAccountId: corporateAccountId,
+          initiatingUserId: user.id,
+          status: OnboardingApplicationStatus.DRAFT,
+          submittedByUserId: null,
+          submittedAt: null,
+        },
+      });
+      await tx.corporateOnboardingDetails.create({
+        data: {
+          applicationId: created.id,
+          institutionName: 'Synthetic Holdings Ltd',
+          dateOfIncorporation: new Date('2020-01-02T00:00:00.000Z'),
+          rcNumber: 'RC-SYNTHETIC-1',
+          businessPhoneNumber: '+2348000000000',
+          businessEmail: `business-${userId}@example.invalid`,
+          version: 1,
+        },
+      });
+      await tx.onboardingApplicationHistory.create({
+        data: {
+          applicationId: created.id,
+          event: OnboardingApplicationHistoryEvent.CREATED,
+          fromStatus: null,
+          toStatus: OnboardingApplicationStatus.DRAFT,
+          actorUserId: user.id,
+        },
+      });
+      return created;
     });
     applicationId = application.id;
-    await t.prisma.corporateOnboardingDetails.create({
-      data: {
-        applicationId,
-        institutionName: 'Synthetic Holdings Ltd',
-        dateOfIncorporation: new Date('2020-01-02T00:00:00.000Z'),
-        rcNumber: 'RC-SYNTHETIC-1',
-        businessPhoneNumber: '+2348000000000',
-        businessEmail: `business-${userId}@example.invalid`,
-      },
-    });
   }, 60_000);
 
   function principal(id = userId) {
