@@ -10,11 +10,18 @@ import { CorporateVerificationProgress } from "./CorporateVerificationProgress";
 type ReadState = "idle" | "loading" | "ready" | "error";
 type EditValues = CorporateDraftInput;
 
+/** Safe support reference (status, backend code, request ID). Never includes request data. */
+function supportReference(error: unknown) {
+  if (!isApiError(error)) return "";
+  const parts = [error.status ? `HTTP ${error.status}` : null, error.serverCode ?? null, error.requestId ? `request ${error.requestId}` : null].filter(Boolean);
+  return parts.length ? ` Reference: ${parts.join(" · ")}.` : "";
+}
+
 function safeReadError(error: unknown, subject: string) {
   if (!isApiError(error)) return `We could not load ${subject}. Please try again.`;
-  if (error.code === "NOT_FOUND") return `${subject} is not available to this account.`;
-  if (error.code === "RATE_LIMITED") return `${subject} is temporarily rate limited.${error.retryAfterSeconds ? ` Try again in ${error.retryAfterSeconds} seconds.` : " Please try again later."}`;
-  return getSafeErrorMessage(error);
+  if (error.code === "NOT_FOUND") return `${subject} is not available to this account.${supportReference(error)}`;
+  if (error.code === "RATE_LIMITED") return `${subject} is temporarily rate limited.${error.retryAfterSeconds ? ` Try again in ${error.retryAfterSeconds} seconds.` : " Please try again later."}${supportReference(error)}`;
+  return `${getSafeErrorMessage(error)}${supportReference(error)}`;
 }
 
 function safeEditError(error: unknown) {
