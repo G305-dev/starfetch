@@ -1,55 +1,37 @@
-# Starfetch Admin Frontend — private demo
+# Starfetch Admin Portal — Production integration frontend (NOT released)
 
-Standalone Next.js, TypeScript and Tailwind admin frontend. Investor applications and backend are not included. Demo components and synthetic fixtures remain in `components/admin/demo/`; all records, charts and financial figures are examples, not live data. Some illustrative totals are independent of sample rows.
+This package replaces the old demo UI with protected, provisional real-API integrations. It is **not** production ready. It has no live backend data, test account, demo bypass, mock financial values or sample KYC records. The current Starfetch backend does not yet expose the proposed Admin API; production remains **fail-closed (503)** by default.
 
-## Important: this is not authentication
+## Installation
 
-**Vercel Deployment Protection is mandatory for any online preview.** The application cannot detect or enforce whether it has been enabled. Anyone who passes—or bypasses—the Vercel protection can open the admin routes directly without using the demo form. The placeholder email and password are public UI examples, not secrets or access controls. No staff authentication, role checking, session or backend API is implemented. Never use real credentials or customer data; never expose a demo publicly.
+1. Apply this package ONLY against the reviewed `admin-portal` branch. Do not overwrite a dirty tree. Use the accompanying PowerShell installer or review and copy the changed files and deletion list manually.
+2. Install dependencies using `npm ci` under `starfetch-admin-frontend`. Run `npm run typecheck` and `npm run build`. All dependency installation and actual server tests must be performed in an environment with npm access.
+3. Keep Vercel production Admin access **disabled**. Do not enter customer records in Preview.
+4. Review and approve the proposed contract jointly with David, including staff cookie semantics, response DTOs, KYC stages, account eligibility and read-model valuation support.
+5. Only after dedicated staff sessions, granular RBAC, server-side object-level authorization, origin/CSRF, audit, provider/data residency, unit/integration/E2E tests and sign-off: set the **server-only** environment values listed below.
 
-Admin routes fail closed with HTTP 503 and the login controls are disabled by default. Production remains blocked, including when `ADMIN_DEMO_MODE=1`. David must provide an approved backend staff authentication and server-side authorization contract before public deployment or real data use.
+## Server-only configuration (must never use NEXT_PUBLIC_*)
 
-The common server-side gate permits demo mode only with `ADMIN_DEMO_MODE=1` and either: (1) local Next.js development with no Vercel environment or `VERCEL_ENV=development`; or (2) Vercel Preview with system variables `VERCEL=1` and `VERCEL_ENV=preview`. `VERCEL_ENV=production` always denies it. The login and seven routes render dynamically, and middleware also enforces the gate. A non-secret build switch removes demo modules from normal production builds; both build time and runtime must be correctly configured for Preview. Rebuild/redeploy after changing environment variables. Never promote or reuse a Preview build as a production artifact: Preview client bundles include synthetic fixtures and depend on Vercel protection for privacy.
+- `ADMIN_STAFF_INTEGRATION_ENABLED=approved-v1`
+- `ADMIN_RELEASE_APPROVED=true` — requires management/compliance/security approval, never set on Preview to bypass testing.
+- `ADMIN_BACKEND_URL=https://approved-backend-host` — trusted HTTPS upstream origin, optional path prefix.
+- `ADMIN_STAFF_SESSION_COOKIE=__Host-<agreed-cookie-name>` — **must** match David's secure staff login Set-Cookie and session-validation contract. Browser receives the reissued host-only Secure HttpOnly cookie, never JS token/localStorage.
 
-Demo transaction **Add**, **View** and **Edit** operate on synthetic records only. Fields including amount and status can be changed as display data, but no real approval, payment, settlement, balance or ledger action occurs. Changes survive client-side navigation in browser memory only, and reset on reload, closing the tab or a new browser session; no API or browser storage is used. Original sample activity and related-transaction details are illustrative and are not recalculated after edits. KYC Approve and Reject are browser-memory simulations only; no identity checks, compliance decision or account activation occurs. KYC and investment changes survive client-side navigation but reset on reload or using their page reset buttons. Never enter real customer information.
+Default without these settings: `/admin/*` (except staff sign-in) remains 503. Login form is disabled. `/api/admin-gateway/*` and `/api/admin-auth/*` fail closed. Middleware cookie presence does not authenticate; server protected pages and proxy calls verify backend session every time. Backend must enforce permissions and object-level access again.
 
-## Dashboard and user demo
+**Important**: The cookie bridge is a provisional implementation until David confirms the actual backend Set-Cookie, refresh, logout/CSRF and session revocation protocol. The BFF cannot make an absent backend auth service real. Independent KYC final compliance approval and financial approval/settlement are deliberately not wired in the UI until backend contracts and maker-checker protections are agreed.
 
-The dashboard retains the synthetic summaries, AUM/allocation charts and a read-only Recent Registrations table. View All opens Users & Accounts. User Add and Delete change synthetic rows only: no onboarding or deletion occurs. The form supports Individual, Joint (two applicants), and Corporate records; new rows start with Pending verification. Never enter actual personal or KYC information.
+## API contract
 
-User changes persist only across client-side navigation within the current tab, not reloads or new tabs; **Reset Demo Changes** restores the original sample. The directory count is filtered sample size, whereas summary cards and the breakdown are separate illustrative aggregates. Added users appear in the sample recent/verification lists. Profile **View Verification** and the verification queue navigate to KYC with the selected user reference; KYC looks up an existing separate fixture by matching sample email. Newly added users have no KYC fixture, so an explicit no-match message is expected. No approval or rejection is automatic, and the two sets of illustrative statuses are not synchronized.
+Uses the proposed `/api/v1/admin` route family via a same-origin `/api/admin-gateway` allowlisted BFF. Read `API-INTEGRATION-MATRIX.md`, `PRODUCTION-BLOCKERS.md` and `DAVID-API-QUESTIONS.md` in the delivery ZIP. Each view has real fetch/loading/error/empty/403 states; unavailable backend surfaces never use fixtures. Post-invitation does NOT create an active investor; investment/transaction Add forms issue pending requests ONLY.
 
-## Required Vercel Preview configuration
+## Current UI decisions preserved
 
-1. In the intended Vercel project, set Root Directory to `starfetch-admin-frontend` and enable **Settings → Deployment Protection** before creating or sharing the demo. Choose **Standard Protection** or **All Deployments** and an appropriate protection method such as Vercel Authentication; restrict access to intended testers. Confirm all preview aliases and generated deployment URLs are protected, with no protection exceptions or public bypasses. Available methods and access depend on your Vercel plan.
-2. Under **Settings → Environment Variables**, set `ADMIN_DEMO_MODE=1` for **Preview only**, preferably scoped to the intended Git branch if offered. Do not set it for Production. Enable **Automatically expose System Environment Variables** so Vercel supplies `VERCEL=1` and `VERCEL_ENV=preview` at build and runtime; don't manually assign these in the Vercel project. Do not create an `ADMIN_DEMO_BUILD` environment variable: Next.js derives it during build.
-3. Deploy a new Preview using your normal Vercel workflow (not performed by this package). Verify its precise URL in a signed-out/incognito browser: Vercel must challenge access before `/admin/login`, `/admin/dashboard`, other admin paths, and `/_next/` assets. If any bypass is possible, stop and fix the protection before sharing. Then sign in through Vercel as an authorized tester.
-4. On `/admin/login`, enter the placeholder email `demo@example.com` and password `demo-only`, then select **Open demo**. No actual authentication takes place. Testers with Vercel access can also enter admin routes directly.
-5. Confirm the public production deployment remains blocked: its `/admin/dashboard` and other admin routes should return 503, while the login controls are disabled. Vercel Deployment Protection status itself must be checked in Vercel; an environment flag or this app's checks are not proof of protection.
-
-Official references: https://vercel.com/docs/deployment-protection and https://vercel.com/docs/environment-variables/system-environment-variables
-
-## Local demo
-
-Install Node.js 20.9+ and run `npm ci`. Do not bind a local development server to a public interface.
-
-macOS/Linux:
-```sh
-ADMIN_DEMO_MODE=1 npm run dev -- --port 3002
-```
-
-Windows PowerShell:
-```powershell
-$env:ADMIN_DEMO_MODE = '1'
-npm run dev -- --port 3002
-```
-
-Open `http://localhost:3002/admin/login` and use `demo@example.com` / `demo-only`. Without `ADMIN_DEMO_MODE=1`, admin routes return 503 and login controls are disabled. A normal `npm run build`/`npm run start` does not enable local demo mode.
-
-## Checks
-
-```sh
-npm run typecheck
-npm run build
-```
-
-Package installation requires network access. The licensed Manrope font is bundled locally for builds. The ZIP excludes `node_modules`, `.next`, environment files and caches. `RESTORATION-REPORT.md` and `CHANGES.md` record earlier work and are historical; this README and `DASHBOARD-USER-MANAGEMENT-REPORT.md` describe the current behavior; other reports document earlier updates. When replacing files, back up independent local changes first.
+- Starfetch green design, protected sidebar routes and centered modals.
+- Dashboard: 4 metrics, AUM series/allocation and recent registrations linking to Users; no Pending Actions, System Activity or row actions.
+- Users: server-side list/filter, profile view, canonical KYC navigation, invite and controlled deactivation request (not hard delete).
+- KYC: permitted reviewer-level correction/reject/approve-review requests; *no independent final compliance button until contract approved*.
+- Investments: Add creates draft request for an eligible backend account. View shows investment summary/performance, not Documents or Activity Log. Booked positions cannot have their financial fields manually edited.
+- Transactions: All/Deposits/Withdrawals, View and Add controlled request; immutable settled transaction read. No fake Approved/Completed action.
+- Portfolio: **exactly** Investment Solution, Amount Invested, Current Value. No recent activity.
+- Settings: exactly four backend-supplied summary cards; missing/unapproved DTO shows unavailable.

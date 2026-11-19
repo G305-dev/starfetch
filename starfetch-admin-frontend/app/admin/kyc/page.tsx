@@ -1,13 +1,6 @@
-import { isAdminDemoEnabled } from "@/lib/admin-demo-mode";
-
-export const dynamic = "force-dynamic";
-import { AdminKycPage as UnavailablePage } from "@/components/admin/AdminKycPage";
-
-/** Demo modules render only in explicitly enabled development or Vercel Preview. */
-export default async function Page() {
-  if (process.env.ADMIN_DEMO_BUILD === "1" && isAdminDemoEnabled()) {
-    const { AdminKycPage } = await import("@/components/admin/demo/AdminKycPage");
-    return <AdminKycPage />;
-  }
-  return <UnavailablePage />;
-}
+import {ProtectedPage} from '@/components/admin/live/ProtectedPage';
+import {getSession} from '@/lib/admin-api/server';
+import {PERMISSIONS} from '@/lib/admin-api/contracts';
+import {KycPage} from '@/components/admin/live/KycPage';
+export const dynamic='force-dynamic';
+export default async function Page(){const session=await getSession();return <ProtectedPage permission={PERMISSIONS.kyc}>{session&&<KycPage session={session}/>}</ProtectedPage>;}

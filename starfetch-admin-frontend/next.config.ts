@@ -1,10 +1,35 @@
-import type { NextConfig } from "next";
-import { isAdminDemoEnvironment } from "./lib/admin-demo-mode";
+import type {NextConfig} from 'next';
+const securityHeaders = [
+  {
+    key: 'Cache-Control',
+    value: 'private, no-store, max-age=0',
+  },
+  {
+    key: 'X-Content-Type-Options',
+    value: 'nosniff',
+  },
+  {
+    key: 'Referrer-Policy',
+    value: 'strict-origin-when-cross-origin',
+  },
+];
 
-// Public, non-secret build switch. Preview must also pass the runtime server gate.
-// This lets normal production builds eliminate unused demo modules and fixtures.
 const nextConfig: NextConfig = {
   devIndicators: false,
-  env: { ADMIN_DEMO_BUILD: isAdminDemoEnvironment() ? "1" : "0" },
+  headers: async () => [
+    {
+      source: '/admin/:path*',
+      headers: securityHeaders,
+    },
+    {
+      source: '/api/admin-auth/:path*',
+      headers: securityHeaders,
+    },
+    {
+      source: '/api/admin-gateway/:path*',
+      headers: securityHeaders,
+    },
+  ],
 };
+
 export default nextConfig;

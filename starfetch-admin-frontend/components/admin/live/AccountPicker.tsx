@@ -1,0 +1,18 @@
+"use client";
+import {useState,type FormEvent} from 'react';
+import {apiRequest} from '@/lib/admin-api/client';
+import type {Account,Eligibility} from '@/lib/admin-api/contracts';
+import {button,secondary,input,State,ErrorNotice} from './UI';
+export function AccountPicker({value,onChange,action}:{value:Account|null;onChange:(account:Account|null)=>void;action:'CREATE_INVESTMENT'|'CREATE_TRANSACTION'}){
+ const [query,setQuery]=useState('');const [records,setRecords]=useState<Account[]|null>(null);const [loading,setLoading]=useState(false);const [error,setError]=useState('');const [checking,setChecking]=useState(false);const [eligibility,setEligibility]=useState<Eligibility|null>(null);
+ async function search(e:FormEvent){e.preventDefault();onChange(null);setEligibility(null);setError('');setRecords(null);
+ if(query.trim().length<2){setError('Enter at least two characters.');return;}setLoading(true);
+ try{const response=await apiRequest<Account[]>('/accounts/search',{query:{q:query.trim(),pageSize:20}});if(!Array.isArray(response.data))throw new Error('Unexpected account search response');setRecords(response.data);}catch(e){setError((e as Error).message);}finally{setLoading(false);}}
+ async function select(account:Account){setChecking(true);setError('');setEligibility(null);onChange(null);
+ try{const response=await apiRequest<Eligibility>('/accounts/'+account.accountId+'/eligibility',{query:{action}});
+ const item=response.data;const eligible=action==='CREATE_INVESTMENT'?item.investmentEligible:item.transactionEligible;
+ if(!eligible||item.status!=='ACTIVE'||!item.complianceApproved||item.restrictions?.length){setError('This account is not eligible for the selected financial operation.');return;}
+ setEligibility(item);onChange(account);setRecords(null);
+ }catch(e){setError((e as Error).message);}finally{setChecking(false);}}
+ return <div className="rounded-lg border border-star-200 p-3"><p className="text-xs font-extrabold">Registered investor account</p><p className="mt-1 text-[11px] text-star-muted">Search the canonical account registry. Email or name is never accepted as account authority.</p>{value?<div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-star-50 p-3 text-xs"><div><strong>{value.accountReference}</strong> · {value.accountType}<div>{value.displayName??'Registered account'}</div>{eligibility&&<div className="text-star-muted">Eligibility verified by backend</div>}</div><button className={secondary} type="button" onClick={()=>{onChange(null);setEligibility(null);}}>Change</button></div>:<><form className="mt-3 flex gap-2" onSubmit={search}><input className={input} aria-label="Search registered investor" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Account reference, email or name"/><button disabled={loading||checking} className={secondary} type="submit">{loading?'Searching…':'Search'}</button></form>{records&&<div className="mt-3 max-h-48 space-y-1 overflow-auto" role="listbox" aria-label="Matching registered accounts">{!records.length?<State status="empty" message="User not found. Confirm that the investor has a registered Starfetch account."/>:records.map(account=><button type="button" key={account.accountId} role="option" aria-selected={false} onClick={()=>select(account)} disabled={checking} className="block w-full rounded-md px-3 py-2 text-left text-xs hover:bg-star-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-star-700"><strong>{account.accountReference}</strong> · {account.accountType}<span className="ml-2 text-star-muted">{account.displayName}</span></button>)}</div>}</>}{error&&<ErrorNotice error={error}/>}</div>;
+}
