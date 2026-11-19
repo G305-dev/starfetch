@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import {
   OnboardingApplicationKind,
   OnboardingApplicationStatus,
+  PrimaryAccountType,
   UserRole,
   VerificationRulesetLifecycle,
   VerificationSubjectTargetKind,
@@ -108,6 +109,9 @@ describe('C1.3 dormant verification rulesets and binding foundation (isolated Po
         normalizedEmail: `synthetic-${id}@example.invalid`,
         passwordHash: 'synthetic-e2e-not-used-for-auth',
         role: UserRole.INVESTOR,
+        // The applicant creating Corporate applications must have Corporate
+        // account context. The governance actor remains a distinct identity.
+        primaryAccountType: id === ownerId ? PrimaryAccountType.CORPORATE : PrimaryAccountType.INDIVIDUAL,
         emailVerifiedAt: new Date('2025-01-01T00:00:00.000Z'),
       })),
     });
