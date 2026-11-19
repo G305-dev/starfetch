@@ -7,7 +7,7 @@ export interface TransactionTimelineStage { label: "Initiated" | "Under Review" 
 export interface TransactionHistoryItem { action: string; timestamp: string; actor: string; note?: string }
 export interface RelatedTransaction { id: string; type: TransactionType; amount: number; status: TransactionStatus; date: string }
 export interface TransactionDetail { purpose: string; referenceNumber: string; completedAt: string; timeline: TransactionTimelineStage[]; notes: string; approvals: TransactionHistoryItem[]; activity: TransactionHistoryItem[]; related: RelatedTransaction[] }
-export interface AdminTransaction { id: string; investor: string; email: string; accountReference: string; accountType: AccountType; type: TransactionType; amount: number; status: TransactionStatus; paymentMethod: string; created: string; createdAt: string; investmentReference?: string; detail: TransactionDetail }
+export interface AdminTransaction { id: string; investorReference?: string; investor: string; email: string; accountReference: string; accountType: AccountType; type: TransactionType; amount: number; status: TransactionStatus; paymentMethod: string; created: string; createdAt: string; investmentReference?: string; detail: TransactionDetail }
 export const transactionSnapshotDate = "2026-11-02";
 export const transactionSummaryStats: AdminStat[] = [
   { title:"Total Transactions", value:"12,486", change:"+18.70%", icon:ArrowLeftRight },

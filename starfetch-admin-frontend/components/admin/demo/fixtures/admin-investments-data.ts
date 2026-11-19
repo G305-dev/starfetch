@@ -19,6 +19,7 @@ export interface InvestmentDetail {
 }
 export interface AdminInvestment {
   reference: string;
+  investorReference?: string; // exact registered investor key on newly created demo records
   accountReference: string;
   investor: string;
   email: string;

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { X } from "lucide-react";
 import { AdminAccountTypeBadge, AdminStatusBadge } from "./AdminBadges";
 import { formatMockMoney } from "./fixtures/admin-users-data";
+import { DemoInvestorPicker } from "./DemoInvestorPicker";
+import { accountReferenceForUser, getDemoUser, TRANSACTION_USER_NOT_FOUND, useDemoUsers } from "./demo-user-registry";
 import type { AccountType } from "./fixtures/admin-dashboard-data";
 import type { AdminTransaction, TransactionType } from "./fixtures/admin-transactions-data";
 import { transactionStatuses, type TransactionStatus } from "./transaction-status";
@@ -59,22 +61,30 @@ function validDate(value: string): boolean {
 
 export function TransactionFormDialog({ item, onClose, onSave }: { item?: AdminTransaction; onClose: () => void; onSave: (value: Omit<AdminTransaction, "id">) => void }) {
   const [draft, setDraft] = useState<Draft>(() => initialDraft(item));
+  const users = useDemoUsers();
+  const [investorQuery, setInvestorQuery] = useState("");
+  const [selectedInvestorReference, setSelectedInvestorReference] = useState("");
+  const [userError, setUserError] = useState("");
   const [error, setError] = useState("");
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => { setDraft(current => ({...current, [key]: value})); setError(""); };
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // New records must reference an existing registered demo user; no typed-name bypass.
+    const selectedUser = item ? undefined : getDemoUser(selectedInvestorReference);
+    if (!item && !selectedUser) { setUserError(TRANSACTION_USER_NOT_FOUND); return; }
     if (!draft.investor.trim() || !draft.accountReference.trim() || !draft.paymentMethod.trim() || !draft.purpose.trim()) { setError("Enter an investor, account reference, payment method and purpose."); return; }
     if (!/^(?:\d+)(?:\.\d{1,2})?$/.test(draft.amount) || !Number.isFinite(Number(draft.amount)) || Number(draft.amount) <= 0 || Number(draft.amount) > 1000000000000) { setError("Enter an amount above zero and no more than 1,000,000,000,000, with up to two decimal places."); return; }
     if (!validDate(draft.created)) { setError("Enter a valid transaction date."); return; }
     if (draft.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.email.trim())) { setError("Enter a valid synthetic email, or leave it blank."); return; }
-    onSave({ investor:draft.investor.trim(), email:draft.email.trim(), accountReference:draft.accountReference.trim(), accountType:draft.accountType, type:draft.type, amount:Number(draft.amount), status:draft.status, paymentMethod:draft.paymentMethod.trim(), created:draft.created, createdAt:item?.created === draft.created ? item.createdAt : draft.created, investmentReference:draft.investmentReference.trim() || undefined, detail:{ purpose:draft.purpose.trim(), referenceNumber:draft.paymentReference.trim(), notes:draft.notes.trim(), completedAt:item?.detail.completedAt ?? "Not provided in sample", timeline:item?.detail.timeline ?? [], approvals:item?.detail.approvals ?? [], activity:item?.detail.activity ?? [], related:item?.detail.related ?? [] } });
+    onSave({ investorReference:item?.investorReference ?? selectedUser?.reference, investor:selectedUser?.name ?? draft.investor.trim(), email:selectedUser?.email ?? draft.email.trim(), accountReference:selectedUser ? accountReferenceForUser(selectedUser) : draft.accountReference.trim(), accountType:selectedUser?.accountType ?? draft.accountType, type:draft.type, amount:Number(draft.amount), status:draft.status, paymentMethod:draft.paymentMethod.trim(), created:draft.created, createdAt:item?.created === draft.created ? item.createdAt : draft.created, investmentReference:draft.investmentReference.trim() || undefined, detail:{ purpose:draft.purpose.trim(), referenceNumber:draft.paymentReference.trim(), notes:draft.notes.trim(), completedAt:item?.detail.completedAt ?? "Not provided in sample", timeline:item?.detail.timeline ?? [], approvals:item?.detail.approvals ?? [], activity:item?.detail.activity ?? [], related:item?.detail.related ?? [] } });
   }
   return <Dialog title={item ? "Edit Transaction" : "Add Transaction"} onClose={onClose}><form onSubmit={submit} noValidate><div className="grid gap-4 sm:grid-cols-2">
     <label className="text-xs font-bold text-[#38513e]">Transaction ID<input readOnly value={item?.id ?? "Assigned on save"} className={`${input} bg-[#f3f6f2]`}/></label>
-    <label className="text-xs font-bold text-[#38513e]">Investor <span aria-hidden="true">*</span><input required maxLength={120} value={draft.investor} onChange={e => set("investor",e.target.value)} className={input}/></label>
-    <label className="text-xs font-bold text-[#38513e]">Investor Email (optional)<input type="email" maxLength={160} value={draft.email} onChange={e => set("email",e.target.value)} className={input}/></label>
-    <label className="text-xs font-bold text-[#38513e]">Account Type<select value={draft.accountType} onChange={e => set("accountType",e.target.value as AccountType)} className={input}>{accountTypes.map(v => <option key={v}>{v}</option>)}</select></label>
-    <label className="text-xs font-bold text-[#38513e]">Account Reference <span aria-hidden="true">*</span><input required maxLength={120} value={draft.accountReference} onChange={e => set("accountReference",e.target.value)} className={input}/></label>
+    {!item && <DemoInvestorPicker users={users} query={investorQuery} selectedReference={selectedInvestorReference} onQueryChange={text=>{setInvestorQuery(text);setSelectedInvestorReference("");setUserError("");setDraft(current=>({...current,investor:"",email:"",accountReference:""}));}} onSelect={reference=>{const user=getDemoUser(reference);setSelectedInvestorReference(reference);setUserError("");if(user)setDraft(current=>({...current,investor:user.name,email:user.email,accountType:user.accountType,accountReference:accountReferenceForUser(user)}));}} error={userError}/>}
+    <label className="text-xs font-bold text-[#38513e]">Investor <span aria-hidden="true">*</span><input readOnly={!item} required maxLength={120} value={draft.investor} onChange={e => set("investor",e.target.value)} className={`${input} ${!item?"bg-[#f3f6f2]":""}`}/></label>
+    <label className="text-xs font-bold text-[#38513e]">Investor Email<input readOnly={!item} type="email" maxLength={160} value={draft.email} onChange={e => set("email",e.target.value)} className={`${input} ${!item?"bg-[#f3f6f2]":""}`}/></label>
+    <label className="text-xs font-bold text-[#38513e]">Account Type{item ? <select value={draft.accountType} onChange={e => set("accountType",e.target.value as AccountType)} className={input}>{accountTypes.map(v => <option key={v}>{v}</option>)}</select> : <input readOnly value={draft.accountType} className={`${input} bg-[#f3f6f2]`}/>}</label>
+    <label className="text-xs font-bold text-[#38513e]">Account Reference <span aria-hidden="true">*</span><input readOnly={!item} required maxLength={120} value={draft.accountReference} onChange={e => set("accountReference",e.target.value)} className={`${input} ${!item?"bg-[#f3f6f2]":""}`}/></label>
     <label className="text-xs font-bold text-[#38513e]">Transaction Type<select value={draft.type} onChange={e => set("type",e.target.value as TransactionType)} className={input}>{transactionTypes.map(v => <option key={v}>{v}</option>)}</select></label>
     <label className="text-xs font-bold text-[#38513e]">Amount (₦) <span aria-hidden="true">*</span><input required type="number" min="0.01" max="1000000000000" step="0.01" value={draft.amount} onChange={e => set("amount",e.target.value)} className={input}/></label>
     <label className="text-xs font-bold text-[#38513e]">Transaction Status<select value={draft.status} onChange={e => set("status",e.target.value as TransactionStatus)} className={input}>{transactionStatuses.map(v => <option key={v}>{v}</option>)}</select></label>

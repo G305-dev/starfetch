@@ -7,6 +7,7 @@ import { TransactionFilters, TransactionTypeTabs, type TransactionFiltersState }
 import { TransactionFormDialog, ViewTransactionDialog } from "./DemoTransactionDialog";
 import { adminTransactions, transactionSnapshotDate, transactionSummaryStats, type AdminTransaction, type TransactionTab } from "./fixtures/admin-transactions-data";
 import { filterTransactions } from "./admin-transactions-utils";
+import { getDemoUser } from "./demo-user-registry";
 
 const initialFilters: TransactionFiltersState = { search:"", type:"All Types", accountType:"All Types", status:"All Statuses", dateRange:"all", from:"", to:"" };
 // Browser module memory survives client-side navigation, not reloads or a new tab.
@@ -35,6 +36,10 @@ export function AdminTransactionsPage() {
   const item = dialog && dialog.kind !== "add" ? records.find(record => record.id === dialog.id) : undefined;
   function save(value: Omit<AdminTransaction, "id">) {
     const editing = dialog?.kind === "edit" ? records.find(record => record.id === dialog.id) : undefined;
+    if (!editing && (!value.investorReference || !getDemoUser(value.investorReference))) {
+      setNotice("User not found. The transaction was not added. Select a registered demo user.");
+      return;
+    }
     const saved: AdminTransaction = {...value, id: editing?.id ?? nextDemoId(records)};
     const next = editing ? records.map(record => record.id === saved.id ? saved : record) : [saved,...records];
     demoSessionRecords = next;
