@@ -1,3 +1,5 @@
+> Historical document: demo access has since been updated for protected Vercel Preview. For current behavior and setup, see README.md and PRIVATE-DEMO-REPORT.md.
+
 # Demo restoration change list
 
 Compared with `Starfetch-Admin-Cleanup.zip`. Paths are relative to `starfetch-admin-frontend/`. The existing `Starfetch-Admin-Portal.zip` was used as the fixture reference with user approval.
