@@ -18,9 +18,10 @@ import { useAuth } from "@/components/auth/AuthProvider";
  * - This popup NEVER calls the Individual KYC endpoints
  *   (`getIndividualKycProfile` / `/me/kyc-profile`) and NEVER links to
  *   `/profile` or `/dashboard`.
- * - No approved backend Corporate KYC completion signal exists yet, and
- *   the Corporate Profile is local-only (current-session preview). The
- *   popup therefore shows on every fresh authenticated dashboard entry
+ * - No approved backend Corporate KYC completion signal exists yet. The
+ *   Corporate Profile's saved-form `progress` is explicitly NOT KYC/KYB
+ *   completion (`meaning: SAVED_FORM_COMPLETION_ONLY`), so it is not used
+ *   here. The popup therefore shows on every fresh authenticated dashboard entry
  *   until dismissed with "Maybe Later" — it never falsely marks
  *   Corporate KYC complete.
  * - "Maybe Later" is in-memory only: refreshing or signing in again
