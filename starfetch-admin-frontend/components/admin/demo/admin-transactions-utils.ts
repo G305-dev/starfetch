@@ -10,7 +10,7 @@ export function filterTransactions(transactions: AdminTransaction[], tab: Transa
   if (filters.dateRange === "30") start.setUTCDate(start.getUTCDate() - 29);
   if (filters.dateRange === "3m") start.setUTCMonth(start.getUTCMonth() - 3);
   return transactions.filter(item => {
-    const matchesTab = tab === "all" || (tab === "deposits" && item.type === "Deposit") || (tab === "withdrawals" && item.type === "Withdrawal") || (tab === "funding" && item.type === "Investment Funding") || (tab === "redemptions" && item.type === "Redemption") || (tab === "failed" && (item.status === "Failed" || item.status === "Flagged"));
+    const matchesTab = tab === "all" || (tab === "deposits" && item.type === "Deposit") || (tab === "withdrawals" && item.type === "Withdrawal");
     const matchesSearch = !query || [item.id,item.investor,item.email,item.accountReference,item.investmentReference ?? "",item.detail.referenceNumber].some(value => value.toLowerCase().includes(query));
     const matchesType = filters.type === "All Types" || item.type === filters.type;
     const matchesAccount = filters.accountType === "All Types" || item.accountType === filters.accountType;

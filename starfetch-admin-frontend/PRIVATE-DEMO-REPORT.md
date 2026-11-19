@@ -1,3 +1,5 @@
+> Historical report: for current six-page behavior, see README.md and SIX-PAGE-REFINEMENT-REPORT.md.
+
 > Historical report: subsequent transaction and dashboard changes are described in README.md and REVISED-TRANSACTIONS-REPORT.md.
 
 # Private demo login — implementation and verification

@@ -1,3 +1,5 @@
+> Historical report: for current six-page behavior, see README.md and SIX-PAGE-REFINEMENT-REPORT.md.
+
 # Revised Admin Dashboard and Transactions — change and validation report
 
 ## Scope and baseline

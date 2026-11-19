@@ -1,3 +1,5 @@
+> Historical report: for current six-page behavior, see README.md and SIX-PAGE-REFINEMENT-REPORT.md.
+
 > Historical document: demo access has since been updated for protected Vercel Preview. For current behavior and setup, see README.md and REVISED-TRANSACTIONS-REPORT.md.
 
 # Demo restoration change list

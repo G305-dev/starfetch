@@ -20,6 +20,7 @@ export interface KycInvestor {
   checklist: KycChecklistItem[];
   documents: KycDocument[];
   activity: KycActivity[];
+  demoRejection?: { sections: KycChecklistKey[]; reason: string };
 }
 export const kycSnapshotDate = "2026-11-02";
 export const kycSummaryStats: AdminStat[] = [

@@ -19,9 +19,6 @@ export const transactionTabs = [
   { id:"all", label:"All Transactions", aggregate:"12,486" },
   { id:"deposits", label:"Deposits", aggregate:"4,902" },
   { id:"withdrawals", label:"Withdrawals", aggregate:"2,184" },
-  { id:"funding", label:"Investment Funding", aggregate:"3,210" },
-  { id:"redemptions", label:"Redemptions", aggregate:"1,675" },
-  { id:"failed", label:"Failed / Flagged", aggregate:"515" },
 ] as const;
 export type TransactionTab = (typeof transactionTabs)[number]["id"];
 const exampleDetail: TransactionDetail = {
