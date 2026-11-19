@@ -1,10 +1,12 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { AdminStatCard } from "./AdminDashboard";
 import { AdminKycTable } from "./AdminKycTable";
 import { KycFilters, KycStatusTabs, type KycFiltersState } from "./KycFilters";
 import { KycDemoDialog } from "./KycDemoDialog";
 import { kycInvestors, kycSnapshotDate, kycSummaryStats, type KycChecklistKey, type KycInvestor, type KycTab } from "./fixtures/admin-kyc-data";
+import { adminUsers } from "./fixtures/admin-users-data";
 import { filterKycInvestors } from "./admin-kyc-utils";
 
 const initialFilters: KycFiltersState = { search:"", accountType:"All Types", status:"All Statuses", dateRange:"all", from:"", to:"" };
@@ -12,9 +14,11 @@ let sessionKyc: KycInvestor[] | null = null;
 export function KycSummaryCards() { return <section aria-label="KYC summary" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">{kycSummaryStats.map(stat => <AdminStatCard key={stat.title} stat={stat}/>)}</section>; }
 export function AdminKycPage() {
   const [records,setRecords] = useState<KycInvestor[]>(() => typeof window !== "undefined" && sessionKyc ? sessionKyc : kycInvestors);
+  const investorQuery = useSearchParams().get("investor") ?? "";
   const [tab,setTab] = useState<KycTab>("all"); const [filters,setFilters] = useState<KycFiltersState>(initialFilters);
   const [selected,setSelected] = useState<string | null>(null); const [trigger,setTrigger] = useState<HTMLElement | null>(null);
   const [checked,setChecked] = useState<string[]>([]); const [page,setPage] = useState(1); const [notice,setNotice] = useState("");
+  useEffect(() => { if (investorQuery) { const user = adminUsers.find(item => item.reference === investorQuery); const match = user && kycInvestors.find(item => item.email.toLowerCase() === user.email.toLowerCase()); setTab("all"); setFilters({...initialFilters, search:match?.reference ?? investorQuery}); setPage(1); setNotice(match ? `Showing the separate KYC sample associated with ${investorQuery}. Statuses are illustrative and may differ.` : `No KYC sample is linked to ${investorQuery}. Adding a demo user does not create a KYC record.`); } }, [investorQuery]);
   const filtered = useMemo(() => filterKycInvestors(records,tab,filters,kycSnapshotDate),[records,tab,filters]);
   const pages = Math.max(1,Math.ceil(filtered.length/8)), currentPage = Math.min(page,pages), rows = filtered.slice((currentPage-1)*8,currentPage*8);
   const investor = records.find(item => item.reference === selected);

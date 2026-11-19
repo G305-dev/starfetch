@@ -2,6 +2,8 @@ import { Layers3, LockKeyhole, Shield, Users } from "lucide-react";
 import type { AccountStatus } from "../AdminBadges";
 import type { AccountType, AdminStat, VerificationStatus } from "./admin-dashboard-data";
 
+export interface DemoApplicant { firstName: string; middleName: string; surname: string; email: string; phone: string; dateOfBirth?: string }
+export interface DemoUserDetails { primary: DemoApplicant; secondary?: DemoApplicant; companyName?: string; registrationNumber?: string }
 export interface AdminUser {
   name: string;
   reference: string;
@@ -16,6 +18,7 @@ export interface AdminUser {
   location: string;
   onboardingProgress: number;
   onboardingStages: boolean[];
+  demoDetails?: DemoUserDetails;
 }
 export interface QueueItem { reference: string; description: string; date: string }
 export const mockSnapshotDate = "2026-11-02";

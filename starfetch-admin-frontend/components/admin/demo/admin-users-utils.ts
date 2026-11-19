@@ -11,7 +11,7 @@ export function filterAndSortUsers(users: AdminUser[], filters: UserFilters, sor
   if (filters.date === "90") start.setUTCMonth(start.getUTCMonth() - 3);
   const query = filters.search.trim().toLowerCase();
   const result = users.filter(user => {
-    const matchesSearch = !query || [user.name, user.email, user.reference].some(value => value.toLowerCase().includes(query));
+    const matchesSearch = !query || [user.name, user.email, user.reference, user.demoDetails?.secondary?.firstName ?? "", user.demoDetails?.secondary?.surname ?? "", user.demoDetails?.secondary?.email ?? "", user.demoDetails?.companyName ?? ""].some(value => value.toLowerCase().includes(query));
     const matchesType = filters.accountType === "All Types" || user.accountType === filters.accountType;
     const matchesStatus = filters.accountStatus === "All Statuses" || user.accountStatus === filters.accountStatus;
     const date = new Date(`${user.joined}T00:00:00Z`);

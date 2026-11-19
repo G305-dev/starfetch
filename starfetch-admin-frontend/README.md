@@ -12,6 +12,12 @@ The common server-side gate permits demo mode only with `ADMIN_DEMO_MODE=1` and 
 
 Demo transaction **Add**, **View** and **Edit** operate on synthetic records only. Fields including amount and status can be changed as display data, but no real approval, payment, settlement, balance or ledger action occurs. Changes survive client-side navigation in browser memory only, and reset on reload, closing the tab or a new browser session; no API or browser storage is used. Original sample activity and related-transaction details are illustrative and are not recalculated after edits. KYC Approve and Reject are browser-memory simulations only; no identity checks, compliance decision or account activation occurs. KYC and investment changes survive client-side navigation but reset on reload or using their page reset buttons. Never enter real customer information.
 
+## Dashboard and user demo
+
+The dashboard retains the synthetic summaries, AUM/allocation charts and a read-only Recent Registrations table. View All opens Users & Accounts. User Add and Delete change synthetic rows only: no onboarding or deletion occurs. The form supports Individual, Joint (two applicants), and Corporate records; new rows start with Pending verification. Never enter actual personal or KYC information.
+
+User changes persist only across client-side navigation within the current tab, not reloads or new tabs; **Reset Demo Changes** restores the original sample. The directory count is filtered sample size, whereas summary cards and the breakdown are separate illustrative aggregates. Added users appear in the sample recent/verification lists. Profile **View Verification** and the verification queue navigate to KYC with the selected user reference; KYC looks up an existing separate fixture by matching sample email. Newly added users have no KYC fixture, so an explicit no-match message is expected. No approval or rejection is automatic, and the two sets of illustrative statuses are not synchronized.
+
 ## Required Vercel Preview configuration
 
 1. In the intended Vercel project, set Root Directory to `starfetch-admin-frontend` and enable **Settings → Deployment Protection** before creating or sharing the demo. Choose **Standard Protection** or **All Deployments** and an appropriate protection method such as Vercel Authentication; restrict access to intended testers. Confirm all preview aliases and generated deployment URLs are protected, with no protection exceptions or public bypasses. Available methods and access depend on your Vercel plan.
@@ -46,4 +52,4 @@ npm run typecheck
 npm run build
 ```
 
-Package installation requires network access. The licensed Manrope font is bundled locally for builds. The ZIP excludes `node_modules`, `.next`, environment files and caches. `RESTORATION-REPORT.md` and `CHANGES.md` record earlier work and are historical; this README and `SIX-PAGE-REFINEMENT-REPORT.md` describe the current behavior; other reports document earlier updates. When replacing files, back up independent local changes first.
+Package installation requires network access. The licensed Manrope font is bundled locally for builds. The ZIP excludes `node_modules`, `.next`, environment files and caches. `RESTORATION-REPORT.md` and `CHANGES.md` record earlier work and are historical; this README and `DASHBOARD-USER-MANAGEMENT-REPORT.md` describe the current behavior; other reports document earlier updates. When replacing files, back up independent local changes first.

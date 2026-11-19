@@ -1,0 +1,43 @@
+"use client";
+import { useState, type FormEvent } from "react";
+import { DemoModal, demoButton } from "./DemoModal";
+import type { AccountType } from "./fixtures/admin-dashboard-data";
+import type { AccountStatus } from "./AdminBadges";
+import type { AdminUser, DemoApplicant, DemoUserDetails } from "./fixtures/admin-users-data";
+
+const input = "mt-1.5 h-10 w-full rounded-md border border-[#d8e2d8] bg-white px-3 text-sm text-star-900 outline-none focus:ring-2 focus:ring-star-700";
+type Draft = { type: AccountType; status: AccountStatus; primary: DemoApplicant; secondary: DemoApplicant; companyName: string; registrationNumber: string };
+type Errors = Record<string,string>;
+const emptyApplicant = (): DemoApplicant => ({firstName:"",middleName:"",surname:"",email:"",phone:"",dateOfBirth:""});
+const validEmail = (value:string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+function validDate(value:string) { if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false; const date=new Date(`${value}T00:00:00Z`); return !Number.isNaN(date.getTime()) && date.toISOString().slice(0,10)===value && date.getUTCFullYear() >= 1900 && date.getTime() <= Date.now(); }
+function validPhone(value:string) { return /^[+\d\s()\-]+$/.test(value) && value.replace(/\D/g,"").length>=7 && value.replace(/\D/g,"").length<=15; }
+export function AddDemoUserDialog({ trigger, users, close, save }: {trigger:HTMLElement|null;users:AdminUser[];close:()=>void;save:(type:AccountType,status:AccountStatus,details:DemoUserDetails)=>void}) {
+ const [draft,setDraft]=useState<Draft>(()=>({type:"Individual",status:"Pending",primary:emptyApplicant(),secondary:emptyApplicant(),companyName:"",registrationNumber:""}));
+ const [errors,setErrors]=useState<Errors>({});
+ function applicant(which:"primary"|"secondary",key:keyof DemoApplicant,value:string) {setDraft(current=>({...current,[which]:{...current[which],[key]:value}}));setErrors(current=>({...current,[`${which}.${key}`]:""}));}
+ function validate(e:FormEvent<HTMLFormElement>) {
+  e.preventDefault(); const next:Errors={};
+  const existing = new Set(users.flatMap(user=>[user.email,user.demoDetails?.secondary?.email ?? ""]).filter(Boolean).map(email=>email.trim().toLowerCase()));
+  const validateApplicant=(person:DemoApplicant,which:"primary"|"secondary",dob:boolean)=>{
+   for(const field of ["firstName","surname"] as const) if(!person[field].trim())next[`${which}.${field}`]="This field is required.";
+   const email=person.email.trim().toLowerCase(); if(!validEmail(email))next[`${which}.email`]="Enter a valid email address."; else if(existing.has(email))next[`${which}.email`]="This email already belongs to a demo user."; else existing.add(email);
+   if(!validPhone(person.phone.trim()))next[`${which}.phone`]="Enter a valid phone number with 7–15 digits.";
+   if(dob && !validDate(person.dateOfBirth ?? ""))next[`${which}.dateOfBirth`]="Enter a valid date of birth that is not in the future.";
+  };
+  validateApplicant(draft.primary,"primary",draft.type!=="Corporate");
+  if(draft.type==="Joint") validateApplicant(draft.secondary,"secondary",true);
+  if(draft.type==="Corporate" && !draft.companyName.trim())next.companyName="Enter a demo company or institution name.";
+  if(draft.type==="Corporate" && !draft.registrationNumber.trim())next.registrationNumber="Enter a demo registration number.";
+  setErrors(next);
+  const first=Object.keys(next)[0]; if(first){document.getElementById(`demo-user-${first}`)?.focus();return;}
+  const clean=(person:DemoApplicant,hasDob:boolean):DemoApplicant=>({firstName:person.firstName.trim(),middleName:person.middleName.trim(),surname:person.surname.trim(),email:person.email.trim(),phone:person.phone.trim(),...(hasDob ? {dateOfBirth:person.dateOfBirth} : {})});
+  save(draft.type,draft.status,{primary:clean(draft.primary,draft.type!=="Corporate"),...(draft.type==="Joint" ? {secondary:clean(draft.secondary,true)} : {}),...(draft.type==="Corporate" ? {companyName:draft.companyName.trim(),registrationNumber:draft.registrationNumber.trim()} : {})});
+ }
+ function field(label:string,which:"primary"|"secondary",key:keyof DemoApplicant,type="text",required=true){const id=`demo-user-${which}.${key}`,error=errors[`${which}.${key}`];return <label key={id} htmlFor={id} className="block text-xs font-bold text-[#38513e]">{label}{!required && " (optional)"}<input id={id} aria-label={`${label}${required ? "" : " (optional)"}`} type={type} value={draft[which][key] ?? ""} maxLength={type==="email"?160:80} autoComplete="off" required={required} onChange={e=>applicant(which,key,e.target.value)} aria-invalid={!!error} aria-describedby={error ? `${id}-error` : undefined} className={input}/>{error && <span id={`${id}-error`} className="mt-1 block text-xs font-semibold text-red-700">{error}</span>}</label>}
+ function group(which:"primary"|"secondary",title:string,dob:boolean){return <fieldset className="mt-4"><legend className="text-sm font-extrabold text-star-900">{title}</legend><div className="mt-2 grid gap-4 sm:grid-cols-2">{field("First Name",which,"firstName")}{field("Middle Name",which,"middleName","text",false)}{field("Surname",which,"surname")}{field("Email Address",which,"email","email")}{field("Phone Number",which,"phone","tel")}{dob && field("Date of Birth",which,"dateOfBirth","date")}</div></fieldset>}
+ return <DemoModal title="Add User" trigger={trigger} onClose={close}><p className="text-xs leading-5 text-[#687a6d]">Synthetic demonstration only. Never enter real customer information, BVN, NIN, passwords or identification documents. No investor account or verification is created.</p><form onSubmit={validate} noValidate autoComplete="off"><h3 className="mt-4 text-sm font-extrabold text-star-900">Account Information</h3><label className="mt-3 block text-xs font-bold text-[#38513e]">Account Type<select value={draft.type} onChange={e=>{setDraft(current=>({...current,type:e.target.value as AccountType}));setErrors({});}} className={input}><option>Individual</option><option>Joint</option><option>Corporate</option></select></label>{group("primary",draft.type==="Corporate" ? "Contact person" : draft.type==="Joint" ? "First applicant" : "Applicant",draft.type!=="Corporate")}{draft.type==="Joint" && group("secondary","Second applicant",true)}{draft.type==="Corporate" && <fieldset className="mt-4"><legend className="text-sm font-extrabold text-star-900">Company / Institution</legend><div className="mt-2 grid gap-4 sm:grid-cols-2">{([['companyName','Company / Institution Name'],['registrationNumber','Registration / RC Number']] as const).map(([key,label])=><label key={key} htmlFor={`demo-user-${key}`} className="text-xs font-bold text-[#38513e]">{label}<input id={`demo-user-${key}`} aria-label={label} value={draft[key]} required maxLength={120} autoComplete="off" onChange={e=>{setDraft(current=>({...current,[key]:e.target.value}));setErrors(current=>({...current,[key]:""}));}} aria-invalid={!!errors[key]} aria-describedby={errors[key]?`demo-user-${key}-error`:undefined} className={input}/>{errors[key] && <span id={`demo-user-${key}-error`} className="mt-1 block text-xs font-semibold text-red-700">{errors[key]}</span>}</label>)}</div></fieldset>}<label className="mt-4 block text-xs font-bold text-[#38513e]">Account Status<select value={draft.status} onChange={e=>setDraft(current=>({...current,status:e.target.value as AccountStatus}))} className={input}><option>Pending</option><option>Active</option><option>Restricted</option><option>Suspended</option></select></label><p className="mt-3 text-xs text-[#6f8073]">New demo users begin with Pending verification. Changes stay in browser memory and reset on reload.</p><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={close} className={`${demoButton} border border-star-200 text-star-900`}>Cancel</button><button type="submit" className={`${demoButton} bg-star-900 text-white`}>Save User</button></div></form></DemoModal>;
+}
+export function DeleteDemoUserDialog({user,trigger,close,confirm}:{user:AdminUser;trigger:HTMLElement|null;close:()=>void;confirm:()=>void}) {
+ return <DemoModal title="Delete User" trigger={trigger} fallbackId="users-add-button" onClose={close}><p className="text-sm leading-6 text-[#44594a]">Delete <strong>{user.name}</strong> ({user.reference}) from this synthetic demo? This affects only the in-memory demo table. No real customer will be deleted and no backend request will be made.</p><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={close} className={`${demoButton} border border-star-200 text-star-900`}>Cancel</button><button type="button" onClick={confirm} className={`${demoButton} bg-red-700 text-white`}>Confirm Delete</button></div></DemoModal>;
+}
