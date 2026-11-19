@@ -1,3 +1,5 @@
+> Historical report: subsequent transaction and dashboard changes are described in README.md and REVISED-TRANSACTIONS-REPORT.md.
+
 # Private demo login — implementation and verification
 
 Baseline: `G305-dev/starfetch` branch `admin-portal` at commit `509a82f7ca05d878383776448a667bd99a48c577`. The admin-only source in this package retains the prior TypeScript cleanup and demo fixtures. No investor frontend or backend files were modified. No commit, push, merge or deployment was performed.

@@ -1,5 +1,5 @@
 import { ArrowLeftRight, Coins, Hourglass, ShieldCheck } from "lucide-react";
-import type { TransactionStatus } from "../AdminBadges";
+import type { TransactionStatus } from "../transaction-status";
 import type { AccountType, AdminStat } from "./admin-dashboard-data";
 
 export type TransactionType = "Deposit" | "Withdrawal" | "Investment Funding" | "Redemption" | "Return / Distribution" | "Transfer";

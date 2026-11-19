@@ -1,4 +1,4 @@
-> Historical document: demo access has since been updated for protected Vercel Preview. For current behavior and setup, see README.md and PRIVATE-DEMO-REPORT.md.
+> Historical document: demo access has since been updated for protected Vercel Preview. For current behavior and setup, see README.md and REVISED-TRANSACTIONS-REPORT.md.
 
 # Admin demo restoration report
 
