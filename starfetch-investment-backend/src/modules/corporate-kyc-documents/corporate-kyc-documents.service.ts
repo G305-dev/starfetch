@@ -1,3 +1,4 @@
+import { CORPORATE_KYC_DOCUMENT_STORAGE } from './corporate-kyc-document-storage';
 import { HttpException, HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import {
   CorporateApplicationSubmission,
@@ -15,7 +16,7 @@ import { AuthPrincipal } from '../../common/types/auth-principal';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { CorporateApplicantContextService } from '../corporate-onboarding/services/corporate-applicant-context.service';
 import { CorporateApplicationAccessService } from '../corporate-onboarding/services/corporate-application-access.service';
-import { INDIVIDUAL_KYC_DOCUMENT_STORAGE, IndividualKycDocumentStorage } from '../individual-kyc/individual-kyc-document-ports';
+import { IndividualKycDocumentStorage } from '../individual-kyc/individual-kyc-document-ports';
 import { verifyCorporateKycContent } from './corporate-kyc-document-content';
 import {
   CORPORATE_KYC_ACCEPTED_CONTENT_TYPES,
@@ -123,7 +124,7 @@ export class CorporateKycDocumentsService {
     private readonly prisma: PrismaService,
     private readonly applicants: CorporateApplicantContextService,
     private readonly access: CorporateApplicationAccessService,
-    @Inject(INDIVIDUAL_KYC_DOCUMENT_STORAGE) private readonly storage: IndividualKycDocumentStorage,
+    @Inject(CORPORATE_KYC_DOCUMENT_STORAGE) private readonly storage: IndividualKycDocumentStorage,
   ) {}
 
   /** Session-derived initiator ownership; unowned or unknown accounts are a uniform 404. */
