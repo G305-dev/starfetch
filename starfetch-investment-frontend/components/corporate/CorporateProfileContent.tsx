@@ -2,6 +2,7 @@
 
 import { AlertCircle, ArrowLeft, ArrowRight, Building2, CheckCircle2, Circle, LoaderCircle, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { CorporateDocumentUploadSection } from "./CorporateDocumentUploadSection";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import {
@@ -288,6 +289,8 @@ function backendFieldErrors(error: unknown): FieldErrors {
 export function CorporateProfileContent() {
   const { status: authStatus, user, refreshSession } = useAuth();
   const [activeStep, setActiveStep] = useState(0);
+  const [showDocuments, setShowDocuments] = useState(false);
+  const [documentStatus, setDocumentStatus] = useState<"NOT_STARTED" | "DRAFT" | "COMPLETE" | null>(null);
   const [completedSections, setCompletedSections] = useState<Set<SectionKey>>(() => new Set());
   const [company, setCompany] = useState<CompanyForm>(initialCompanyForm);
   const [investment, setInvestment] = useState<CorporateInvestmentProfile>(initialInvestmentForm);
@@ -307,6 +310,8 @@ export function CorporateProfileContent() {
 
   function resetForms() {
     setActiveStep(0);
+    setShowDocuments(false);
+    setDocumentStatus(null);
     setCompletedSections(new Set());
     setCompany(initialCompanyForm);
     setInvestment(initialInvestmentForm);
@@ -401,6 +406,7 @@ export function CorporateProfileContent() {
 
   function visitSection(index: number) {
     if (index > furthestUnlockedSection(completedSections)) return;
+    setShowDocuments(false);
     setActiveStep(index);
     setFieldErrors({});
     setNotice(null);
@@ -464,6 +470,7 @@ export function CorporateProfileContent() {
       const sectionComplete = saved.sectionStatuses[section.key] === "COMPLETE";
       const nextStep = sectionComplete && activeStep < sections.length - 1 ? activeStep + 1 : activeStep;
       applyProfile(saved, Math.min(nextStep, furthestUnlockedSection(completedFrom(saved))));
+      if (section.key === "bankDetails" && sectionComplete) setShowDocuments(true);
       setFieldErrors({});
       if (!sectionComplete) {
         setNotice(section.key === "companyDetails"
@@ -520,7 +527,7 @@ export function CorporateProfileContent() {
   if (authStatus === "loading") return <main className="grid min-h-[45vh] place-items-center" aria-busy="true"><p className="text-sm font-semibold text-star-muted">Preparing your Corporate Profile form…</p></main>;
   if (authStatus !== "authenticated" || !user) return <main className="min-w-0" aria-labelledby="corporate-profile-heading"><header className="mb-6"><p className="text-xs font-extrabold uppercase tracking-[0.15em] text-star-700">Corporate account</p><h1 id="corporate-profile-heading" className="mt-2 font-display text-3xl font-extrabold tracking-[-0.045em] text-star-900 sm:text-[2.15rem]">Company profile</h1></header><section className="rounded-xl border border-star-200 bg-white p-6" role="status"><div className="flex items-start gap-3"><ShieldCheck size={21} className="mt-0.5 shrink-0 text-star-700" aria-hidden="true" /><div><h2 className="text-base font-extrabold text-star-900">Sign in to view the Corporate Profile form</h2><p className="mt-1 text-sm leading-6 text-star-muted">The Corporate Profile is available to an authenticated Corporate applicant.</p></div></div></section></main>;
 
-  const pageHeader = <header className="mb-5"><p className="text-xs font-extrabold uppercase tracking-[0.15em] text-star-700">Corporate account</p><h1 id="corporate-profile-heading" className="mt-2 font-display text-3xl font-extrabold tracking-[-0.045em] text-star-900 sm:text-[2.15rem]">Company profile</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-star-muted">Complete the four sections in order. Each section is saved to your Starfetch Corporate application when you continue, and your saved information is restored when you return.</p></header>;
+  const pageHeader = <header className="mb-5"><p className="text-xs font-extrabold uppercase tracking-[0.15em] text-star-700">Corporate account</p><h1 id="corporate-profile-heading" className="mt-2 font-display text-3xl font-extrabold tracking-[-0.045em] text-star-900 sm:text-[2.15rem]">Company profile</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-star-muted">Complete the four profile sections, then upload the three mandatory documents in Section 5. Each section is saved to your Starfetch Corporate application when you continue, and your saved information is restored when you return.</p></header>;
 
   if (loadState === "loading") return <main className="min-w-0" aria-labelledby="corporate-profile-heading">{pageHeader}<section className="grid min-h-56 place-items-center rounded-xl border border-star-200 bg-white" aria-busy="true"><div className="text-center"><LoaderCircle size={28} className="mx-auto animate-spin text-star-700" aria-hidden="true" /><p className="mt-3 text-sm font-semibold text-star-muted">Loading your saved Corporate Profile…</p></div></section></main>;
   if (loadState === "error") return <main className="min-w-0" aria-labelledby="corporate-profile-heading">{pageHeader}<section className="rounded-xl border border-red-200 bg-red-50 p-5" role="alert"><div className="flex gap-3"><AlertCircle size={21} className="shrink-0 text-red-700" aria-hidden="true" /><div><h2 className="text-base font-extrabold text-star-900">Corporate Profile could not be loaded</h2><p className="mt-1 text-sm leading-6 text-red-700">{loadError}</p><p className="mt-1 text-xs leading-5 text-star-muted">No saved information is shown and nothing has been saved from this page.</p><button type="button" onClick={() => { void loadProfile(user.id); }} className="mt-3 inline-flex items-center gap-2 text-sm font-extrabold text-star-700 underline decoration-star-lime decoration-2 underline-offset-3"><RefreshCw size={15} aria-hidden="true" />Retry</button></div></div></section></main>;
@@ -544,31 +551,48 @@ export function CorporateProfileContent() {
 
       {allComplete ? <p className="mb-5 rounded-lg border border-[#bfe8ca] bg-[#effbf2] px-4 py-3 text-sm leading-6 text-star-800" role="status"><span className="font-extrabold">All four sections are saved.</span> This is saved-form completion only. It does not represent KYC/KYB verification, approval, or investment authorisation.</p> : null}
 
-      <nav aria-label="Corporate Profile sections" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <nav aria-label="Corporate Profile sections" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {sections.map((section, index) => {
           const isComplete = completedSections.has(section.key);
           const disabled = index > furthest;
-          const active = index === activeStep;
+          const active = !showDocuments && index === activeStep;
           return <button key={section.key} type="button" onClick={() => visitSection(index)} disabled={disabled} aria-current={active ? "step" : undefined} className={`rounded-xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55 ${active ? "border-star-700 bg-star-50 shadow-sm" : isComplete ? "border-[#bfe8ca] bg-white hover:bg-[#f7fcf8]" : "border-star-200 bg-white hover:bg-star-50"}`}>
             <span className="flex items-center justify-between gap-2"><span className="text-xs font-extrabold uppercase tracking-[0.11em] text-star-700">Section {index + 1}</span>{isComplete ? <CheckCircle2 size={17} className="text-[#16743d]" aria-label="Complete and saved" /> : <Circle size={17} className="text-star-300" aria-hidden="true" />}</span>
             <span className="mt-2 block text-sm font-extrabold text-star-900">{section.shortTitle}</span>
             <span className="mt-1 block text-xs font-semibold text-star-muted">{isComplete ? "Complete · saved" : active ? "Current section" : disabled ? "Locked until previous section is complete" : savedStatuses[section.key] === "DRAFT" ? "Saved as draft" : "Not complete"}</span>
           </button>;
         })}
+        <button type="button"
+          onClick={() => { setShowDocuments(true); setNotice(null); }}
+          aria-current={showDocuments ? "step" : undefined}
+          className={`rounded-xl border p-4 text-left transition ${showDocuments ? "border-star-700 bg-star-50 shadow-sm" : "border-star-200 bg-white hover:bg-star-50"}`}>
+          <span className="flex items-center justify-between gap-2">
+            <span className="text-xs font-extrabold uppercase tracking-[0.11em] text-star-700">Section 5</span>
+            {documentStatus === "COMPLETE" ? <CheckCircle2 size={17} className="text-[#16743d]" /> : <Circle size={17} className="text-star-300" />}
+          </span>
+          <span className="mt-2 block text-sm font-extrabold text-star-900">KYC documents</span>
+          <span className="mt-1 block text-xs font-semibold text-star-muted">
+            {documentStatus === "COMPLETE" ? "Documents uploaded" : documentStatus === "DRAFT" ? "In progress" : "Upload required documents"}
+          </span>
+        </button>
       </nav>
 
+      {!showDocuments && (
       <section className="mt-5 rounded-xl border border-star-200 bg-white shadow-[0_2px_12px_rgba(14,62,46,0.04)]" aria-labelledby="corporate-profile-step-heading">
         <div className="border-b border-star-100 px-5 py-5 sm:px-6">
-          <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-star-700">Section {activeStep + 1} of {sections.length} · {currentStatusLabel}</p>
+          <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-star-700">Section {activeStep + 1} of 5 · {currentStatusLabel}</p>
           <h2 id="corporate-profile-step-heading" className="mt-2 text-xl font-extrabold tracking-[-0.025em] text-star-900">{currentSection.title}</h2>
           <p className="mt-2 text-sm leading-6 text-star-muted">{currentSection.description}</p>
         </div>
 
         <form noValidate onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); void saveSection(); }} className="p-5 sm:p-6" aria-busy={saving}>
+          <fieldset disabled={!editable} className="m-0 min-w-0 border-0 p-0">
           {activeStep === 0 ? <CompanyDetailsSection applicant={applicant} values={company} errors={fieldErrors} tinMasked={profile.canonicalDetails.taxIdentificationNumberMasked} companyStatus={savedStatuses.companyDetails} canCompleteIdentity={canCompleteIdentity} onCompleteIdentity={completeIdentity} onChange={(name, value) => { setCompany((current) => ({ ...current, [name]: value })); invalidateFrom(0); }} /> : null}
           {activeStep === 1 ? <InvestmentSection values={investment} errors={fieldErrors} onChange={(name, value) => { setInvestment((current) => ({ ...current, [name]: value })); invalidateFrom(1); }} /> : null}
           {activeStep === 2 ? <SourceOfFundsSection values={source} errors={fieldErrors} onTextChange={(name, value) => { setSource((current) => ({ ...current, [name]: value })); invalidateFrom(2); }} onToggleSource={(option, checked) => { setSource((current) => ({ ...current, selectedSources: checked ? [...current.selectedSources, option] : current.selectedSources.filter((item) => item !== option), ...(option === "Other (specify)" && !checked ? { otherSource: "" } : {}) })); invalidateFrom(2); }} /> : null}
           {activeStep === 3 ? <BankDetailsSection values={bank} errors={fieldErrors} accountNumberMasked={profile.bankDetails.accountNumberMasked} onTextChange={(name, value) => { setBank((current) => ({ ...current, [name]: value })); invalidateFrom(3); }} onBvnChange={(value) => { setBank((current) => ({ ...current, bvnLinkedToAccount: value })); invalidateFrom(3); }} /> : null}
+
+          </fieldset>
 
           {notice ? <p role={noticeIsError ? "alert" : "status"} className={`mt-5 rounded-lg border px-4 py-3 text-sm leading-6 ${noticeIsError ? "border-red-200 bg-red-50 text-red-700" : "border-[#bfe8ca] bg-[#effbf2] text-star-800"}`}>{notice}</p> : null}
 
@@ -578,6 +602,28 @@ export function CorporateProfileContent() {
           </div>
         </form>
       </section>
+      )}
+      {showDocuments && (
+        <section className="mt-5 rounded-xl border border-star-200 bg-white shadow-[0_2px_12px_rgba(14,62,46,0.04)]" aria-labelledby="corporate-documents-heading">
+          <div className="border-b border-star-100 px-5 py-5 sm:px-6">
+            <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-star-700">Section 5 of 5</p>
+            <h2 id="corporate-documents-heading" className="mt-2 text-xl font-extrabold text-star-900">Corporate KYC Documents</h2>
+            <p className="mt-2 text-sm leading-6 text-star-muted">Upload the three mandatory company documents before submitting your application for review.</p>
+          </div>
+          <CorporateDocumentUploadSection
+            accountId={account.corporateAccountId}
+            onBack={() => { setShowDocuments(false); setActiveStep(furthest); }}
+            onStatusChange={setDocumentStatus}
+          onSubmitted={(status) => {
+            setAccount((current) =>
+              current?.corporateAccountId === account.corporateAccountId
+                ? { ...current, status }
+                : current
+            );
+          }}
+          />
+        </section>
+      )}
 
       <p className="mt-4 text-xs leading-5 text-star-muted">Company name, company phone and account email are read-only account identity returned by Starfetch. Saved sections are restored from Starfetch when you return or sign in again. The TIN and bank account number are never displayed in full; only masked values returned by Starfetch are shown, and they are never stored in this browser.</p>
     </main>
