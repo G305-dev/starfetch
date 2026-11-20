@@ -22,6 +22,7 @@
     "test:corporate-registration": "node scripts/run-typescript-check.cjs scripts/corporate-applicant-registration-check.ts",
     "test:corporate-profile": "node scripts/run-typescript-check.cjs scripts/corporate-profile-integration-check.ts && node scripts/run-typescript-check.cjs scripts/corporate-profile-sequential-check.ts && node scripts/run-typescript-check.cjs scripts/corporate-profile-api-check.ts",
     "test:corporate-post-login-routing": "node scripts/run-typescript-check.cjs scripts/corporate-post-login-routing-check.ts",
+    "test:corporate-application-creation": "node scripts/run-typescript-check.cjs scripts/corporate-application-creation-check.ts",
     "test:general-corporate-login": "node scripts/run-typescript-check.cjs scripts/general-corporate-login-check.ts",
     "test:kyc-dashboard-prompt": "node scripts/run-typescript-check.cjs scripts/kyc-dashboard-prompt-check.ts",
     "test:individual-kyc-prompt": "node scripts/run-typescript-check.cjs scripts/individual-kyc-prompt-check.ts",

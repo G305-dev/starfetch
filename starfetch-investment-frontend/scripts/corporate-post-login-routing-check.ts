@@ -43,8 +43,10 @@ assert(
 assert(
   !workspace.includes('href="/register/corporate"')
     && workspace.includes("No Corporate application is available yet")
-    && workspace.includes("No company details, TIN or documents are required from this dashboard."),
-  "An authenticated applicant with no discovered application must see a truthful pending state and no forced O2 entry",
+    && workspace.includes('href="/corporate/applications/new"')
+    && workspace.includes("Start Corporate application")
+    && !/router\.(?:push|replace)\(["'`]\/corporate\/applications\/new/.test(workspace + dashboard),
+  "An authenticated applicant with no discovered application must see a truthful empty state with an explicit (never automatic) protected start link",
 );
 
 assert(
@@ -55,4 +57,4 @@ assert(
   "The Corporate dashboard must use the first-timer/time greeting with company name, show Verified Applicant only when approved, and omit the removed subtitle",
 );
 
-console.log("PASS — Corporate verified-login, legacy return-path normalisation, authenticated registration entry, and applicant empty-state routing all resolve to the protected dashboard without entering unavailable O2");
+console.log("PASS — Corporate verified-login, legacy return-path normalisation and authenticated registration entry resolve to the protected dashboard; the empty state offers an explicit protected start link and never forces O2");
