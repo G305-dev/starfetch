@@ -53,6 +53,8 @@ tags:
     description: Current authenticated user
   - name: Corporate Profile
     description: Owner-scoped four-section Corporate saved-form persistence; not submission or KYB approval
+  - name: Corporate KYC Documents
+    description: Section 5 — exactly three mandatory Corporate documents (Certificate of Incorporation, MEMART, TIN Certificate), owner view grants and applicant submission (DRAFT → SUBMITTED only)
 
 paths:
   /health:
@@ -635,6 +637,216 @@ paths:
         "429": { $ref: "#/components/responses/RateLimitError" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /corporate-accounts/{corporateAccountId}/kyc-documents:
+    get:
+      tags: [Corporate KYC Documents]
+      operationId: getCorporateKycDocumentRequirements
+      summary: Section 5 — the three mandatory document requirements, current uploads and submission readiness
+      description: |
+        Authoritative requirement list for Corporate KYC section 5. Returns
+        exactly three mandatory categories (CERTIFICATE_OF_INCORPORATION,
+        MEMART, TIN_CERTIFICATE), accepted types, size limit, the current
+        version of each upload, replacement eligibility and the server-computed
+        submission blockers. Requires a verified Corporate applicant identity
+        and initiator ownership; missing or non-owned accounts return the same
+        generic 404. Storage keys and object URLs are never returned.
+        `scanStatus` is always `NOT_SCANNED` (no Corporate scanner is wired);
+        `reviewStatus` is derived from the application lifecycle and never
+        claims review before staff accept the application. Rate limit 60/hour/user.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/CorporateAccountId"
+      responses:
+        "200":
+          description: Requirements, current uploads and readiness.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorporateKycDocumentsResponse" }
+        "401": { $ref: "#/components/responses/UnauthorizedError" }
+        "403": { $ref: "#/components/responses/ForbiddenError" }
+        "404": { $ref: "#/components/responses/NotFoundError" }
+        "429": { $ref: "#/components/responses/RateLimitError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /corporate-accounts/{corporateAccountId}/kyc-documents/{category}:
+    post:
+      tags: [Corporate KYC Documents]
+      operationId: uploadCorporateKycDocument
+      summary: Upload (or explicitly replace) one of the three mandatory documents
+      description: |
+        `multipart/form-data` with exactly one file in field `file` (PDF, JPEG
+        or PNG; 1 byte – 4 MiB = 4,194,304 bytes). The server verifies the file
+        signature (magic bytes), that the declared MIME type and extension agree
+        with it, and PDF structure (rejects truncated, password-protected and
+        script/attachment/XFA PDFs). This is a structural check, not a malware
+        scan. The original filename is never stored; a generated
+        `displayFilename` is used.
+
+        Replacement is explicit: when a current document exists, send
+        `replacesDocumentId` equal to its `documentId`; a first upload must
+        omit it. Each replacement creates a new immutable version; the previous
+        version is retained (superseded) for audit. Allowed only while the
+        application is DRAFT or INFO_REQUESTED.
+
+        Guards: bearer auth, INVESTOR role, verified Corporate applicant,
+        Origin + signed double-submit CSRF (`sf_csrf` cookie = `X-CSRF-Token`),
+        then 20/hour/user rate limit. Guards run before the file is parsed.
+        Returns the full updated section view.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/CorporateAccountId"
+        - $ref: "#/components/parameters/X-CSRF-Token"
+        - name: category
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/CorporateKycDocumentCategory" }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: application/pdf, image/jpeg or image/png; max 4,194,304 bytes.
+                replacesDocumentId:
+                  type: string
+                  format: uuid
+                  description: Required when replacing; must equal the current documentId for this category.
+              required: [file]
+      responses:
+        "201":
+          description: Stored privately; the updated section view is returned.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorporateKycDocumentsResponse" }
+        "400":
+          description: Unknown category (anything other than the three approved), missing file, malformed replacesDocumentId or too many multipart parts.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "401": { $ref: "#/components/responses/UnauthorizedError" }
+        "403": { $ref: "#/components/responses/ForbiddenError" }
+        "404": { $ref: "#/components/responses/NotFoundError" }
+        "409":
+          description: Replacement mismatch (missing/stale replacesDocumentId, or nothing to replace) or the application is no longer editable.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "413":
+          description: File larger than 4 MiB (`FILE_TOO_LARGE`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "415":
+          description: Not a PDF/JPEG/PNG by signature, declared type or extension mismatch, or a rejected PDF structure (`UNSUPPORTED_FILE_TYPE`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "429": { $ref: "#/components/responses/RateLimitError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/FeatureUnavailableError" }
+
+  /corporate-accounts/{corporateAccountId}/kyc-documents/{documentId}/view-authorization:
+    post:
+      tags: [Corporate KYC Documents]
+      operationId: authorizeCorporateKycDocumentView
+      summary: Short-lived, version-pinned download grant for the owner's current document
+      description: |
+        Returns a signed private-storage URL valid for at most 60 seconds,
+        pinned to the exact stored object version, served as
+        `attachment` / `application/octet-stream` / `no-store`. Only the
+        current version of a document belonging to the caller's own
+        application is eligible; anything else is a generic 404. Each grant is
+        recorded in the append-only audit before the URL is returned. Do not
+        cache, log or persist `viewUrl`; request a new grant on each view.
+        CSRF + Origin required; 30/hour/user.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/CorporateAccountId"
+        - $ref: "#/components/parameters/X-CSRF-Token"
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Grant issued.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorporateKycViewAuthorizationResponse" }
+        "401": { $ref: "#/components/responses/UnauthorizedError" }
+        "403": { $ref: "#/components/responses/ForbiddenError" }
+        "404": { $ref: "#/components/responses/NotFoundError" }
+        "429": { $ref: "#/components/responses/RateLimitError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/FeatureUnavailableError" }
+
+  /corporate-accounts/{corporateAccountId}/submission:
+    post:
+      tags: [Corporate KYC Documents]
+      operationId: submitCorporateApplication
+      summary: Submit the Corporate application for Starfetch review (DRAFT → SUBMITTED)
+      description: |
+        Requires an `Idempotency-Key` header (8–255 chars, no CR/LF/NUL). The
+        server re-proves ownership and, under a row lock, checks that all four
+        profile sections are COMPLETE against the current canonical details
+        (the same staleness rule as the Profile API) with stored values present,
+        and that all three mandatory documents have a current upload. On success
+        it records an immutable submission pinning the profile/details versions
+        and the three document versions, moves DRAFT → SUBMITTED (sets
+        `submittedAt`/`submittedByUserId`) and appends a SUBMITTED history row.
+        It never sets IN_REVIEW, APPROVED or any verified state — staff review
+        has not started at this point.
+
+        Idempotency: repeating with the same key returns the original receipt
+        (`idempotentReplay: true`, current `applicationStatus`). A different key
+        after submission returns 409 with `context.reason = ALREADY_SUBMITTED`.
+        Concurrent submissions serialize to exactly one. CSRF + Origin required;
+        10/hour/user. Resubmission after INFO_REQUESTED is not yet supported.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/CorporateAccountId"
+        - $ref: "#/components/parameters/X-CSRF-Token"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "201":
+          description: Submitted (or idempotent replay of the original submission).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorporateSubmissionResponse" }
+        "400":
+          description: Missing or invalid Idempotency-Key.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "401": { $ref: "#/components/responses/UnauthorizedError" }
+        "403": { $ref: "#/components/responses/ForbiddenError" }
+        "404": { $ref: "#/components/responses/NotFoundError" }
+        "409":
+          description: |
+            `context.reason = SUBMISSION_INCOMPLETE` with `context.blockers`
+            (same shape as `submission.blockers` in the GET), or
+            `context.reason = ALREADY_SUBMITTED` with `submissionId` and
+            `applicationStatus`, or a concurrent-change conflict (retry).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              example:
+                error:
+                  code: CONFLICT
+                  message: Complete all profile sections and upload all three required documents before submitting.
+                  context:
+                    reason: SUBMISSION_INCOMPLETE
+                    blockers:
+                      - { kind: PROFILE_SECTION, key: bankDetails }
+                      - { kind: DOCUMENT, key: TIN_CERTIFICATE }
+                  requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+        "429": { $ref: "#/components/responses/RateLimitError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /me/profile:
     get:
       tags:
@@ -930,6 +1142,12 @@ components:
         authenticated session. Rotated on every successful refresh.
       schema:
         type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Caller-generated unique key (8–255 chars, no CR/LF/NUL), e.g. a UUID generated once per submit intent and reused on retries. Only a domain-separated digest is stored.
+      schema: { type: string, minLength: 8, maxLength: 255 }
 
   headers:
     X-Request-Id:
@@ -1328,6 +1546,155 @@ components:
         meta: { $ref: "#/components/schemas/Meta" }
       required: [data, meta]
 
+    CorporateKycDocumentCategory:
+      type: string
+      description: Exactly the three approved mandatory Corporate KYC documents. No other value is accepted.
+      enum: [CERTIFICATE_OF_INCORPORATION, MEMART, TIN_CERTIFICATE]
+
+    CorporateKycDocument:
+      type: object
+      description: Safe metadata for the current version. No storage key, URL or original filename.
+      properties:
+        documentId: { type: string, format: uuid }
+        version: { type: integer, minimum: 1 }
+        contentType: { type: string, enum: [application/pdf, image/jpeg, image/png] }
+        sizeBytes: { type: integer, minimum: 1, maximum: 4194304 }
+        displayFilename: { type: string, example: memart-v2.pdf }
+        uploadedAt: { type: string, format: date-time }
+        scanStatus:
+          type: string
+          enum: [NOT_SCANNED]
+          description: No malware scanner is wired for Corporate documents; never reported as clean.
+        reviewStatus:
+          type: string
+          enum: [NOT_SUBMITTED, AWAITING_REVIEW, UNDER_REVIEW, INFORMATION_REQUESTED, REVIEW_COMPLETED]
+          description: |
+            Derived from the application status: DRAFT → NOT_SUBMITTED, SUBMITTED → AWAITING_REVIEW,
+            IN_REVIEW → UNDER_REVIEW (only after the staff workflow accepts it), INFO_REQUESTED →
+            INFORMATION_REQUESTED, APPROVED/REJECTED → REVIEW_COMPLETED. Not a per-document verification.
+      required: [documentId, version, contentType, sizeBytes, displayFilename, uploadedAt, scanStatus, reviewStatus]
+
+    CorporateKycRequirement:
+      type: object
+      properties:
+        category: { $ref: "#/components/schemas/CorporateKycDocumentCategory" }
+        title: { type: string, example: Certificate of Incorporation }
+        description: { type: string }
+        mandatory: { type: boolean, enum: [true] }
+        acceptedContentTypes: { type: array, items: { type: string }, example: [application/pdf, image/jpeg, image/png] }
+        acceptedExtensions: { type: array, items: { type: string }, example: [.pdf, .jpg, .jpeg, .png] }
+        maxSizeBytes: { type: integer, example: 4194304 }
+        uploadStatus: { type: string, enum: [NOT_UPLOADED, UPLOADED] }
+        canUpload: { type: boolean, description: True when no current document exists and the application is editable. }
+        canReplace: { type: boolean, description: True when a current document exists and the application is editable. }
+        blockedReason: { type: string, enum: [APPLICATION_NOT_EDITABLE], nullable: true }
+        currentDocument:
+          type: object
+          nullable: true
+          description: Current version (see CorporateKycDocument), or null when not uploaded.
+          allOf: [{ $ref: "#/components/schemas/CorporateKycDocument" }]
+      required: [category, title, description, mandatory, acceptedContentTypes, acceptedExtensions, maxSizeBytes, uploadStatus, canUpload, canReplace, blockedReason, currentDocument]
+
+    CorporateSubmissionBlocker:
+      type: object
+      properties:
+        kind: { type: string, enum: [APPLICATION_STATE, PROFILE_SECTION, DOCUMENT] }
+        key:
+          type: string
+          description: Application status (APPLICATION_STATE), profile section key companyDetails|investmentProfile|sourceOfFunds|bankDetails (PROFILE_SECTION), or document category (DOCUMENT).
+      required: [kind, key]
+
+    CorporateKycDocumentsData:
+      type: object
+      properties:
+        corporateAccountId: { type: string, format: uuid }
+        applicationId: { type: string, format: uuid }
+        applicationStatus: { type: string, enum: [DRAFT, SUBMITTED, IN_REVIEW, INFO_REQUESTED, APPROVED, REJECTED] }
+        section:
+          type: object
+          properties:
+            key: { type: string, enum: [kycDocuments] }
+            order: { type: integer, enum: [5] }
+            status: { type: string, enum: [NOT_STARTED, DRAFT, COMPLETE], description: "0 uploaded → NOT_STARTED; 1–2 → DRAFT; 3 → COMPLETE." }
+            uploadedCount: { type: integer, minimum: 0, maximum: 3 }
+            requiredCount: { type: integer, enum: [3] }
+          required: [key, order, status, uploadedCount, requiredCount]
+        limits:
+          type: object
+          properties:
+            acceptedContentTypes: { type: array, items: { type: string } }
+            acceptedExtensions: { type: array, items: { type: string } }
+            maxSizeBytes: { type: integer, example: 4194304 }
+          required: [acceptedContentTypes, acceptedExtensions, maxSizeBytes]
+        requirements:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: { $ref: "#/components/schemas/CorporateKycRequirement" }
+        submission:
+          type: object
+          properties:
+            canSubmit: { type: boolean }
+            blockers: { type: array, items: { $ref: "#/components/schemas/CorporateSubmissionBlocker" } }
+            submissionId: { type: string, format: uuid, nullable: true }
+            submittedAt: { type: string, format: date-time, nullable: true }
+          required: [canSubmit, blockers, submissionId, submittedAt]
+      required: [corporateAccountId, applicationId, applicationStatus, section, limits, requirements, submission]
+
+    CorporateKycDocumentsResponse:
+      type: object
+      properties:
+        data: { $ref: "#/components/schemas/CorporateKycDocumentsData" }
+        meta: { $ref: "#/components/schemas/Meta" }
+      required: [data, meta]
+
+    CorporateKycViewAuthorizationResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            documentId: { type: string, format: uuid }
+            category: { $ref: "#/components/schemas/CorporateKycDocumentCategory" }
+            version: { type: integer }
+            viewUrl: { type: string, format: uri, description: "Signed, ≤60 s, version-pinned private-storage URL. Do not cache, log or persist." }
+            expiresAt: { type: string, format: date-time }
+            disposition: { type: string, enum: [attachment] }
+          required: [documentId, category, version, viewUrl, expiresAt, disposition]
+        meta: { $ref: "#/components/schemas/Meta" }
+      required: [data, meta]
+
+    CorporateSubmissionResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            submissionId: { type: string, format: uuid, description: Submission reference. }
+            applicationId: { type: string, format: uuid }
+            corporateAccountId: { type: string, format: uuid }
+            applicationStatus:
+              type: string
+              enum: [SUBMITTED, IN_REVIEW, INFO_REQUESTED, APPROVED, REJECTED]
+              description: Actual current status. SUBMITTED immediately after submission; later values appear only through the staff workflow.
+            submittedAt: { type: string, format: date-time }
+            profileVersion: { type: integer }
+            detailsVersion: { type: integer }
+            documents:
+              type: array
+              minItems: 3
+              maxItems: 3
+              items:
+                type: object
+                properties:
+                  category: { $ref: "#/components/schemas/CorporateKycDocumentCategory" }
+                  documentId: { type: string, format: uuid }
+                required: [category, documentId]
+            idempotentReplay: { type: boolean }
+          required: [submissionId, applicationId, corporateAccountId, applicationStatus, submittedAt, profileVersion, detailsVersion, documents, idempotentReplay]
+        meta: { $ref: "#/components/schemas/Meta" }
+      required: [data, meta]
+
     HoldingItem:
       type: object
       description: Stored holding row (minor units; no valuation logic applied).
@@ -1463,8 +1830,9 @@ components:
         - FORBIDDEN                         # 403 — policy failure (e.g. untrusted browser origin)
         - NOT_FOUND                         # 404 — resource absent
         - CONFLICT                          # 409 — e.g. duplicate account, already verified
-        - FILE_TOO_LARGE                    # 413 — reserved for later document phases
-        - UNSUPPORTED_FILE_TYPE             # 415 — reserved for later document phases
+        - FILE_TOO_LARGE                    # 413 — Corporate KYC document over 4 MiB
+        - UNSUPPORTED_FILE_TYPE             # 415 — Corporate KYC document signature/type/extension/PDF-structure rejected
+        - FEATURE_UNAVAILABLE               # 503 — private document storage not enabled/approved in this deployment
         - RATE_LIMITED                      # 429 — endpoint throttled
         - INTERNAL_ERROR                    # 500 — unexpected; never leaks internals
         # Authentication (Phase 2B)
@@ -1481,6 +1849,16 @@ components:
         - EMAIL_DELIVERY_FAILED             # 500 — verification email transport failed
 
   responses:
+    FeatureUnavailableError:
+      description: Private document storage is not enabled/approved in this deployment (fails closed; nothing stored).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            error:
+              code: FEATURE_UNAVAILABLE
+              message: Secure document storage is not available.
+              requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
     UnauthorizedError:
       description: Missing/invalid/expired session or bearer token.
       content:
@@ -1609,6 +1987,9 @@ x-conventions:
     description: |
       D-08 (application status/state-transition map) — OPEN.
       D-09 (one-active-application semantics, incl. staff-list selection) — OPEN.
-      Document categories/review outcomes/lifecycle vocabulary — TBD
+      Corporate KYC document categories are APPROVED as exactly three
+      (CERTIFICATE_OF_INCORPORATION, MEMART, TIN_CERTIFICATE); applicant
+      submission DRAFT → SUBMITTED is implemented. Staff review outcomes and
+      other document vocabularies remain TBD
       (BUSINESS / COMPLIANCE + CONTRACT APPROVAL REQUIRED).
       No contract here may presume those outcomes.
