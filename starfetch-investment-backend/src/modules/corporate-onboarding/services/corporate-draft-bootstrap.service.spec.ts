@@ -1,4 +1,4 @@
-import { UserRole } from '@prisma/client';
+import { PrimaryAccountType, UserRole } from '@prisma/client';
 import { AuthPrincipal } from '../../../common/types/auth-principal';
 import {
   CorporateDraftFingerprintKeyProvider,
@@ -37,7 +37,7 @@ function createHarness() {
   let sequence = 0;
   let failDetailsInsert = false;
   let queue: Promise<void> = Promise.resolve();
-  const user = { id: USER_ID, role: UserRole.INVESTOR, emailVerifiedAt: new Date('2025-01-01T00:00:00Z') };
+  const user = { id: USER_ID, role: UserRole.INVESTOR, emailVerifiedAt: new Date('2025-01-01T00:00:00Z'), primaryAccountType: PrimaryAccountType.CORPORATE, corporateApplicantProfile: { id: 'corporate-applicant' }, initiatedOnboardingApplications: [] };
 
   const txFor = (draft: FakeState) => ({
     corporateAccount: {

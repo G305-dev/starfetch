@@ -1,3 +1,4 @@
+import { IndividualAccountGuard } from '../../common/guards/individual-account.guard';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseModule } from '../../infrastructure/database/database.module';
@@ -21,7 +22,7 @@ import { JointReadService } from './services/joint-read.service';
 @Module({
   imports: [DatabaseModule, AuthModule],
   controllers: [JointController, JointInvitationsController],
-  providers: [
+  providers: [IndividualAccountGuard, 
     JointMembershipGuard,
     JointReadService,
     JointMutationService,

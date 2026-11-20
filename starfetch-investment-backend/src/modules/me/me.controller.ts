@@ -32,7 +32,7 @@ export class MeController {
     const principal = req.principal!;
     const user = await this.prisma.user.findUnique({
       where: { id: principal.userId },
-      include: { investorProfile: true },
+      include: { investorProfile: true, corporateApplicantProfile: true, jointMemberships: { select: { id: true } }, initiatedOnboardingApplications: { where: { kind: 'CORPORATE', ownerCorporateAccountId: { not: null } }, select: { id: true }, take: 100 } },
     });
     if (!user) {
       throw new HttpException(

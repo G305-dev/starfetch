@@ -46,6 +46,18 @@ enum UserRole {
   ADMIN
 }
 
+/// Applicant/account family, deliberately separate from UserRole privileges.
+enum PrimaryAccountType {
+  INDIVIDUAL
+  CORPORATE
+}
+
+enum CorporateProfileSectionStatus {
+  NOT_STARTED
+  DRAFT
+  COMPLETE
+}
+
 /// Shared application lifecycle from the accepted C1 architecture.
 enum OnboardingApplicationKind {
   INDIVIDUAL
@@ -266,11 +278,16 @@ model User {
   /// Argon2id password hash (PHC string). Never returned by any API.
   passwordHash    String
   role            UserRole  @default(INVESTOR)
+  /// Null means legacy classification was ambiguous and requires manual treatment.
+  primaryAccountType PrimaryAccountType?
   emailVerifiedAt DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   investorProfile             InvestorProfile?
+  corporateApplicantProfile   CorporateApplicantProfile?
+  corporateProfileRevisions   CorporateProfileRevision[] @relation("CorporateProfileRevisionActor")
+  accountTypeRecoveryAudits   AccountTypeRecoveryAudit[]   @relation("AccountTypeRecoveryUser")
   portfolio                   Portfolio?
   emailVerificationChallenges EmailVerificationChallenge[]
   authSessions                AuthSession[]
@@ -314,6 +331,42 @@ model User {
   approvedIndividualKycProfiles        IndividualKycProfile[]                   @relation("IndividualKycProfileApprover")
 
   @@map("users")
+}
+
+/// One-time operator-controlled classification recovery. Ticket/evidence fields
+/// point to a restricted support case; the underlying evidence is never copied
+/// into the application database. Runtime application code exposes no writer.
+model AccountTypeRecoveryAudit {
+  id                 String            @id @default(uuid()) @db.Uuid
+  userId             String            @db.Uuid
+  assignedType       PrimaryAccountType
+  supportCaseId      String            @unique @db.VarChar(120)
+  verificationMethod String            @db.VarChar(64)
+  evidenceReference  String            @db.VarChar(255)
+  requestedBy        String            @db.VarChar(160)
+  approvedBy         String            @db.VarChar(160)
+  createdAt          DateTime          @default(now()) @db.Timestamp(3)
+  appliedAt          DateTime?         @db.Timestamp(3)
+
+  user User @relation("AccountTypeRecoveryUser", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([userId])
+  @@map("account_type_recovery_audits")
+}
+
+/// Account-managed applicant display identity from Corporate signup. This is
+/// intentionally distinct from the canonical O2 institution/legal details.
+model CorporateApplicantProfile {
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @unique @db.Uuid
+  companyName         String   @db.VarChar(160)
+  companyPhoneNumber  String   @db.VarChar(32)
+  createdAt           DateTime @default(now()) @db.Timestamp(3)
+  updatedAt           DateTime @updatedAt @db.Timestamp(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("corporate_applicant_profiles")
 }
 
 model InvestorProfile {
@@ -714,6 +767,7 @@ model OnboardingApplication {
   submittedByUser User?             @relation("OnboardingSubmitter", fields: [submittedByUserId], references: [id], onDelete: Restrict)
 
   corporateDetails             CorporateOnboardingDetails?
+  corporateProfile             CorporateProfile?
   history                      OnboardingApplicationHistory[]
   draftCreation                CorporateDraftCreation?
   rulesetBinding               OnboardingApplicationRulesetBinding?
@@ -757,6 +811,70 @@ model CorporateOnboardingDetails {
   revisions   CorporateDetailsRevision[]
 
   @@map("corporate_onboarding_details")
+}
+
+/// Four-section saved-form data linked only to a real Corporate onboarding
+/// application. This record does not create a CorporateAccount or application.
+model CorporateProfile {
+  applicationId                       String                       @id @db.Uuid
+  profileVersion                      Int                          @default(0)
+  companyDetailsDetailsVersion        Int?
+  companyDetailsStatus                CorporateProfileSectionStatus @default(NOT_STARTED)
+  investmentProfileStatus             CorporateProfileSectionStatus @default(NOT_STARTED)
+  sourceOfFundsStatus                 CorporateProfileSectionStatus @default(NOT_STARTED)
+  bankDetailsStatus                   CorporateProfileSectionStatus @default(NOT_STARTED)
+  registeredAddress                   String?                      @db.VarChar(255)
+  city                                String?                      @db.VarChar(120)
+  state                               String?                      @db.VarChar(120)
+  primaryObjective                    String?                      @db.VarChar(40)
+  riskTolerance                       String?                      @db.VarChar(40)
+  investmentHorizon                   String?                      @db.VarChar(40)
+  expectedWithdrawals                 String?                      @db.VarChar(120)
+  expectedWithdrawalsMinor            BigInt?
+  withdrawalFrequency                 String?                      @db.VarChar(120)
+  restrictionsOrExclusions            String?                      @db.VarChar(500)
+  selectedSources                     String[]                     @default([]) @db.Text
+  otherSource                         String?                      @db.VarChar(500)
+  expectedAnnualInflowMinor           BigInt?
+  expectedTransactionFrequency        String?                      @db.VarChar(120)
+  bankName                            String?                      @db.VarChar(120)
+  accountName                         String?                      @db.VarChar(160)
+  accountType                         String?                      @db.VarChar(80)
+  bvnLinkedToAccount                  Boolean?
+  bankAccountNumberCiphertext         String?                      @db.Text
+  bankAccountNumberIv                 String?                      @db.VarChar(32)
+  bankAccountNumberAuthTag            String?                      @db.VarChar(32)
+  bankAccountNumberEncryptedDataKey   String?                      @db.Text
+  bankAccountNumberKeyProvider        String?                      @db.VarChar(32)
+  bankAccountNumberKeyId              String?                      @db.Text
+  bankAccountNumberKeyVersion         String?                      @db.VarChar(64)
+  bankAccountNumberContextVersion     Int?
+  createdAt                           DateTime                     @default(now()) @db.Timestamp(3)
+  updatedAt                           DateTime                     @updatedAt @db.Timestamp(3)
+
+  application OnboardingApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  revisions   CorporateProfileRevision[]
+
+  @@map("corporate_profiles")
+}
+
+/// Append-only snapshots intentionally exclude TIN and raw bank account data.
+model CorporateProfileRevision {
+  id                String   @id @default(uuid()) @db.Uuid
+  applicationId     String   @db.Uuid
+  profileVersion    Int
+  section           String   @db.VarChar(40)
+  changedByUserId   String   @db.Uuid
+  changedFieldNames String[] @db.Text
+  safeSnapshot      Json     @db.JsonB
+  createdAt         DateTime @default(now()) @db.Timestamp(3)
+
+  profile CorporateProfile @relation(fields: [applicationId], references: [applicationId], onDelete: Restrict)
+  actor   User             @relation("CorporateProfileRevisionActor", fields: [changedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([applicationId, profileVersion])
+  @@index([applicationId, createdAt])
+  @@map("corporate_profile_revisions")
 }
 
 /// Append-only, versioned amendment snapshots. Sensitive TIN values inside

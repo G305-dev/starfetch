@@ -13,6 +13,18 @@ import {
   type CorporateOnboardingRecord,
   type CorporateSnapshotFreshness,
 } from "../corporate/application";
+import {
+  corporateProfileIfMatch,
+  corporateProfileSectionKeys,
+  type CorporateApplicantIdentityInput,
+  type CorporateProfileBankDetailsInput,
+  type CorporateProfileCompanyDetailsInput,
+  type CorporateProfileInvestmentInput,
+  type CorporateProfileSectionKey,
+  type CorporateProfileSectionStatus,
+  type CorporateProfileSourceOfFundsInput,
+  type CorporateProfileView,
+} from "../corporate/profile";
 
 export type ApiErrorCode =
   | "VALIDATION_FAILED"
@@ -38,6 +50,14 @@ type ApiErrorMetadata = {
   verificationId?: string;
   maskedEmail?: string;
   retryAfterSeconds?: number;
+  /** HTTP status of the failed response, when one was received. */
+  status?: number;
+  /** Safe backend error code exactly as returned (e.g. CSRF_VALIDATION_FAILED). */
+  serverCode?: string;
+  /** Backend correlation ID (error.requestId or x-request-id) for support triage. */
+  requestId?: string;
+  /** Names of fields the backend rejected. Backend messages are not echoed to users. */
+  fieldNames?: string[];
 };
 
 const safeMessages: Record<ApiErrorCode, string> = {
@@ -99,6 +119,10 @@ export class ApiError extends Error {
   readonly verificationId?: string;
   readonly maskedEmail?: string;
   readonly retryAfterSeconds?: number;
+  readonly status?: number;
+  readonly serverCode?: string;
+  readonly requestId?: string;
+  readonly fieldNames?: string[];
 
   constructor(code: ApiErrorCode, metadata: ApiErrorMetadata = {}) {
     super(safeMessages[code]);
@@ -107,6 +131,10 @@ export class ApiError extends Error {
     this.verificationId = metadata.verificationId;
     this.maskedEmail = metadata.maskedEmail;
     this.retryAfterSeconds = metadata.retryAfterSeconds;
+    this.status = metadata.status;
+    this.serverCode = metadata.serverCode;
+    this.requestId = metadata.requestId;
+    this.fieldNames = metadata.fieldNames;
   }
 }
 
@@ -119,6 +147,8 @@ export function getSafeErrorMessage(error: unknown) {
 }
 
 export type AuthUserRole = "INVESTOR" | "STAFF" | "ADMIN";
+export type AuthPrimaryAccountType = "INDIVIDUAL" | "CORPORATE";
+export type AuthAccountContext = "INDIVIDUAL" | "CORPORATE" | "JOINT";
 
 /** Safe backend user projection. Corporate applicants are authenticated INVESTORs
  * whose first/last names are deliberately empty strings because no Individual
@@ -133,6 +163,14 @@ export type AuthUser = {
   companyPhoneNumber?: string;
   emailVerified?: boolean;
   role: AuthUserRole;
+  /**
+   * Server-derived, read-only account classification from /me and login.
+   * `null` means an unclassified legacy account; `undefined` means the backend
+   * did not send the field. It is used only to explain backend authorisation
+   * results and is never sent to the backend or used to grant access.
+   */
+  primaryAccountType?: AuthPrimaryAccountType | null;
+  authorizedContexts?: AuthAccountContext[];
 };
 
 export type IndividualAccountProfile = {
@@ -458,10 +496,20 @@ function errorFromResponse(response: Response, payload: unknown) {
     ? retryAfterHeader
     : readNumber(errorRecord, "retryAfterSeconds") ?? readNumber(errorRecord, "retryAfter") ?? readNumber(context, "retryAfterSeconds") ?? readNumber(rootData, "retryAfterSeconds");
 
-  return new ApiError(toKnownErrorCode(readString(errorRecord, "code") ?? readString(root, "code"), response.status), {
+  const rawCode = readString(errorRecord, "code") ?? readString(root, "code");
+  const serverCode = rawCode && /^[A-Z][A-Z0-9_]{1,63}$/.test(rawCode) ? rawCode : undefined;
+  const rawRequestId = readString(errorRecord, "requestId") ?? response.headers.get("x-request-id") ?? undefined;
+  const requestId = rawRequestId && /^[A-Za-z0-9][A-Za-z0-9._-]{7,99}$/.test(rawRequestId) ? rawRequestId : undefined;
+  const fields = isRecord(errorRecord.fields) ? Object.keys(errorRecord.fields).filter((name) => /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(name)) : [];
+
+  return new ApiError(toKnownErrorCode(rawCode, response.status), {
     verificationId: readString(context, "verificationId") ?? readString(errorRecord, "verificationId") ?? readString(rootData, "verificationId") ?? readString(root, "verificationId"),
     maskedEmail: readString(context, "email"),
     retryAfterSeconds,
+    status: response.status,
+    serverCode,
+    requestId,
+    ...(fields.length ? { fieldNames: fields } : {}),
   });
 }
 
@@ -611,6 +659,11 @@ function normaliseUser(payload: unknown): AuthUser {
   const companyName = readString(user, "companyName");
   const companyPhoneNumber = readString(user, "companyPhoneNumber");
   const role = user.role;
+  const primaryAccountTypeValue = user.primaryAccountType;
+  const primaryAccountType = primaryAccountTypeValue === "INDIVIDUAL" || primaryAccountTypeValue === "CORPORATE" ? primaryAccountTypeValue : primaryAccountTypeValue === null ? null : undefined;
+  const authorizedContexts = Array.isArray(user.authorizedContexts)
+    ? user.authorizedContexts.filter((value): value is AuthAccountContext => value === "INDIVIDUAL" || value === "CORPORATE" || value === "JOINT")
+    : undefined;
   if (!id || firstName === undefined || lastName === undefined || !email || (role !== "INVESTOR" && role !== "STAFF" && role !== "ADMIN")) throw new ApiError("UNEXPECTED_RESPONSE");
   return {
     id,
@@ -621,6 +674,8 @@ function normaliseUser(payload: unknown): AuthUser {
     ...(companyPhoneNumber ? { companyPhoneNumber } : {}),
     emailVerified: typeof user.emailVerified === "boolean" ? user.emailVerified : undefined,
     role,
+    ...(primaryAccountType !== undefined ? { primaryAccountType } : {}),
+    ...(authorizedContexts ? { authorizedContexts } : {}),
   };
 }
 
@@ -1002,6 +1057,120 @@ function normaliseCorporateSnapshotFreshness(payload: unknown): CorporateSnapsho
 
 function corporateAccountPathSegment(corporateAccountId: string) {
   return encodeURIComponent(corporateAccountId);
+}
+
+function nullableRecordString(record: JsonRecord, key: string): string | null | undefined {
+  const value = record[key];
+  return typeof value === "string" ? value : value === null || value === undefined ? null : undefined;
+}
+
+function normaliseCorporateProfileSectionStatus(value: unknown): CorporateProfileSectionStatus | undefined {
+  return value === "NOT_STARTED" || value === "DRAFT" || value === "COMPLETE" ? value : undefined;
+}
+
+/**
+ * Strict CorporateProfileView normaliser. Only the documented safe projection is
+ * kept: a plaintext TIN or account number is never read, even if one appeared.
+ */
+function normaliseCorporateProfile(payload: unknown): CorporateProfileView {
+  const data = unwrapPayload(payload);
+  const corporateAccountId = readString(data, "corporateAccountId");
+  const applicationId = readString(data, "applicationId");
+  const applicant = isRecord(data.applicant) ? data.applicant : null;
+  const canonical = isRecord(data.canonicalDetails) ? data.canonicalDetails : null;
+  const company = isRecord(data.companyDetails) ? data.companyDetails : null;
+  const investment = isRecord(data.investmentProfile) ? data.investmentProfile : null;
+  const sources = isRecord(data.sourceOfFunds) ? data.sourceOfFunds : null;
+  const bank = isRecord(data.bankDetails) ? data.bankDetails : null;
+  const statuses = isRecord(data.sectionStatuses) ? data.sectionStatuses : null;
+  const progress = isRecord(data.progress) ? data.progress : null;
+  const profileVersion = readNonNegativeInteger(data, "profileVersion");
+  const detailsVersion = readNonNegativeInteger(data, "detailsVersion");
+  if (!corporateAccountId || !applicationId || !applicant || !canonical || !company || !investment || !sources || !bank || !statuses || !progress || profileVersion === null || detailsVersion === null || detailsVersion < 1) throw new ApiError("UNEXPECTED_RESPONSE");
+
+  const email = readString(applicant, "email");
+  const companyName = nullableRecordString(applicant, "companyName");
+  const companyPhoneNumber = nullableRecordString(applicant, "companyPhoneNumber");
+  const institutionName = readString(canonical, "institutionName");
+  const dateOfIncorporation = readString(canonical, "dateOfIncorporation");
+  const rcNumber = readString(canonical, "rcNumber");
+  const businessPhoneNumber = readString(canonical, "businessPhoneNumber");
+  const businessEmail = readString(canonical, "businessEmail");
+  const taxIdentificationNumberMasked = nullableRecordString(canonical, "taxIdentificationNumberMasked");
+  if (!email || companyName === undefined || companyPhoneNumber === undefined || !institutionName || !dateOfIncorporation || !rcNumber || businessPhoneNumber === undefined || businessEmail === undefined || taxIdentificationNumberMasked === undefined) throw new ApiError("UNEXPECTED_RESPONSE");
+
+  const sectionStatuses = {} as Record<CorporateProfileSectionKey, CorporateProfileSectionStatus>;
+  for (const key of corporateProfileSectionKeys) {
+    const status = normaliseCorporateProfileSectionStatus(statuses[key]);
+    if (!status) throw new ApiError("UNEXPECTED_RESPONSE");
+    sectionStatuses[key] = status;
+  }
+  const percentage = readNonNegativeInteger(progress, "percentage");
+  const nextSectionValue = progress.nextSection;
+  const nextSection = nextSectionValue === null ? null : (corporateProfileSectionKeys as readonly unknown[]).includes(nextSectionValue) ? nextSectionValue as CorporateProfileSectionKey : undefined;
+  if (percentage === null || percentage > 100 || nextSection === undefined || progress.canSubmit !== false) throw new ApiError("UNEXPECTED_RESPONSE");
+
+  const selectedSourcesValue = sources.selectedSources;
+  if (!Array.isArray(selectedSourcesValue) || !selectedSourcesValue.every((value) => typeof value === "string")) throw new ApiError("UNEXPECTED_RESPONSE");
+  const bvnValue = bank.bvnLinkedToAccount;
+  const updatedAt = nullableRecordString(data, "updatedAt");
+
+  const text = (record: JsonRecord, key: string) => {
+    const value = nullableRecordString(record, key);
+    if (value === undefined) throw new ApiError("UNEXPECTED_RESPONSE");
+    return value;
+  };
+
+  return {
+    corporateAccountId,
+    applicationId,
+    applicant: { companyName, companyPhoneNumber, email },
+    canonicalDetails: { institutionName, dateOfIncorporation, rcNumber, businessPhoneNumber, businessEmail, taxIdentificationNumberMasked },
+    companyDetails: { registeredAddress: text(company, "registeredAddress"), city: text(company, "city"), state: text(company, "state") },
+    investmentProfile: {
+      primaryObjective: text(investment, "primaryObjective"),
+      riskTolerance: text(investment, "riskTolerance"),
+      investmentHorizon: text(investment, "investmentHorizon"),
+      expectedWithdrawals: text(investment, "expectedWithdrawals"),
+      withdrawalFrequency: text(investment, "withdrawalFrequency"),
+      restrictionsOrExclusions: text(investment, "restrictionsOrExclusions"),
+    },
+    sourceOfFunds: {
+      selectedSources: [...selectedSourcesValue] as string[],
+      otherSource: text(sources, "otherSource"),
+      expectedAnnualInflow: text(sources, "expectedAnnualInflow"),
+      expectedTransactionFrequency: text(sources, "expectedTransactionFrequency"),
+    },
+    bankDetails: {
+      bankName: text(bank, "bankName"),
+      // Only the backend mask is kept. A raw account number is never read.
+      accountNumberMasked: text(bank, "accountNumberMasked"),
+      accountName: text(bank, "accountName"),
+      accountType: text(bank, "accountType"),
+      bvnLinkedToAccount: typeof bvnValue === "boolean" ? bvnValue : null,
+    },
+    profileVersion,
+    detailsVersion,
+    sectionStatuses,
+    progress: { percentage, nextSection, canSubmit: false, meaning: "SAVED_FORM_COMPLETION_ONLY" },
+    updatedAt: updatedAt ?? null,
+  };
+}
+
+function normaliseCorporateApplicantIdentity(payload: unknown): CorporateApplicantIdentityInput {
+  const data = unwrapPayload(payload);
+  const companyName = readString(data, "companyName");
+  const companyPhoneNumber = readString(data, "companyPhoneNumber");
+  if (!companyName || !companyPhoneNumber) throw new ApiError("UNEXPECTED_RESPONSE");
+  return { companyName, companyPhoneNumber };
+}
+
+function corporateProfileVersionHeader(profileVersion: number, detailsVersion?: number) {
+  try {
+    return { "If-Match": corporateProfileIfMatch(profileVersion, detailsVersion) };
+  } catch {
+    throw new ApiError("VALIDATION_FAILED");
+  }
 }
 
 function normaliseJointAccountSummary(record: JsonRecord): JointAccountSummary {
@@ -1524,6 +1693,64 @@ export async function authorizeCorporateKycDocumentView(corporateAccountId: stri
 /** Submit the Corporate application for Starfetch review (DRAFT → SUBMITTED). */
 export async function submitCorporateApplication(corporateAccountId: string, idempotencyKey: string) {
   return normaliseCorporateSubmission(await authenticatedMutation(`/corporate-accounts/${corporateAccountPathSegment(corporateAccountId)}/submission`, undefined, { "Idempotency-Key": idempotencyKey }));
+/** Corporate Profile read. The account ID must originate from owner-scoped discovery. */
+export async function getCorporateProfile(corporateAccountId: string) {
+  return normaliseCorporateProfile(await authenticatedRequest(`/corporate-accounts/${corporateAccountPathSegment(corporateAccountId)}/profile`));
+}
+
+/** Section 1 — If-Match "profile-N;details-M". The TIN is sent only when explicitly entered. */
+export async function saveCorporateProfileCompanyDetails(corporateAccountId: string, versions: { profileVersion: number; detailsVersion: number }, input: CorporateProfileCompanyDetailsInput) {
+  const tin = input.taxIdentificationNumber?.trim();
+  const body: CorporateProfileCompanyDetailsInput = {
+    rcNumber: input.rcNumber,
+    dateOfIncorporation: input.dateOfIncorporation,
+    ...(tin ? { taxIdentificationNumber: tin } : {}),
+    registeredAddress: input.registeredAddress,
+    city: input.city,
+    state: input.state,
+  };
+  return normaliseCorporateProfile(await authenticatedMutation(`/corporate-accounts/${corporateAccountPathSegment(corporateAccountId)}/profile/company-details`, body, corporateProfileVersionHeader(versions.profileVersion, versions.detailsVersion), "PATCH"));
+}
+
+/** Section 2 — If-Match "profile-N". */
+export async function saveCorporateProfileInvestmentProfile(corporateAccountId: string, profileVersion: number, input: CorporateProfileInvestmentInput) {
+  const body: CorporateProfileInvestmentInput = {
+    primaryObjective: input.primaryObjective,
+    riskTolerance: input.riskTolerance,
+    investmentHorizon: input.investmentHorizon,
+    expectedWithdrawals: input.expectedWithdrawals,
+    withdrawalFrequency: input.withdrawalFrequency,
+    ...(input.restrictionsOrExclusions?.trim() ? { restrictionsOrExclusions: input.restrictionsOrExclusions } : {}),
+  };
+  return normaliseCorporateProfile(await authenticatedMutation(`/corporate-accounts/${corporateAccountPathSegment(corporateAccountId)}/profile/investment-profile`, body, corporateProfileVersionHeader(profileVersion), "PATCH"));
+}
+
+/** Section 3 — If-Match "profile-N". */
+export async function saveCorporateProfileSourceOfFunds(corporateAccountId: string, profileVersion: number, input: CorporateProfileSourceOfFundsInput) {
+  const body: CorporateProfileSourceOfFundsInput = {
+    selectedSources: [...input.selectedSources],
+    ...(input.selectedSources.includes("Other (specify)") && input.otherSource?.trim() ? { otherSource: input.otherSource } : {}),
+    expectedAnnualInflow: input.expectedAnnualInflow,
+    expectedTransactionFrequency: input.expectedTransactionFrequency,
+  };
+  return normaliseCorporateProfile(await authenticatedMutation(`/corporate-accounts/${corporateAccountPathSegment(corporateAccountId)}/profile/source-of-funds`, body, corporateProfileVersionHeader(profileVersion), "PATCH"));
+}
+
+/** Section 4 — If-Match "profile-N". The account number exists only in this request body. */
+export async function saveCorporateProfileBankDetails(corporateAccountId: string, profileVersion: number, input: CorporateProfileBankDetailsInput) {
+  const body: CorporateProfileBankDetailsInput = {
+    bankName: input.bankName,
+    accountNumber: input.accountNumber,
+    accountName: input.accountName,
+    accountType: input.accountType,
+    bvnLinkedToAccount: input.bvnLinkedToAccount,
+  };
+  return normaliseCorporateProfile(await authenticatedMutation(`/corporate-accounts/${corporateAccountPathSegment(corporateAccountId)}/profile/bank-details`, body, corporateProfileVersionHeader(profileVersion), "PATCH"));
+}
+
+/** One-time completion of missing legacy Corporate applicant display identity. */
+export async function completeCorporateApplicantIdentity(input: CorporateApplicantIdentityInput) {
+  return normaliseCorporateApplicantIdentity(await authenticatedMutation("/me/corporate-applicant-profile", { companyName: input.companyName, companyPhoneNumber: input.companyPhoneNumber }, undefined, "PATCH"));
 }
 
 export async function getMyPortfolio() {

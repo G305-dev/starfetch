@@ -1,3 +1,4 @@
+import { IndividualAccountGuard } from '../../common/guards/individual-account.guard';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthModule } from '../auth/auth.module';
@@ -24,7 +25,7 @@ import { IndividualKycService } from './individual-kyc.service';
 @Module({
   imports: [AuthModule, CorporateOnboardingModule],
   controllers: [IndividualKycController, IndividualKycDocumentReviewController, IndividualKycWorkerController],
-  providers: [
+  providers: [IndividualAccountGuard, 
     IndividualKycService,
     IndividualKycDocumentReviewService,
     DenyAllIndividualKycDocumentReviewAuthorizer,

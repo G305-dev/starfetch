@@ -7,6 +7,7 @@ import { KeyedRateLimitGuard } from '../../common/rate-limit/keyed-rate-limit.gu
 import { CookieMutationGuard } from '../../common/security/cookie-mutation.guard';
 import { AuthenticatedRequest } from '../../common/types/auth-principal';
 import { AccessTokenGuard } from '../auth/guards/access-token.guard';
+import { IndividualAccountGuard } from '../../common/guards/individual-account.guard';
 import { TransactionsQueryDto } from '../me/dto/transactions-query.dto';
 import { JointAccount } from './decorators/joint-account-context.decorator';
 import { JointAccountContext, JointMembershipGuard } from './guards/joint-membership.guard';
@@ -38,7 +39,7 @@ export class JointController {
   /** R1 — list accounts where the caller is an ACTIVE member. */
   @Get('me/joint-accounts')
   @Roles(UserRole.INVESTOR)
-  @UseGuards(AccessTokenGuard, RolesGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard, IndividualAccountGuard)
   listMyJointAccounts(@Req() req: AuthenticatedRequest) {
     return this.jointRead.listMyJointAccounts(req.principal!.userId);
   }
@@ -46,7 +47,7 @@ export class JointController {
   /** R2 — account detail + ACTIVE members (404 for unknown/non-member alike). */
   @Get('joint-accounts/:jointAccountId')
   @Roles(UserRole.INVESTOR)
-  @UseGuards(AccessTokenGuard, RolesGuard, JointMembershipGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard, IndividualAccountGuard, JointMembershipGuard)
   getJointAccount(@JointAccount() ctx: JointAccountContext) {
     return this.jointRead.getJointAccount(ctx);
   }
@@ -54,7 +55,7 @@ export class JointController {
   /** R3 — joint portfolio snapshot (joint-owned portfolio ONLY). */
   @Get('joint-accounts/:jointAccountId/portfolio')
   @Roles(UserRole.INVESTOR)
-  @UseGuards(AccessTokenGuard, RolesGuard, JointMembershipGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard, IndividualAccountGuard, JointMembershipGuard)
   async getJointPortfolio(@JointAccount() ctx: JointAccountContext) {
     const data = await this.jointRead.getJointPortfolio(ctx);
     return { data, meta: { asOf: new Date().toISOString() } };
@@ -63,7 +64,7 @@ export class JointController {
   /** R4 — joint transaction history (shared pagination semantics). */
   @Get('joint-accounts/:jointAccountId/transactions')
   @Roles(UserRole.INVESTOR)
-  @UseGuards(AccessTokenGuard, RolesGuard, JointMembershipGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard, IndividualAccountGuard, JointMembershipGuard)
   getJointTransactions(
     @JointAccount() ctx: JointAccountContext,
     @Query() query: TransactionsQueryDto,
@@ -85,7 +86,7 @@ export class JointController {
     windowSeconds: 3600,
     identity: 'user',
   })
-  @UseGuards(AccessTokenGuard, RolesGuard, CookieMutationGuard, KeyedRateLimitGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard, IndividualAccountGuard, CookieMutationGuard, KeyedRateLimitGuard)
   createJointAccount(
     @Req() req: AuthenticatedRequest,
     @Body() body: CreateJointAccountDto,
@@ -106,7 +107,7 @@ export class JointController {
     windowSeconds: 3600,
     identity: 'user+account',
   })
-  @UseGuards(AccessTokenGuard, RolesGuard, JointMembershipGuard, CookieMutationGuard, KeyedRateLimitGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard, IndividualAccountGuard, JointMembershipGuard, CookieMutationGuard, KeyedRateLimitGuard)
   createInvitation(
     @Req() req: AuthenticatedRequest,
     @JointAccount() ctx: JointAccountContext,

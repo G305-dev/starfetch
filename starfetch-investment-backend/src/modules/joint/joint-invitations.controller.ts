@@ -7,6 +7,7 @@ import { KeyedRateLimitGuard } from '../../common/rate-limit/keyed-rate-limit.gu
 import { CookieMutationGuard } from '../../common/security/cookie-mutation.guard';
 import { AuthenticatedRequest } from '../../common/types/auth-principal';
 import { AccessTokenGuard } from '../auth/guards/access-token.guard';
+import { IndividualAccountGuard } from '../../common/guards/individual-account.guard';
 import { JointMutationService } from './services/joint-mutation.service';
 
 /**
@@ -23,7 +24,7 @@ export class JointInvitationsController {
   /** M3 — pending, unexpired invitations addressed to the caller's own email. */
   @Get()
   @Roles(UserRole.INVESTOR)
-  @UseGuards(AccessTokenGuard, RolesGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard, IndividualAccountGuard)
   listMyInvitations(@Req() req: AuthenticatedRequest) {
     return this.jointMutation.listMyInvitations(req.principal!.userId);
   }
@@ -38,7 +39,7 @@ export class JointInvitationsController {
     windowSeconds: 3600,
     identity: 'user',
   })
-  @UseGuards(AccessTokenGuard, RolesGuard, CookieMutationGuard, KeyedRateLimitGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard, IndividualAccountGuard, CookieMutationGuard, KeyedRateLimitGuard)
   accept(@Req() req: AuthenticatedRequest, @Param('invitationId') invitationId: string) {
     return this.jointMutation.acceptInvitation({ userId: req.principal!.userId }, invitationId);
   }
@@ -53,7 +54,7 @@ export class JointInvitationsController {
     windowSeconds: 3600,
     identity: 'user',
   })
-  @UseGuards(AccessTokenGuard, RolesGuard, CookieMutationGuard, KeyedRateLimitGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard, IndividualAccountGuard, CookieMutationGuard, KeyedRateLimitGuard)
   decline(@Req() req: AuthenticatedRequest, @Param('invitationId') invitationId: string) {
     return this.jointMutation.declineInvitation({ userId: req.principal!.userId }, invitationId);
   }

@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { OnboardingApplicationStatus, UserRole } from '@prisma/client';
+import { OnboardingApplicationStatus, PrimaryAccountType, UserRole } from '@prisma/client';
 import request from 'supertest';
 import { AccessTokenService } from '../src/modules/auth/services/access-token.service';
 import { CsrfService } from '../src/modules/auth/services/csrf.service';
@@ -82,6 +82,7 @@ describe('Corporate O3/O11 owner-scoped reads (synthetic data, isolated PostgreS
         normalizedEmail: `o3-${userId}@example.invalid`,
         passwordHash: 'synthetic-e2e-test-only-not-a-real-password-hash',
         role: UserRole.INVESTOR,
+        primaryAccountType: PrimaryAccountType.CORPORATE,
         emailVerifiedAt: new Date('2025-01-01T00:00:00.000Z'),
       },
     });

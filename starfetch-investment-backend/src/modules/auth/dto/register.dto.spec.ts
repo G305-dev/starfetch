@@ -13,14 +13,17 @@ describe('RegisterDto Corporate applicant contract', () => {
     });
   }
 
-  it('accepts Corporate registration without Individual names', async () => {
-    expect(await errors({ ...BASE, registrationType: 'CORPORATE' })).toHaveLength(0);
+  it('accepts the exact fixed-frontend Corporate payload without Individual names', async () => {
+    expect(await errors({
+      ...BASE, registrationType: 'CORPORATE', companyName: 'Example Holdings Limited', companyPhoneNumber: '+2348000000000',
+    })).toHaveLength(0);
   });
 
-  it('validates optional Corporate names when supplied without requiring them', async () => {
-    expect(await errors({ ...BASE, registrationType: 'CORPORATE', firstName: 'Ada' })).toHaveLength(0);
-    const invalid = await errors({ ...BASE, registrationType: 'CORPORATE', firstName: 12 });
-    expect(invalid.some((error) => error.property === 'firstName')).toBe(true);
+  it('requires and bounds both Corporate applicant display fields', async () => {
+    const missing = await errors({ ...BASE, registrationType: 'CORPORATE' });
+    expect(missing.map(({ property }) => property)).toEqual(expect.arrayContaining(['companyName', 'companyPhoneNumber']));
+    const invalidPhone = await errors({ ...BASE, registrationType: 'CORPORATE', companyName: 'Example', companyPhoneNumber: 'bad' });
+    expect(invalidPhone.some((error) => error.property === 'companyPhoneNumber')).toBe(true);
   });
 
   it('preserves the legacy Individual default and requires its names', async () => {

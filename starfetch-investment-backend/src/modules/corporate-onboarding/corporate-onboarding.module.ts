@@ -14,6 +14,9 @@ import {
   AwsKmsCorporateTinEncryptionProvider,
   CORPORATE_TIN_ENCRYPTION_PROVIDER,
 } from './crypto/corporate-tin-encryption';
+import { CorporateBankAccountEncryptionService } from './crypto/corporate-bank-account-encryption';
+import { CorporateProfileController } from './corporate-profile.controller';
+import { CorporateProfileService } from './services/corporate-profile.service';
 import {
   ConfigCorporateO2HmacKeyring,
   CORPORATE_O2_HMAC_KEYRING,
@@ -42,13 +45,15 @@ import { CORPORATE_STAFF_REVIEW_AUTHORIZER, DenyAllCorporateStaffReviewAuthorize
 
 @Module({
   imports: [AuthModule, VerificationRulesetsModule, MonoVerificationModule],
-  controllers: [CorporateO2ApplicationsController, CorporateApplicationReadController, CorporateApplicationDiscoveryController],
+  controllers: [CorporateO2ApplicationsController, CorporateApplicationReadController, CorporateApplicationDiscoveryController, CorporateProfileController],
   providers: [
     CorporateApplicantContextService,
     CorporateApplicantGuard,
     CorporateApplicationAccessService,
     CorporateApplicationReadService,
     CorporateDetailsEditService,
+    CorporateProfileService,
+    CorporateBankAccountEncryptionService,
     CorporateDraftBootstrapService,
     CorporateO2DraftService,
     CorporateO2AvailabilityService,
@@ -113,6 +118,8 @@ import { CORPORATE_STAFF_REVIEW_AUTHORIZER, DenyAllCorporateStaffReviewAuthorize
     CorporateApplicationAccessService,
     CorporateApplicationReadService,
     CorporateDetailsEditService,
+    CorporateProfileService,
+    CorporateBankAccountEncryptionService,
     CorporateDraftBootstrapService,
     CorporateO2DraftService,
     CorporateO2AvailabilityService,

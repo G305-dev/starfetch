@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { OnboardingApplicationKind, OnboardingApplicationStatus, UserRole } from '@prisma/client';
+import { OnboardingApplicationKind, OnboardingApplicationStatus, PrimaryAccountType, UserRole } from '@prisma/client';
 import request from 'supertest';
 import { CorporateApplicationReadService } from '../src/modules/corporate-onboarding/services/corporate-application-read.service';
 import { CorporateDetailsEditService } from '../src/modules/corporate-onboarding/services/corporate-details-edit.service';
@@ -72,6 +72,7 @@ describe('C1.1A Corporate DRAFT foundation (e2e, designated local test DB only)'
         normalizedEmail: `investor-${userId}@example.invalid`,
         passwordHash: 'synthetic-test-hash-not-used-for-auth',
         role: UserRole.INVESTOR,
+        primaryAccountType: PrimaryAccountType.CORPORATE,
         emailVerifiedAt: new Date('2025-01-01T00:00:00.000Z'),
       },
     });
@@ -167,6 +168,7 @@ describe('C1.1A Corporate DRAFT foundation (e2e, designated local test DB only)'
         normalizedEmail: `other-${otherUserId}@example.invalid`,
         passwordHash: 'synthetic-test-hash-not-used-for-auth',
         role: UserRole.INVESTOR,
+        primaryAccountType: PrimaryAccountType.CORPORATE,
         emailVerifiedAt: new Date('2025-01-01T00:00:00.000Z'),
       },
     });
@@ -246,6 +248,7 @@ describe('C1.1A Corporate DRAFT foundation (e2e, designated local test DB only)'
         normalizedEmail: `reader-${otherUserId}@example.invalid`,
         passwordHash: 'synthetic-test-hash-not-used-for-auth',
         role: UserRole.INVESTOR,
+        primaryAccountType: PrimaryAccountType.CORPORATE,
         emailVerifiedAt: new Date('2025-01-01T00:00:00.000Z'),
       },
     });
@@ -288,6 +291,7 @@ describe('C1.1A Corporate DRAFT foundation (e2e, designated local test DB only)'
         normalizedEmail: `editor-${otherUserId}@example.invalid`,
         passwordHash: 'synthetic-test-hash-not-used-for-auth',
         role: UserRole.INVESTOR,
+        primaryAccountType: PrimaryAccountType.CORPORATE,
         emailVerifiedAt: new Date('2025-01-01T00:00:00.000Z'),
       },
     });
