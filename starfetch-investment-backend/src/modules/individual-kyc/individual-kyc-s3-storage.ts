@@ -21,7 +21,24 @@ export interface IndividualKycS3Config {
   readonly tlsPolicyApproved: boolean;
   readonly isVercel?: boolean;
   readonly roleArn?: string;
+  /**
+   * Where the synthetic capability probe writes. Defaults to the historical
+   * Individual KYC prefix (unchanged behaviour). Corporate KYC uses a probe
+   * inside `onboarding-documents/` so its IAM grant never needs another prefix.
+   * Only these exact allow-listed values are accepted.
+   */
+  readonly capabilityProbePrefix?: KycCapabilityProbePrefix;
 }
+
+export const INDIVIDUAL_KYC_CAPABILITY_PROBE_PREFIX = 'individual-kyc/_capability-probe/' as const;
+export const ONBOARDING_DOCUMENTS_CAPABILITY_PROBE_PREFIX = 'onboarding-documents/_capability-probe/' as const;
+export type KycCapabilityProbePrefix =
+  | typeof INDIVIDUAL_KYC_CAPABILITY_PROBE_PREFIX
+  | typeof ONBOARDING_DOCUMENTS_CAPABILITY_PROBE_PREFIX;
+const ALLOWED_CAPABILITY_PROBE_PREFIXES: ReadonlySet<string> = new Set([
+  INDIVIDUAL_KYC_CAPABILITY_PROBE_PREFIX,
+  ONBOARDING_DOCUMENTS_CAPABILITY_PROBE_PREFIX,
+]);
 
 export type S3CredentialProvider = AwsCredentialIdentityProvider;
 export type S3Presigner = typeof getSignedUrl;
@@ -201,6 +218,7 @@ export function credentialProviderFromReference(
 export class S3CompatibleIndividualKycDocumentStorage implements IndividualKycDocumentStorage {
   private readonly client: S3Client;
   private readonly bucket: string;
+  private readonly capabilityProbePrefix: KycCapabilityProbePrefix;
   private capabilityCheck?: Promise<void>;
 
   constructor(
@@ -213,6 +231,9 @@ export class S3CompatibleIndividualKycDocumentStorage implements IndividualKycDo
       !config.residencyApproved || !config.privateBucketApproved || !config.tlsPolicyApproved) throw disabled();
     const endpoint = new URL(config.endpoint);
     if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw disabled();
+    const probePrefix = config.capabilityProbePrefix ?? INDIVIDUAL_KYC_CAPABILITY_PROBE_PREFIX;
+    if (!ALLOWED_CAPABILITY_PROBE_PREFIXES.has(probePrefix)) throw disabled();
+    this.capabilityProbePrefix = probePrefix;
     this.bucket = config.bucket;
     const credentialProvider = credentialProviderFromReference(config.credentialReference, { isVercel: config.isVercel, roleArn: config.roleArn });
     this.client = client ?? new S3Client({
@@ -352,7 +373,7 @@ export class S3CompatibleIndividualKycDocumentStorage implements IndividualKycDo
     const versioning = await this.runCapabilityCheck('bucket_versioning', () =>
       this.client.send(new GetBucketVersioningCommand({ Bucket: this.bucket })));
     if (versioning.Status !== 'Enabled') this.failCapabilityCheck('bucket_versioning');
-    const key = `individual-kyc/_capability-probe/${randomUUID()}`;
+    const key = `${this.capabilityProbePrefix}${randomUUID()}`;
     const documentId = randomUUID();
     const bytes = Buffer.from('%PDF-1.7\nsynthetic-storage-capability-probe\n');
     const checksum = createHash('sha256').update(bytes).digest('base64');
