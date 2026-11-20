@@ -20,9 +20,12 @@ export type ApiErrorCode =
   | "EMAIL_NOT_VERIFIED"
   | "UNAUTHENTICATED"
   | "FORBIDDEN"
+  | "CSRF_VALIDATION_FAILED"
   | "NOT_FOUND"
   | "CONFLICT"
   | "GONE"
+  | "FILE_TOO_LARGE"
+  | "UNSUPPORTED_FILE_TYPE"
   | "RATE_LIMITED"
   | "FEATURE_UNAVAILABLE"
   | "SERVICE_UNAVAILABLE"
@@ -43,9 +46,12 @@ const safeMessages: Record<ApiErrorCode, string> = {
   EMAIL_NOT_VERIFIED: "Please verify your email address before signing in.",
   UNAUTHENTICATED: "Your session has ended. Please sign in again.",
   FORBIDDEN: "You do not have permission to perform this action.",
+  CSRF_VALIDATION_FAILED: "Your session could not be verified securely. Please refresh and try again.",
   NOT_FOUND: "This item is not available to your account.",
   CONFLICT: "An account with these details already exists.",
   GONE: "This invitation is no longer available.",
+  FILE_TOO_LARGE: "The selected file is larger than the maximum allowed size.",
+  UNSUPPORTED_FILE_TYPE: "The selected file type is not supported. Please choose a PDF, JPEG or PNG file.",
   RATE_LIMITED: "Too many requests were made. Please wait a moment and try again.",
   FEATURE_UNAVAILABLE: "Corporate registration is currently unavailable.",
   SERVICE_UNAVAILABLE: "Corporate registration is temporarily unavailable. Please try again later.",
@@ -434,7 +440,10 @@ function toKnownErrorCode(value: string | undefined, status: number): ApiErrorCo
   if (status === 404) return "NOT_FOUND";
   if (status === 409) return "CONFLICT";
   if (status === 410) return "GONE";
+  if (status === 413) return "FILE_TOO_LARGE";
+  if (status === 415) return "UNSUPPORTED_FILE_TYPE";
   if (status === 429) return "RATE_LIMITED";
+  if (status === 503) return "FEATURE_UNAVAILABLE";
   return "UNEXPECTED_RESPONSE";
 }
 
@@ -469,6 +478,12 @@ async function parseJson(response: Response): Promise<unknown> {
 type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "PATCH";
   body?: unknown;
+  /**
+   * Raw request body (e.g. FormData for multipart uploads). When present, the
+   * body is sent as-is and no JSON Content-Type is set, so the browser can
+   * set the multipart boundary itself.
+   */
+  rawBody?: BodyInit;
   headers?: HeadersInit;
 };
 
@@ -489,10 +504,10 @@ async function request(path: string, options: RequestOptions = {}) {
       credentials: "include",
       cache: "no-store",
       headers: {
-        ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(options.rawBody === undefined && options.body !== undefined ? { "Content-Type": "application/json" } : {}),
         ...options.headers,
       },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body: options.rawBody !== undefined ? options.rawBody : options.body === undefined ? undefined : JSON.stringify(options.body),
     });
     const payload = await parseJson(response);
     if (!response.ok) throw errorFromResponse(response, payload);
@@ -1277,6 +1292,238 @@ export async function getCorporateOnboardingHistory(corporateAccountId: string) 
 /** Read-only technical snapshot freshness; no snapshot regeneration is called by this UI. */
 export async function getCorporateSnapshotFreshness(corporateAccountId: string) {
   return normaliseCorporateSnapshotFreshness(await authenticatedRequest(`/corporate-accounts/${corporateAccountPathSegment(corporateAccountId)}/onboarding/verification-snapshot/freshness`));
+}
+
+/** Corporate KYC section 5 — exactly three approved mandatory documents. */
+export type CorporateKycDocumentCategory = "CERTIFICATE_OF_INCORPORATION" | "MEMART" | "TIN_CERTIFICATE";
+
+export type CorporateKycDocument = {
+  documentId: string;
+  version: number;
+  contentType: "application/pdf" | "image/jpeg" | "image/png";
+  sizeBytes: number;
+  displayFilename: string;
+  uploadedAt: string;
+  scanStatus: "NOT_SCANNED";
+  reviewStatus: "NOT_SUBMITTED" | "AWAITING_REVIEW" | "UNDER_REVIEW" | "INFORMATION_REQUESTED" | "REVIEW_COMPLETED";
+};
+
+export type CorporateKycRequirement = {
+  category: CorporateKycDocumentCategory;
+  title: string;
+  description: string;
+  mandatory: true;
+  acceptedContentTypes: string[];
+  acceptedExtensions: string[];
+  maxSizeBytes: number;
+  uploadStatus: "NOT_UPLOADED" | "UPLOADED";
+  canUpload: boolean;
+  canReplace: boolean;
+  blockedReason: "APPLICATION_NOT_EDITABLE" | null;
+  currentDocument: CorporateKycDocument | null;
+};
+
+export type CorporateSubmissionBlocker = {
+  kind: "APPLICATION_STATE" | "PROFILE_SECTION" | "DOCUMENT";
+  key: string;
+};
+
+export type CorporateKycDocumentsData = {
+  corporateAccountId: string;
+  applicationId: string;
+  applicationStatus: CorporateApplicationState;
+  section: {
+    key: "kycDocuments";
+    order: 5;
+    status: "NOT_STARTED" | "DRAFT" | "COMPLETE";
+    uploadedCount: number;
+    requiredCount: 3;
+  };
+  limits: {
+    acceptedContentTypes: string[];
+    acceptedExtensions: string[];
+    maxSizeBytes: number;
+  };
+  requirements: CorporateKycRequirement[];
+  submission: {
+    canSubmit: boolean;
+    blockers: CorporateSubmissionBlocker[];
+    submissionId: string | null;
+    submittedAt: string | null;
+  };
+};
+
+export type CorporateKycViewAuthorization = {
+  documentId: string;
+  category: CorporateKycDocumentCategory;
+  version: number;
+  viewUrl: string;
+  expiresAt: string;
+  disposition: "attachment";
+};
+
+export type CorporateSubmissionReceipt = {
+  submissionId: string;
+  applicationId: string;
+  corporateAccountId: string;
+  applicationStatus: CorporateApplicationState;
+  submittedAt: string;
+  profileVersion: number;
+  detailsVersion: number;
+  documents: Array<{ category: CorporateKycDocumentCategory; documentId: string }>;
+  idempotentReplay: boolean;
+};
+
+const corporateKycDocumentCategories: readonly CorporateKycDocumentCategory[] = ["CERTIFICATE_OF_INCORPORATION", "MEMART", "TIN_CERTIFICATE"];
+
+function isCorporateKycDocumentCategory(value: unknown): value is CorporateKycDocumentCategory {
+  return typeof value === "string" && (corporateKycDocumentCategories as readonly string[]).includes(value);
+}
+
+function readStringArray(record: JsonRecord, key: string): string[] | undefined {
+  const value = record[key];
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? [...value] as string[] : undefined;
+}
+
+function normaliseCorporateKycDocument(value: unknown): CorporateKycDocument | undefined {
+  if (!isRecord(value)) return undefined;
+  const documentId = readString(value, "documentId");
+  const version = readNumber(value, "version");
+  const contentType = readString(value, "contentType");
+  const sizeBytes = readNumber(value, "sizeBytes");
+  const displayFilename = readString(value, "displayFilename");
+  const uploadedAt = readString(value, "uploadedAt");
+  const scanStatus = readString(value, "scanStatus");
+  const reviewStatus = readString(value, "reviewStatus");
+  if (!documentId || version === undefined || version < 1 || (contentType !== "application/pdf" && contentType !== "image/jpeg" && contentType !== "image/png") || sizeBytes === undefined || sizeBytes < 1 || !displayFilename || !uploadedAt || scanStatus !== "NOT_SCANNED" || (reviewStatus !== "NOT_SUBMITTED" && reviewStatus !== "AWAITING_REVIEW" && reviewStatus !== "UNDER_REVIEW" && reviewStatus !== "INFORMATION_REQUESTED" && reviewStatus !== "REVIEW_COMPLETED")) return undefined;
+  return { documentId, version, contentType, sizeBytes, displayFilename, uploadedAt, scanStatus, reviewStatus };
+}
+
+function normaliseCorporateKycRequirement(value: unknown): CorporateKycRequirement | undefined {
+  if (!isRecord(value)) return undefined;
+  const category = value.category;
+  const title = readString(value, "title");
+  const description = readString(value, "description");
+  const mandatory = readBoolean(value, "mandatory");
+  const acceptedContentTypes = readStringArray(value, "acceptedContentTypes");
+  const acceptedExtensions = readStringArray(value, "acceptedExtensions");
+  const maxSizeBytes = readNumber(value, "maxSizeBytes");
+  const uploadStatus = readString(value, "uploadStatus");
+  const canUpload = readBoolean(value, "canUpload");
+  const canReplace = readBoolean(value, "canReplace");
+  const blockedReason = value.blockedReason;
+  const currentDocumentValue = value.currentDocument;
+  const currentDocument = currentDocumentValue === null ? null : normaliseCorporateKycDocument(currentDocumentValue);
+  if (!isCorporateKycDocumentCategory(category) || !title || description === undefined || mandatory !== true || !acceptedContentTypes || !acceptedExtensions || maxSizeBytes === undefined || (uploadStatus !== "NOT_UPLOADED" && uploadStatus !== "UPLOADED") || canUpload === undefined || canReplace === undefined || (blockedReason !== null && blockedReason !== "APPLICATION_NOT_EDITABLE") || currentDocument === undefined) return undefined;
+  return { category, title, description, mandatory: true, acceptedContentTypes, acceptedExtensions, maxSizeBytes, uploadStatus, canUpload, canReplace, blockedReason: blockedReason as CorporateKycRequirement["blockedReason"], currentDocument };
+}
+
+function normaliseCorporateSubmissionBlocker(value: unknown): CorporateSubmissionBlocker | undefined {
+  if (!isRecord(value)) return undefined;
+  const kind = readString(value, "kind");
+  const key = readString(value, "key");
+  if ((kind !== "APPLICATION_STATE" && kind !== "PROFILE_SECTION" && kind !== "DOCUMENT") || !key) return undefined;
+  return { kind, key };
+}
+
+function normaliseCorporateKycDocuments(payload: unknown): CorporateKycDocumentsData {
+  const data = unwrapPayload(payload);
+  const corporateAccountId = readString(data, "corporateAccountId");
+  const applicationId = readString(data, "applicationId");
+  const applicationStatus = data.applicationStatus;
+  const sectionValue = isRecord(data.section) ? data.section : undefined;
+  const limitsValue = isRecord(data.limits) ? data.limits : undefined;
+  const requirementsValue = data.requirements;
+  const submissionValue = isRecord(data.submission) ? data.submission : undefined;
+  if (!corporateAccountId || !applicationId || !isCorporateApplicationState(applicationStatus) || !sectionValue || !limitsValue || !Array.isArray(requirementsValue) || !submissionValue) throw new ApiError("UNEXPECTED_RESPONSE");
+  if (sectionValue.key !== "kycDocuments" || sectionValue.order !== 5 || (sectionValue.status !== "NOT_STARTED" && sectionValue.status !== "DRAFT" && sectionValue.status !== "COMPLETE") || typeof sectionValue.uploadedCount !== "number" || sectionValue.requiredCount !== 3) throw new ApiError("UNEXPECTED_RESPONSE");
+  const acceptedContentTypes = readStringArray(limitsValue, "acceptedContentTypes");
+  const acceptedExtensions = readStringArray(limitsValue, "acceptedExtensions");
+  const maxSizeBytes = readNumber(limitsValue, "maxSizeBytes");
+  if (!acceptedContentTypes || !acceptedExtensions || maxSizeBytes === undefined) throw new ApiError("UNEXPECTED_RESPONSE");
+  const requirements = requirementsValue.map(normaliseCorporateKycRequirement);
+  if (requirements.length !== 3 || requirements.some((item) => item === undefined)) throw new ApiError("UNEXPECTED_RESPONSE");
+  const canSubmit = readBoolean(submissionValue, "canSubmit");
+  const blockersValue = submissionValue.blockers;
+  const submissionId = submissionValue.submissionId;
+  const submittedAt = submissionValue.submittedAt;
+  if (canSubmit === undefined || !Array.isArray(blockersValue) || (submissionId !== null && typeof submissionId !== "string") || (submittedAt !== null && typeof submittedAt !== "string")) throw new ApiError("UNEXPECTED_RESPONSE");
+  const blockers = blockersValue.map(normaliseCorporateSubmissionBlocker);
+  if (blockers.some((item) => item === undefined)) throw new ApiError("UNEXPECTED_RESPONSE");
+  return {
+    corporateAccountId,
+    applicationId,
+    applicationStatus,
+    section: { key: "kycDocuments", order: 5, status: sectionValue.status as CorporateKycDocumentsData["section"]["status"], uploadedCount: sectionValue.uploadedCount as number, requiredCount: 3 },
+    limits: { acceptedContentTypes, acceptedExtensions, maxSizeBytes },
+    requirements: requirements as CorporateKycRequirement[],
+    submission: { canSubmit, blockers: blockers as CorporateSubmissionBlocker[], submissionId: submissionId as string | null, submittedAt: submittedAt as string | null },
+  };
+}
+
+function normaliseCorporateKycViewAuthorization(payload: unknown): CorporateKycViewAuthorization {
+  const data = unwrapPayload(payload);
+  const documentId = readString(data, "documentId");
+  const category = data.category;
+  const version = readNumber(data, "version");
+  const viewUrl = readString(data, "viewUrl");
+  const expiresAt = readString(data, "expiresAt");
+  const disposition = readString(data, "disposition");
+  if (!documentId || !isCorporateKycDocumentCategory(category) || version === undefined || !viewUrl || !expiresAt || disposition !== "attachment") throw new ApiError("UNEXPECTED_RESPONSE");
+  return { documentId, category, version, viewUrl, expiresAt, disposition };
+}
+
+function normaliseCorporateSubmission(payload: unknown): CorporateSubmissionReceipt {
+  const data = unwrapPayload(payload);
+  const submissionId = readString(data, "submissionId");
+  const applicationId = readString(data, "applicationId");
+  const corporateAccountId = readString(data, "corporateAccountId");
+  const applicationStatus = data.applicationStatus;
+  const submittedAt = readString(data, "submittedAt");
+  const profileVersion = readNumber(data, "profileVersion");
+  const detailsVersion = readNumber(data, "detailsVersion");
+  const documentsValue = data.documents;
+  const idempotentReplay = readBoolean(data, "idempotentReplay");
+  if (!submissionId || !applicationId || !corporateAccountId || !isCorporateApplicationState(applicationStatus) || !submittedAt || profileVersion === undefined || detailsVersion === undefined || !Array.isArray(documentsValue) || idempotentReplay === undefined) throw new ApiError("UNEXPECTED_RESPONSE");
+  const documents = documentsValue.map((entry) => {
+    if (!isRecord(entry) || !isCorporateKycDocumentCategory(entry.category)) return undefined;
+    const documentId = readString(entry, "documentId");
+    return documentId ? { category: entry.category, documentId } : undefined;
+  });
+  if (documents.length !== 3 || documents.some((item) => item === undefined)) throw new ApiError("UNEXPECTED_RESPONSE");
+  return { submissionId, applicationId, corporateAccountId, applicationStatus, submittedAt, profileVersion, detailsVersion, documents: documents as CorporateSubmissionReceipt["documents"], idempotentReplay };
+}
+
+/** Corporate KYC section 5 — authoritative requirements, uploads and submission readiness. */
+export async function getCorporateKycDocuments(corporateAccountId: string) {
+  return normaliseCorporateKycDocuments(await authenticatedRequest(`/corporate-accounts/${corporateAccountPathSegment(corporateAccountId)}/kyc-documents`));
+}
+
+/**
+ * Upload (or explicitly replace) one of the three mandatory Corporate KYC
+ * documents. The browser sets the multipart boundary; Content-Type is never
+ * set manually. Replacement requires the current documentId.
+ */
+export async function uploadCorporateKycDocument(corporateAccountId: string, category: CorporateKycDocumentCategory, file: File, replacesDocumentId?: string) {
+  if (!isCorporateKycDocumentCategory(category)) throw new ApiError("VALIDATION_FAILED");
+  const formData = new FormData();
+  formData.append("file", file);
+  if (replacesDocumentId !== undefined) formData.append("replacesDocumentId", replacesDocumentId);
+  return normaliseCorporateKycDocuments(await authenticatedRequest(`/corporate-accounts/${corporateAccountPathSegment(corporateAccountId)}/kyc-documents/${category}`, {
+    method: "POST",
+    rawBody: formData,
+    attemptHeaders: csrfHeaders,
+  }));
+}
+
+/** Short-lived, version-pinned view grant. The URL must be used immediately and never stored. */
+export async function authorizeCorporateKycDocumentView(corporateAccountId: string, documentId: string) {
+  return normaliseCorporateKycViewAuthorization(await authenticatedMutation(`/corporate-accounts/${corporateAccountPathSegment(corporateAccountId)}/kyc-documents/${encodeURIComponent(documentId)}/view-authorization`));
+}
+
+/** Submit the Corporate application for Starfetch review (DRAFT → SUBMITTED). */
+export async function submitCorporateApplication(corporateAccountId: string, idempotencyKey: string) {
+  return normaliseCorporateSubmission(await authenticatedMutation(`/corporate-accounts/${corporateAccountPathSegment(corporateAccountId)}/submission`, undefined, { "Idempotency-Key": idempotencyKey }));
 }
 
 export async function getMyPortfolio() {

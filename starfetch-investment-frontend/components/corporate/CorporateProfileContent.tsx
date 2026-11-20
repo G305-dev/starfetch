@@ -3,6 +3,7 @@
 import { ArrowLeft, ArrowRight, Building2, CheckCircle2, Circle, ShieldCheck } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { CorporateDocumentUploadSection } from "./CorporateDocumentUploadSection";
 import {
   corporateInvestmentHorizonOptions,
   corporateInvestmentObjectives,
@@ -31,6 +32,10 @@ const sections: SectionDefinition[] = [
   { key: "sourceOfFunds", title: "Source of Funds and Wealth", shortTitle: "Source of funds", description: "Select the source or sources of funds and enter the expected inflow and transaction frequency." },
   { key: "bankDetails", title: "Bank Details", shortTitle: "Bank details", description: "Enter the bank account details for the company’s distributions." },
 ];
+
+/** Section 5 (document upload) is backend-backed and follows the four local-only sections. */
+const DOCUMENT_STEP_INDEX = sections.length;
+const documentSection = { title: "Corporate Document Upload", description: "Upload the three mandatory Corporate KYC documents. Uploaded documents are saved to your application and shown when you return." };
 
 const initialCompanyForm: CompanyForm = emptyCorporateCompanyDetails();
 const initialInvestmentForm: CorporateInvestmentProfile = emptyCorporateInvestmentProfile();
@@ -105,9 +110,12 @@ export function CorporateProfileContent() {
   const [bank, setBank] = useState<BankForm>(initialBankForm);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [notice, setNotice] = useState<string | null>(null);
+  const [documentsStatus, setDocumentsStatus] = useState<"NOT_STARTED" | "DRAFT" | "COMPLETE" | null>(null);
 
-  // This is deliberately a page-memory-only form. Changing users resets every
-  // field; no profile GET/PUT, localStorage, sessionStorage, or submission runs.
+  // Sections 1–4 are deliberately a page-memory-only form. Changing users
+  // resets every field; no profile GET/PUT, localStorage or sessionStorage
+  // runs for them. Section 5 (documents) is backend-backed and loads its own
+  // saved state.
   useEffect(() => {
     setActiveStep(0);
     setCompletedSections(new Set());
@@ -117,6 +125,7 @@ export function CorporateProfileContent() {
     setBank(initialBankForm);
     setFieldErrors({});
     setNotice(null);
+    setDocumentsStatus(null);
   }, [authStatus, user?.id]);
 
   function invalidateFrom(index: number) {
@@ -130,7 +139,9 @@ export function CorporateProfileContent() {
   }
 
   function visitSection(index: number) {
-    if (index > furthestUnlockedSection(completedSections)) return;
+    const localComplete = sections.every((section) => completedSections.has(section.key));
+    const maxReachable = localComplete ? DOCUMENT_STEP_INDEX : furthestUnlockedSection(completedSections);
+    if (index > maxReachable) return;
     setActiveStep(index);
     setFieldErrors({});
     setNotice(null);
@@ -157,24 +168,28 @@ export function CorporateProfileContent() {
   if (authStatus === "loading") return <main className="grid min-h-[45vh] place-items-center" aria-busy="true"><p className="text-sm font-semibold text-star-muted">Preparing your Corporate Profile form…</p></main>;
   if (authStatus !== "authenticated" || !user) return <main className="min-w-0" aria-labelledby="corporate-profile-heading"><header className="mb-6"><p className="text-xs font-extrabold uppercase tracking-[0.15em] text-star-700">Corporate account</p><h1 id="corporate-profile-heading" className="mt-2 font-display text-3xl font-extrabold tracking-[-0.045em] text-star-900 sm:text-[2.15rem]">Company profile</h1></header><section className="rounded-xl border border-star-200 bg-white p-6" role="status"><div className="flex items-start gap-3"><ShieldCheck size={21} className="mt-0.5 shrink-0 text-star-700" aria-hidden="true" /><div><h2 className="text-base font-extrabold text-star-900">Sign in to view the Corporate Profile form</h2><p className="mt-1 text-sm leading-6 text-star-muted">The local form is available to an authenticated Corporate applicant.</p></div></div></section></main>;
 
-  const currentSection = sections[activeStep];
+  const isDocumentStep = activeStep === DOCUMENT_STEP_INDEX;
+  const currentSection = isDocumentStep ? documentSection : sections[activeStep];
   const furthest = furthestUnlockedSection(completedSections);
   const allComplete = sections.every((section) => completedSections.has(section.key));
   const applicant = applicantInfo(user);
+  const sectionStepStatus = isDocumentStep
+    ? documentsStatus === "COMPLETE" ? "Complete · saved to application" : "Not complete"
+    : sections[activeStep] && completedSections.has(sections[activeStep].key) ? "Complete in this session" : "Not complete";
 
   return (
     <main className="min-w-0" aria-labelledby="corporate-profile-heading">
       <header className="mb-5">
         <p className="text-xs font-extrabold uppercase tracking-[0.15em] text-star-700">Corporate account</p>
         <h1 id="corporate-profile-heading" className="mt-2 font-display text-3xl font-extrabold tracking-[-0.045em] text-star-900 sm:text-[2.15rem]">Company profile</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-star-muted">Complete the four sections in order. Entries are held in this page session only; they are not sent to or saved by the backend and will be cleared when you leave or refresh.</p>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-star-muted">Complete the sections in order. Sections 1–4 are held in this page session only; they are not sent to or saved by the backend and will be cleared when you leave or refresh. Section 5 (document upload) is saved securely to your application and submitted for Starfetch review.</p>
       </header>
 
-      <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#f2d89d] bg-[#fff9e8] p-4" role="note"><ShieldCheck size={18} className="mt-0.5 shrink-0 text-star-700" aria-hidden="true" /><p className="text-sm leading-6 text-star-muted"><span className="font-extrabold text-star-900">Local-only form.</span> This is for form review only. There is no save, submit, verification, or approval action.</p></div>
+      <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#f2d89d] bg-[#fff9e8] p-4" role="note"><ShieldCheck size={18} className="mt-0.5 shrink-0 text-star-700" aria-hidden="true" /><p className="text-sm leading-6 text-star-muted"><span className="font-extrabold text-star-900">Sections 1–4 are local-only.</span> That part of the form is for review only and has no save or submit action. Section 5 uploads documents to your application and submits it for Starfetch review.</p></div>
 
-      {allComplete ? <p className="mb-5 rounded-lg border border-[#bfe8ca] bg-[#effbf2] px-4 py-3 text-sm leading-6 text-star-800" role="status"><span className="font-extrabold">All four sections are complete in this page session.</span> This does not represent a saved Corporate profile, KYC/KYB verification, approval, or investment authorisation.</p> : null}
+      {allComplete && !isDocumentStep ? <div className="mb-5 rounded-lg border border-[#bfe8ca] bg-[#effbf2] px-4 py-3" role="status"><p className="text-sm leading-6 text-star-800"><span className="font-extrabold">All four sections are complete in this page session.</span> This does not represent a saved Corporate profile, KYC/KYB verification, approval, or investment authorisation.</p><button type="button" onClick={() => visitSection(DOCUMENT_STEP_INDEX)} className="mt-3 inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-star-700 px-5 text-sm font-extrabold text-white transition hover:bg-star-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Continue to Section 5: Document upload<ArrowRight size={16} aria-hidden="true" /></button></div> : null}
 
-      <nav aria-label="Corporate Profile sections" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <nav aria-label="Corporate Profile sections" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {sections.map((section, index) => {
           const isComplete = completedSections.has(section.key);
           const disabled = index > furthest;
@@ -185,15 +200,21 @@ export function CorporateProfileContent() {
             <span className="mt-1 block text-xs font-semibold text-star-muted">{isComplete ? "Complete · this session only" : active ? "Current section" : "Locked until previous section is complete"}</span>
           </button>;
         })}
+        <button type="button" onClick={() => visitSection(DOCUMENT_STEP_INDEX)} disabled={!allComplete} aria-current={isDocumentStep ? "step" : undefined} className={`rounded-xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55 ${isDocumentStep ? "border-star-700 bg-star-50 shadow-sm" : documentsStatus === "COMPLETE" ? "border-[#bfe8ca] bg-white hover:bg-[#f7fcf8]" : "border-star-200 bg-white hover:bg-star-50"}`}>
+          <span className="flex items-center justify-between gap-2"><span className="text-xs font-extrabold uppercase tracking-[0.11em] text-star-700">Section 5</span>{documentsStatus === "COMPLETE" ? <CheckCircle2 size={17} className="text-[#16743d]" aria-label="Documents complete" /> : <Circle size={17} className="text-star-300" aria-hidden="true" />}</span>
+          <span className="mt-2 block text-sm font-extrabold text-star-900">Document upload</span>
+          <span className="mt-1 block text-xs font-semibold text-star-muted">{documentsStatus === "COMPLETE" ? "Complete · saved to application" : isDocumentStep ? "Current section" : "Locked until previous sections are complete"}</span>
+        </button>
       </nav>
 
       <section className="mt-5 rounded-xl border border-star-200 bg-white shadow-[0_2px_12px_rgba(14,62,46,0.04)]" aria-labelledby="corporate-profile-step-heading">
         <div className="border-b border-star-100 px-5 py-5 sm:px-6">
-          <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-star-700">Section {activeStep + 1} of {sections.length} · {completedSections.has(currentSection.key) ? "Complete in this session" : "Not complete"}</p>
+          <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-star-700">Section {activeStep + 1} of {DOCUMENT_STEP_INDEX + 1} · {sectionStepStatus}</p>
           <h2 id="corporate-profile-step-heading" className="mt-2 text-xl font-extrabold tracking-[-0.025em] text-star-900">{currentSection.title}</h2>
           <p className="mt-2 text-sm leading-6 text-star-muted">{currentSection.description}</p>
         </div>
 
+        {isDocumentStep ? <CorporateDocumentUploadSection onBack={() => visitSection(DOCUMENT_STEP_INDEX - 1)} onStatusChange={setDocumentsStatus} /> : (
         <form noValidate onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); continueLocally(); }} className="p-5 sm:p-6">
           {activeStep === 0 ? <CompanyDetailsSection applicant={applicant} values={company} errors={fieldErrors} onChange={(name, value) => { setCompany((current) => ({ ...current, [name]: value })); invalidateFrom(0); }} /> : null}
           {activeStep === 1 ? <InvestmentSection values={investment} errors={fieldErrors} onChange={(name, value) => { setInvestment((current) => ({ ...current, [name]: value })); invalidateFrom(1); }} /> : null}
@@ -207,9 +228,10 @@ export function CorporateProfileContent() {
             <button type="submit" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-star-lime px-5 text-sm font-extrabold text-star-900 transition hover:bg-[#c7f238] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">{activeStep === sections.length - 1 ? <>Mark complete for this session<CheckCircle2 size={16} aria-hidden="true" /></> : <>Validate & continue<ArrowRight size={16} aria-hidden="true" /> </>}</button>
           </div>
         </form>
+        )}
       </section>
 
-      <p className="mt-4 text-xs leading-5 text-star-muted">The company name and phone are displayed read-only only when present in the authenticated account projection. If this older account does not provide them, they appear as unavailable. Form values and section completion are not retained after leaving or refreshing this page.</p>
+      <p className="mt-4 text-xs leading-5 text-star-muted">The company name and phone are displayed read-only only when present in the authenticated account projection. If this older account does not provide them, they appear as unavailable. Form values and section completion are not retained after leaving or refreshing this page. Uploaded documents and submission status are saved to your application and shown when you return.</p>
     </main>
   );
 }

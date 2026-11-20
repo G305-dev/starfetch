@@ -1,9 +1,6 @@
 Frontend Updates — Changed / Added Files (frontend only)
 
 BATCH 1 — Individual KYC popup (previous delivery):
-Individual KYC Prompt — Changed / Added Files (frontend only)
-
-BATCH 1 — Individual KYC popup (previous delivery):
 ADDED:
 - lib/individual-kyc-prompt.ts
 - components/portal/IndividualKycPrompt.tsx
@@ -79,3 +76,34 @@ ADDED:
 - CORPORATE_NAVIGATION_FIX_README.md
 MODIFIED:
 - package.json (adds test:corporate-navigation)
+
+--- Batch 8: Corporate Products redesign to match Individual Products ---
+M app/corporate/products/page.tsx
+M app/corporate/products/fixed-note/page.tsx
+M components/corporate/CorporateProductsContent.tsx
+A components/corporate/CorporateFixedNoteInfo.tsx
+A scripts/corporate-products-check.ts
+M package.json (test:corporate-products)
+A CORPORATE_PRODUCTS_REDESIGN_README.md
+
+BATCH 9 — Market at a Glance real-data snapshot (17 Nov 2026):
+MODIFIED:
+- components/ngx-market-directory.ts (real 17 Nov 2026 close prices for all 14 listings + ngxMarketSnapshot metadata)
+- components/MarketOverview.tsx (snapshot attribution copy + real Market Pulse: NBS inflation 14.06%, CBN MPR 23%, CRR 45%)
+- components/NgxMarketTicker.tsx (17 Nov snapshot label + screen-reader text)
+- components/Footer.tsx (dated-snapshot market-data notice, disclaimer retained)
+- scripts/market-widgets-check.ts (asserts real snapshot values + Market Pulse indicators)
+ADDED:
+- MARKET_DATA_SNAPSHOT_README.md
+
+BATCH 10 — Corporate KYC Section 5: Corporate Document Upload + submission for review:
+MODIFIED:
+- lib/api/client.ts (additive only: multipart rawBody support in the shared request helper, three new KYC error codes, Corporate KYC document/submission types, normalisers, getCorporateKycDocuments, uploadCorporateKycDocument, authorizeCorporateKycDocumentView, submitCorporateApplication)
+- components/corporate/CorporateProfileContent.tsx (adds Section 5 tile + backend-backed step; sections 1-4 local-only flow, copy and behaviour preserved)
+- package.json (adds test:corporate-kyc-documents)
+ADDED:
+- components/corporate/CorporateDocumentUploadSection.tsx
+- scripts/corporate-kyc-documents-check.ts
+- CORPORATE_KYC_DOCUMENTS_README.md
+UNCHANGED (verified):
+- app/corporate/profile/page.tsx, app/corporate/dashboard/page.tsx, CorporateSidebar/Topbar/PortalLayout, AuthProvider, Individual/Joint/Admin portals, backend files
