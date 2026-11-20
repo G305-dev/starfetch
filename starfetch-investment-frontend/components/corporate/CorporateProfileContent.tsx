@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertCircle, ArrowLeft, ArrowRight, Building2, CheckCircle2, Circle, LoaderCircle, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import {
@@ -16,6 +17,7 @@ import {
   type AuthUser,
 } from "@/lib/api/client";
 import { getCorporateApplicationDisplay, isCorporateDraftEditable, type CorporateApplicationDiscoveryItem } from "@/lib/corporate/application";
+import { getCreatedCorporateAccountId } from "@/lib/corporate/application-handoff";
 import {
   corporateAnnualInflowPattern,
   corporateApplicantPhonePattern,
@@ -342,7 +344,18 @@ export function CorporateProfileContent() {
       const accounts = await getMyCorporateApplications();
       if (!isCurrent()) return null;
       // Discovery is ordered most-recently-updated first. No account is ever inferred.
-      const selected = accounts[0] ?? null;
+      // A just-created O2 account ID (memory-only handoff) is used only to pick
+      // the matching owner-scoped discovery entry; it never bypasses discovery.
+      const createdAccountId = getCreatedCorporateAccountId(ownerId);
+      const created = createdAccountId ? accounts.find((item) => item.corporateAccountId === createdAccountId) ?? null : null;
+      if (createdAccountId && !created) {
+        setProfile(null);
+        setAccount(null);
+        setLoadState("error");
+        setLoadError("Your Corporate application was created, but Starfetch has not returned it for this account yet. Retry in a moment. Do not start another application.");
+        return null;
+      }
+      const selected = created ?? accounts[0] ?? null;
       setAccount(selected);
       if (!selected) {
         setProfile(null);
@@ -511,7 +524,7 @@ export function CorporateProfileContent() {
 
   if (loadState === "loading") return <main className="min-w-0" aria-labelledby="corporate-profile-heading">{pageHeader}<section className="grid min-h-56 place-items-center rounded-xl border border-star-200 bg-white" aria-busy="true"><div className="text-center"><LoaderCircle size={28} className="mx-auto animate-spin text-star-700" aria-hidden="true" /><p className="mt-3 text-sm font-semibold text-star-muted">Loading your saved Corporate Profile…</p></div></section></main>;
   if (loadState === "error") return <main className="min-w-0" aria-labelledby="corporate-profile-heading">{pageHeader}<section className="rounded-xl border border-red-200 bg-red-50 p-5" role="alert"><div className="flex gap-3"><AlertCircle size={21} className="shrink-0 text-red-700" aria-hidden="true" /><div><h2 className="text-base font-extrabold text-star-900">Corporate Profile could not be loaded</h2><p className="mt-1 text-sm leading-6 text-red-700">{loadError}</p><p className="mt-1 text-xs leading-5 text-star-muted">No saved information is shown and nothing has been saved from this page.</p><button type="button" onClick={() => { void loadProfile(user.id); }} className="mt-3 inline-flex items-center gap-2 text-sm font-extrabold text-star-700 underline decoration-star-lime decoration-2 underline-offset-3"><RefreshCw size={15} aria-hidden="true" />Retry</button></div></div></section></main>;
-  if (loadState === "empty" || !profile || !account) return <main className="min-w-0" aria-labelledby="corporate-profile-heading">{pageHeader}<section className="rounded-xl border border-star-200 bg-white p-6 text-center shadow-[0_2px_12px_rgba(14,62,46,0.04)]"><ShieldAlert size={26} className="mx-auto text-star-700" aria-hidden="true" /><p className="mt-3 text-xs font-extrabold uppercase tracking-[0.12em] text-star-700">Corporate Profile</p><h2 className="mt-2 text-lg font-extrabold text-star-900">No Corporate application is available yet</h2><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-star-muted">The Corporate Profile is saved against an existing Corporate application. Starfetch returned no Corporate application for this signed-in account, so there is no profile to load or save.</p><p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-star-muted">No information has been saved from this page.</p></section></main>;
+  if (loadState === "empty" || !profile || !account) return <main className="min-w-0" aria-labelledby="corporate-profile-heading">{pageHeader}<section className="rounded-xl border border-star-200 bg-white p-6 text-center shadow-[0_2px_12px_rgba(14,62,46,0.04)]"><ShieldAlert size={26} className="mx-auto text-star-700" aria-hidden="true" /><p className="mt-3 text-xs font-extrabold uppercase tracking-[0.12em] text-star-700">Corporate Profile</p><h2 className="mt-2 text-lg font-extrabold text-star-900">No Corporate application is available yet</h2><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-star-muted">The Corporate Profile is saved against an existing Corporate application. Starfetch returned no Corporate application for this signed-in account, so there is no profile to load or save.</p><p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-star-muted">No information has been saved from this page.</p><Link href="/corporate/applications/new" className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-star-lime px-5 text-sm font-extrabold text-star-900 transition hover:bg-[#c7f238] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Start Corporate application<ArrowRight size={16} aria-hidden="true" /></Link></section></main>;
 
   const currentSection = sections[activeStep];
   const furthest = furthestUnlockedSection(completedSections);
