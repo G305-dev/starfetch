@@ -4,7 +4,7 @@ import { PeopleSection, type PeopleProfile } from "./PeopleSection";
 const teamMembers: PeopleProfile[] = [
   {
     name: "Sylvia Igwe-Okparaeke",
-    role: "Managing Director",
+    role: "Managing Director*",
     image: "/images/sylvia-igwe-okparaeke.png",
     alt: "Sylvia Igwe-Okparaeke",
     position: "object-center",
@@ -13,7 +13,7 @@ const teamMembers: PeopleProfile[] = [
   },
   {
     name: "Toluwani Adeseri",
-    role: "Executive Director",
+    role: "Executive Director*",
     image: "/images/toluwani-adeseri.png",
     alt: "Toluwani Adeseri",
     position: "object-center",
@@ -48,6 +48,9 @@ function Institutions() {
           </div>
         ))}
       </div>
+      <p className="mt-6 max-w-[920px] text-xs leading-5 text-star-muted">
+        * These positions are pending SEC approval which is currently in progress.
+      </p>
     </section>
   );
 }
