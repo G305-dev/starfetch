@@ -76,6 +76,7 @@ enum OnboardingApplicationStatus {
 
 enum OnboardingApplicationHistoryEvent {
   CREATED
+  SUBMITTED
   IN_REVIEW
   INFO_REQUESTED
   APPROVED
@@ -269,6 +270,24 @@ enum ApplicationStaffDecision {
   REJECT
 }
 
+/// Exactly the three approved mandatory Corporate KYC document categories.
+enum CorporateKycDocumentCategory {
+  CERTIFICATE_OF_INCORPORATION
+  MEMART
+  TIN_CERTIFICATE
+}
+
+/// No Corporate malware scanner is wired; NOT_SCANNED is the only truthful state.
+enum CorporateKycDocumentScanStatus {
+  NOT_SCANNED
+}
+
+enum CorporateKycDocumentEventKind {
+  UPLOADED
+  REPLACED
+  VIEW_AUTHORIZED
+}
+
 model User {
   id              String    @id @default(uuid()) @db.Uuid
   /// Display email exactly as the user typed it (trimmed).
@@ -329,6 +348,9 @@ model User {
   individualKycProfileEvents           IndividualKycProfileEvent[]              @relation("IndividualKycProfileEventActor")
   individualKycDocumentReviewEvents    IndividualKycDocumentReviewEvent[]       @relation("IndividualKycDocumentReviewActor")
   approvedIndividualKycProfiles        IndividualKycProfile[]                   @relation("IndividualKycProfileApprover")
+  uploadedCorporateKycDocuments        CorporateKycDocument[]                   @relation("CorporateKycDocumentUploader")
+  corporateKycDocumentEvents           CorporateKycDocumentEvent[]              @relation("CorporateKycDocumentEventActor")
+  corporateApplicationSubmissions      CorporateApplicationSubmission[]         @relation("CorporateApplicationSubmitter")
 
   @@map("users")
 }
@@ -777,6 +799,9 @@ model OnboardingApplication {
   providerVerificationAttempts ProviderVerificationAttempt[]
   verificationDocuments        VerificationDocument[]
   staffReviewEvents            ApplicationStaffReviewEvent[]
+  corporateKycDocuments        CorporateKycDocument[]
+  corporateKycDocumentEvents   CorporateKycDocumentEvent[]
+  corporateSubmission          CorporateApplicationSubmission?
 
   @@unique([id, kind])
   @@index([initiatingUserId, status])
@@ -1374,6 +1399,91 @@ model VerificationDocumentEvent {
 
 /// Append-only staff actions and independently-attributed final compliance
 /// outcomes. It contains references, not free-form applicant or reviewer text.
+/// Corporate KYC document version. Opaque storage reference and safe metadata
+/// only: no bytes, original filename, public URL or PII. The storage key is
+/// server-generated (`onboarding-documents/<id>`) and is never returned by the API.
+/// DB triggers: insert only for an editable Corporate application by its
+/// initiator; rows are immutable except the one-way supersede; no delete/truncate.
+/// A partial unique index allows at most one current version per category.
+model CorporateKycDocument {
+  id                     String                         @id @db.Uuid
+  applicationId          String                         @db.Uuid
+  category               CorporateKycDocumentCategory
+  version                Int
+  isCurrent              Boolean                        @default(true)
+  replacesDocumentId     String?                        @unique @db.Uuid
+  storageObjectKey       String                         @unique @db.VarChar(64)
+  storageObjectVersionId String                         @db.VarChar(256)
+  contentType            String                         @db.VarChar(32)
+  sizeBytes              Int
+  checksumSha256         String                         @db.Char(64)
+  scanStatus             CorporateKycDocumentScanStatus @default(NOT_SCANNED)
+  uploadedByUserId       String                         @db.Uuid
+  uploadedAt             DateTime                       @default(now()) @db.Timestamp(3)
+  supersededAt           DateTime?                      @db.Timestamp(3)
+
+  application OnboardingApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  uploadedBy  User                  @relation("CorporateKycDocumentUploader", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+  replaces    CorporateKycDocument? @relation("CorporateKycDocumentReplacement", fields: [replacesDocumentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replacedBy  CorporateKycDocument? @relation("CorporateKycDocumentReplacement")
+
+  events               CorporateKycDocumentEvent[]      @relation("CorporateKycDocumentEventDocument")
+  previousOfEvents     CorporateKycDocumentEvent[]      @relation("CorporateKycDocumentEventPrevious")
+  submissionsAsCoi     CorporateApplicationSubmission[] @relation("CorporateSubmissionCoi")
+  submissionsAsMemart  CorporateApplicationSubmission[] @relation("CorporateSubmissionMemart")
+  submissionsAsTin     CorporateApplicationSubmission[] @relation("CorporateSubmissionTin")
+
+  @@unique([applicationId, category, version])
+  @@index([applicationId, category])
+  @@map("corporate_kyc_documents")
+}
+
+/// Append-only audit of Corporate KYC uploads, replacements and view grants.
+model CorporateKycDocumentEvent {
+  id                 String                        @id @default(uuid()) @db.Uuid
+  applicationId      String                        @db.Uuid
+  documentId         String                        @db.Uuid
+  category           CorporateKycDocumentCategory
+  documentVersion    Int
+  eventKind          CorporateKycDocumentEventKind
+  actorUserId        String                        @db.Uuid
+  previousDocumentId String?                       @db.Uuid
+  createdAt          DateTime                      @default(now()) @db.Timestamp(3)
+
+  application      OnboardingApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  document         CorporateKycDocument  @relation("CorporateKycDocumentEventDocument", fields: [documentId], references: [id], onDelete: Restrict)
+  previousDocument CorporateKycDocument? @relation("CorporateKycDocumentEventPrevious", fields: [previousDocumentId], references: [id], onDelete: Restrict)
+  actor            User                  @relation("CorporateKycDocumentEventActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([applicationId, createdAt])
+  @@index([documentId, createdAt])
+  @@map("corporate_kyc_document_events")
+}
+
+/// One immutable applicant submission per Corporate application, pinning the
+/// submitted profile/details versions and the three document versions. Stores
+/// only a domain-separated SHA-256 digest of the caller Idempotency-Key.
+model CorporateApplicationSubmission {
+  id                                   String   @id @default(uuid()) @db.Uuid
+  applicationId                        String   @unique @db.Uuid
+  submittedByUserId                    String   @db.Uuid
+  idempotencyKeyDigest                 String   @db.Char(64)
+  profileVersion                       Int
+  detailsVersion                       Int
+  certificateOfIncorporationDocumentId String   @db.Uuid
+  memartDocumentId                     String   @db.Uuid
+  tinCertificateDocumentId             String   @db.Uuid
+  submittedAt                          DateTime @default(now()) @db.Timestamp(3)
+
+  application                OnboardingApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  submittedBy                User                  @relation("CorporateApplicationSubmitter", fields: [submittedByUserId], references: [id], onDelete: Restrict)
+  certificateOfIncorporation CorporateKycDocument  @relation("CorporateSubmissionCoi", fields: [certificateOfIncorporationDocumentId], references: [id], onDelete: Restrict, map: "corporate_application_submissions_coi_fkey")
+  memart                     CorporateKycDocument  @relation("CorporateSubmissionMemart", fields: [memartDocumentId], references: [id], onDelete: Restrict, map: "corporate_application_submissions_memart_fkey")
+  tinCertificate             CorporateKycDocument  @relation("CorporateSubmissionTin", fields: [tinCertificateDocumentId], references: [id], onDelete: Restrict, map: "corporate_application_submissions_tin_fkey")
+
+  @@map("corporate_application_submissions")
+}
+
 model ApplicationStaffReviewEvent {
   id               String                          @id @default(uuid()) @db.Uuid
   operationId      String                          @unique @default(uuid()) @db.Uuid

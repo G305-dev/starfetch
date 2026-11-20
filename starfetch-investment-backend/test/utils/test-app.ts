@@ -24,6 +24,9 @@ const TEST_RESET_APPEND_ONLY_GUARDS = [
   ['verification_document_events', 'verification_document_events_immutable_trigger'],
   ['application_staff_review_events', 'application_staff_review_events_immutable_trigger'],
   ['onboarding_application_history', 'onboarding_application_history_no_mutation_trigger'],
+  ['corporate_kyc_document_events', 'corporate_kyc_document_events_immutable_trigger'],
+  ['corporate_application_submissions', 'corporate_application_submissions_immutable_trigger'],
+  ['corporate_kyc_documents', 'corporate_kyc_documents_immutable_trigger'],
 ] as const;
 
 const TEST_RESET_TRUNCATE_GUARDS = [
@@ -46,6 +49,9 @@ const TEST_RESET_TRUNCATE_GUARDS = [
   ['verification_documents', 'verification_documents_no_truncate_trigger'],
   ['verification_document_events', 'verification_document_events_no_truncate_trigger'],
   ['application_staff_review_events', 'application_staff_review_events_no_truncate_trigger'],
+  ['corporate_kyc_document_events', 'corporate_kyc_document_events_no_truncate_trigger'],
+  ['corporate_application_submissions', 'corporate_application_submissions_no_truncate_trigger'],
+  ['corporate_kyc_documents', 'corporate_kyc_documents_no_truncate_trigger'],
 ] as const;
 
 export interface TestApp {
@@ -134,6 +140,11 @@ export async function cleanDatabase(prisma: PrismaService): Promise<void> {
     await tx.applicationStaffReviewEvent.deleteMany();
     await tx.verificationDocumentEvent.deleteMany();
     await tx.verificationDocument.deleteMany();
+    // Corporate KYC document audit/submission rows reference documents, which
+    // reference applications and users: delete child-first.
+    await tx.corporateKycDocumentEvent.deleteMany();
+    await tx.corporateApplicationSubmission.deleteMany();
+    await tx.corporateKycDocument.deleteMany();
 
     // Keep all cleanup in one transaction. The canonical-details guard is
     // deferred until commit; deleting the detail row and then its application
