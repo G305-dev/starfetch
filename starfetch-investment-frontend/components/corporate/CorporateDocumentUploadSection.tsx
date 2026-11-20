@@ -247,7 +247,6 @@ export function CorporateDocumentUploadSection({ accountId, onBack, onStatusChan
 
   const alreadySubmitted = Boolean(receipt) || Boolean(data?.submission.submissionId);
   const isReadOnly = alreadySubmitted || data?.applicationStatus !== "DRAFT";
-  const submissionReference = receipt?.submissionId ?? data?.submission.submissionId ?? null;
   const submittedAt = receipt?.submittedAt ?? data?.submission.submittedAt ?? null;
 
   return (
@@ -351,7 +350,7 @@ export function CorporateDocumentUploadSection({ accountId, onBack, onStatusChan
             {alreadySubmitted ? (
               <div className="mt-3 rounded-lg border border-[#bfe8ca] bg-[#effbf2] px-4 py-3" role="status">
                 <p className="flex items-start gap-2 text-sm font-bold text-star-900"><CheckCircle2 size={17} className="mt-0.5 shrink-0 text-[#16743d]" aria-hidden="true" />Submitted for Starfetch review</p>
-                <p className="mt-1 text-sm leading-6 text-star-muted">Your application has been submitted and is awaiting Starfetch review. {submissionReference ? <>Reference: <span className="font-bold text-star-900">{submissionReference}</span></> : null} {submittedAt ? <>· Submitted {formatDateTime(submittedAt)}</> : null}</p>
+                <p className="mt-1 text-sm leading-6 text-star-muted">Your application has been submitted and is awaiting Starfetch review. {submittedAt ? <>Submitted {formatDateTime(submittedAt)}</> : null}</p>
               </div>
             ) : (
               <>
