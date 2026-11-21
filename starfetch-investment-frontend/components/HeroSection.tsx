@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useEffect, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
 import { Button, Eyebrow } from "./ui";
 
@@ -48,7 +48,11 @@ function HeroWordSequence({ text, delay = 0 }: { text: string; delay?: number })
 }
 
 export function HeroSection() {
-  const [activeSlide, setActiveSlide] = useState(0);
+  const [slideState, setSlideState] = useState<{ active: number; previous: number | null }>({
+    active: 0,
+    previous: null,
+  });
+  const activeSlide = slideState.active;
   const [isPaused, setIsPaused] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [timerVersion, setTimerVersion] = useState(0);
@@ -65,13 +69,20 @@ export function HeroSection() {
   useEffect(() => {
     if (isPaused || reduceMotion) return;
     const interval = window.setInterval(() => {
-      setActiveSlide((current) => (current + 1) % heroSlides.length);
+      setSlideState((current) => ({
+        active: (current.active + 1) % heroSlides.length,
+        previous: current.active,
+      }));
     }, 3000);
     return () => window.clearInterval(interval);
   }, [isPaused, reduceMotion, timerVersion]);
 
   function goToSlide(index: number) {
-    setActiveSlide((index + heroSlides.length) % heroSlides.length);
+    setSlideState((current) => {
+      const target = (index + heroSlides.length) % heroSlides.length;
+      if (target === current.active) return current;
+      return { active: target, previous: current.active };
+    });
     setTimerVersion((current) => current + 1);
   }
 
@@ -131,11 +142,14 @@ export function HeroSection() {
     >
       {heroSlides.map((slide, index) => {
         const isActive = activeSlide === index;
+        const isOutgoing = slideState.previous === index && !isActive;
+        const isRevealing = isActive && slideState.previous !== null && !reduceMotion;
+
         return (
           <div
             key={slide.src}
             aria-hidden={!isActive}
-            className={`absolute inset-0 transition-opacity duration-700 ease-[ease] motion-reduce:transition-none ${isActive ? "z-[1] opacity-100" : "z-0 pointer-events-none opacity-0"}`}
+            className={`absolute inset-0 ${isActive ? "z-[1]" : "z-0"} ${isActive || isOutgoing ? "opacity-100" : "pointer-events-none opacity-0"} ${isRevealing ? "hero-liquid-reveal" : ""}`}
           >
             <Image
               src={slide.src}
@@ -148,6 +162,14 @@ export function HeroSection() {
           </div>
         );
       })}
+      {slideState.previous !== null && !reduceMotion ? (
+        <div
+          key={`hero-liquid-orb-${activeSlide}`}
+          className="hero-liquid-orb"
+          aria-hidden="true"
+        />
+      ) : null}
+
       <div className={`absolute inset-0 z-[2] transition-colors duration-500 ${usesGreenText ? "bg-star-900/70" : "bg-black/30"}`} />
 
       <div className="relative z-[3] mx-auto flex h-full max-w-[1170px] items-center justify-center px-5 pb-9 pt-2 text-center lg:px-7">
@@ -161,13 +183,6 @@ export function HeroSection() {
           </div>
         </div>
       </div>
-
-      <button type="button" onClick={showPreviousSlide} className="absolute left-4 top-1/2 z-[4] grid h-[38px] w-[38px] -translate-y-1/2 place-items-center rounded-full bg-white/90 text-star-900 transition hover:bg-star-lime focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-lime sm:left-5 sm:h-[46px] sm:w-[46px]" aria-label="Show previous hero image">
-        <ChevronLeft size={22} aria-hidden="true" />
-      </button>
-      <button type="button" onClick={showNextSlide} className="absolute right-4 top-1/2 z-[4] grid h-[38px] w-[38px] -translate-y-1/2 place-items-center rounded-full bg-white/90 text-star-900 transition hover:bg-star-lime focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-lime sm:right-5 sm:h-[46px] sm:w-[46px]" aria-label="Show next hero image">
-        <ChevronRight size={22} aria-hidden="true" />
-      </button>
       <div className="absolute bottom-4 left-1/2 z-[4] flex -translate-x-1/2 items-center gap-2" aria-label="Hero slide indicators">
         {heroSlides.map((slide, index) => (
           <button
