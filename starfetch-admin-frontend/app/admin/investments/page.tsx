@@ -1,5 +1,6 @@
-import { AdminInvestmentsPage } from "@/components/admin/AdminInvestmentsPage";
-
-export default function InvestmentsPage() {
-  return <AdminInvestmentsPage />;
-}
+import {ProtectedPage} from '@/components/admin/live/ProtectedPage';
+import {getSession} from '@/lib/admin-api/server';
+import {PERMISSIONS} from '@/lib/admin-api/contracts';
+import {InvestmentPage} from '@/components/admin/live/InvestmentPage';
+export const dynamic='force-dynamic';
+export default async function Page(){const session=await getSession();return <ProtectedPage permission={PERMISSIONS.investments}>{session&&<InvestmentPage session={session}/>}</ProtectedPage>;}

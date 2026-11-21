@@ -1,6 +1,3 @@
-import { AdminShell } from "@/components/admin/AdminShell";
-
-// Development-only shell: staff/admin authorization must be enforced by the backend later.
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return <AdminShell>{children}</AdminShell>;
-}
+/** Login uses a standalone layout. Each protected page verifies staff session
+ * and permission through ProtectedPage before the admin shell is rendered. */
+export default function AdminLayout({children}:{children:React.ReactNode}){return <>{children}</>;}

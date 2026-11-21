@@ -1,10 +1,17 @@
-# Archive file manifest
+> Historical report: for current six-page behavior, see README.md and SIX-PAGE-REFINEMENT-REPORT.md.
 
-All paths are relative to the extracted `Starfetch-Admin-Portal` folder.
+> Historical document: demo access has since been updated for protected Vercel Preview. For current behavior and setup, see README.md and REVISED-TRANSACTIONS-REPORT.md.
+
+# Admin frontend file manifest
+
+Paths relative to `starfetch-admin-frontend/`:
 
 - `.gitignore`
+- `BACKEND-INTEGRATION.md`
+- `CHANGES.md`
 - `FILES.md`
 - `README.md`
+- `RESTORATION-REPORT.md`
 - `app/admin/dashboard/page.tsx`
 - `app/admin/investments/page.tsx`
 - `app/admin/kyc/page.tsx`
@@ -18,51 +25,70 @@ All paths are relative to the extracted `Starfetch-Admin-Portal` folder.
 - `app/icon.svg`
 - `app/layout.tsx`
 - `app/page.tsx`
-- `components/admin/AdminBadges.tsx`
-- `components/admin/AdminCharts.tsx`
 - `components/admin/AdminDashboard.tsx`
+- `components/admin/AdminDataStates.tsx`
 - `components/admin/AdminInvestmentsPage.tsx`
-- `components/admin/AdminInvestmentsTable.tsx`
 - `components/admin/AdminKycPage.tsx`
-- `components/admin/AdminKycTable.tsx`
 - `components/admin/AdminPortfoliosPage.tsx`
 - `components/admin/AdminSettingsPage.tsx`
 - `components/admin/AdminShell.tsx`
 - `components/admin/AdminTransactionsPage.tsx`
-- `components/admin/AdminTransactionsTable.tsx`
 - `components/admin/AdminUsersFilters.tsx`
 - `components/admin/AdminUsersPage.tsx`
-- `components/admin/AdminUsersTable.tsx`
-- `components/admin/InvestmentDetailPanel.tsx`
 - `components/admin/InvestmentFilters.tsx`
-- `components/admin/InvestorDetailPanel.tsx`
-- `components/admin/KycDetailPanel.tsx`
 - `components/admin/KycFilters.tsx`
-- `components/admin/PortfolioCharts.tsx`
 - `components/admin/PortfolioFilters.tsx`
-- `components/admin/PortfolioViews.tsx`
 - `components/admin/SettingsCategories.tsx`
-- `components/admin/SettingsOverviewCards.tsx`
-- `components/admin/TransactionDetailPanel.tsx`
 - `components/admin/TransactionFilters.tsx`
-- `components/admin/UsersOverviewCards.tsx`
+- `components/admin/UnavailableDetails.tsx`
 - `components/admin/admin-dashboard-data.ts`
-- `components/admin/admin-investments-data.ts`
-- `components/admin/admin-investments-utils.ts`
-- `components/admin/admin-kyc-data.ts`
-- `components/admin/admin-kyc-utils.ts`
-- `components/admin/admin-portfolios-data.ts`
-- `components/admin/admin-portfolios-utils.ts`
 - `components/admin/admin-settings-data.ts`
-- `components/admin/admin-transactions-data.ts`
-- `components/admin/admin-transactions-utils.ts`
-- `components/admin/admin-users-data.ts`
-- `components/admin/admin-users-utils.ts`
+- `components/admin/demo/AdminBadges.tsx`
+- `components/admin/demo/AdminCharts.tsx`
+- `components/admin/demo/AdminDashboard.tsx`
+- `components/admin/demo/AdminInvestmentsPage.tsx`
+- `components/admin/demo/AdminInvestmentsTable.tsx`
+- `components/admin/demo/AdminKycPage.tsx`
+- `components/admin/demo/AdminKycTable.tsx`
+- `components/admin/demo/AdminPortfoliosPage.tsx`
+- `components/admin/demo/AdminSettingsPage.tsx`
+- `components/admin/demo/AdminTransactionsPage.tsx`
+- `components/admin/demo/AdminTransactionsTable.tsx`
+- `components/admin/demo/AdminUsersFilters.tsx`
+- `components/admin/demo/AdminUsersPage.tsx`
+- `components/admin/demo/AdminUsersTable.tsx`
+- `components/admin/demo/DemoTransactionEdit.tsx`
+- `components/admin/demo/InvestmentDetailPanel.tsx`
+- `components/admin/demo/InvestmentFilters.tsx`
+- `components/admin/demo/InvestorDetailPanel.tsx`
+- `components/admin/demo/KycDetailPanel.tsx`
+- `components/admin/demo/KycFilters.tsx`
+- `components/admin/demo/PortfolioCharts.tsx`
+- `components/admin/demo/PortfolioFilters.tsx`
+- `components/admin/demo/PortfolioViews.tsx`
+- `components/admin/demo/SettingsCategories.tsx`
+- `components/admin/demo/SettingsOverviewCards.tsx`
+- `components/admin/demo/TransactionDetailPanel.tsx`
+- `components/admin/demo/TransactionFilters.tsx`
+- `components/admin/demo/UsersOverviewCards.tsx`
+- `components/admin/demo/admin-investments-utils.ts`
+- `components/admin/demo/admin-kyc-utils.ts`
+- `components/admin/demo/admin-portfolios-utils.ts`
+- `components/admin/demo/admin-transactions-utils.ts`
+- `components/admin/demo/admin-users-utils.ts`
+- `components/admin/demo/fixtures/admin-dashboard-data.ts`
+- `components/admin/demo/fixtures/admin-investments-data.ts`
+- `components/admin/demo/fixtures/admin-kyc-data.ts`
+- `components/admin/demo/fixtures/admin-portfolios-data.ts`
+- `components/admin/demo/fixtures/admin-settings-data.ts`
+- `components/admin/demo/fixtures/admin-transactions-data.ts`
+- `components/admin/demo/fixtures/admin-users-data.ts`
 - `components/admin/login/AdminLoginBrandPanel.tsx`
 - `components/admin/login/AdminLoginForm.tsx`
 - `components/admin/login/AdminLoginHeader.tsx`
 - `components/admin/login/admin-login-validation.ts`
 - `components/ui.tsx`
+- `middleware.ts`
 - `next.config.ts`
 - `package-lock.json`
 - `package.json`
