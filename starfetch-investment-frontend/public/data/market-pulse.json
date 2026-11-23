@@ -1,0 +1,53 @@
+{
+  "_readme": "MANUALLY MAINTAINED. These are official Nigerian economic indicators, NOT live or real-time market data, and no API supplies them. Every figure below was checked against the named official source on the date in lastVerified. Read public/data/README.md before editing, then update reportingPeriod and lastVerified for every figure you touch. Never publish a rate that has not been verified against the official publication: Starfetch is a regulated firm's public website.",
+  "indicators": [
+    {
+      "id": "headline-inflation",
+      "label": "Headline Inflation",
+      "value": 14.06,
+      "unit": "%",
+      "reportingPeriod": "October 2026",
+      "previousValue": 14.63,
+      "previousPeriod": "September 2026",
+      "appliesTo": null,
+      "note": "Consumer price inflation, year on year. Fifth consecutive monthly decline and a six-year low. The CPI reference index rose to 147.0 points (base 2024 = 100).",
+      "source": "National Bureau of Statistics (NBS)",
+      "sourceUrl": "https://nigerianstat.gov.ng/elibrary",
+      "publicationReference": "NBS Consumer Price Index (CPI) report, October 2026, published 16 November 2026",
+      "lastVerified": "2026-11-17"
+    },
+    {
+      "id": "monetary-policy-rate",
+      "label": "Monetary Policy Rate",
+      "value": 23,
+      "unit": "%",
+      "reportingPeriod": "September 2026 MPC",
+      "previousValue": 26.5,
+      "previousPeriod": "July 2026 MPC",
+      "appliesTo": null,
+      "note": "The CBN's benchmark interest rate, cut by 350 basis points from 26.5% at the 307th MPC meeting, the largest single reduction since 2006.",
+      "source": "Central Bank of Nigeria (CBN)",
+      "sourceUrl": "https://www.cbn.gov.ng/Out/2026/CCD/COMMUNIQUE%20307%20MPC.pdf",
+      "publicationReference": "CBN communiqué of the 307th Monetary Policy Committee meeting, 21-22 September 2026",
+      "lastVerified": "2026-11-17"
+    },
+    {
+      "id": "cash-reserve-ratio",
+      "label": "Cash Reserve Ratio",
+      "value": 45,
+      "unit": "%",
+      "reportingPeriod": "September 2026 MPC",
+      "previousValue": 45,
+      "previousPeriod": "July 2026 MPC",
+      "appliesTo": "Deposit Money Banks",
+      "note": "Reserve requirement for deposit money banks. Left unchanged at the 307th MPC meeting.",
+      "source": "Central Bank of Nigeria (CBN)",
+      "sourceUrl": "https://www.cbn.gov.ng/Out/2026/CCD/COMMUNIQUE%20307%20MPC.pdf",
+      "publicationReference": "CBN communiqué of the 307th Monetary Policy Committee meeting, 21-22 September 2026",
+      "lastVerified": "2026-11-17"
+    }
+  ],
+  "lastVerified": "2026-11-17",
+  "updateProcess": "See public/data/README.md. Short version: confirm the figure on the official NBS or CBN publication, update value/reportingPeriod/previousValue/previousPeriod/publicationReference and lastVerified, then commit and deploy.",
+  "disclaimer": "Official Nigerian economic indicators, published by the NBS and the CBN. They are updated by hand when a new official release is published, so they are not live and may lag the most recent release by a few days. Market information is for general awareness only and is not investment advice."
+}

@@ -1,64 +1,162 @@
-import { BarChart3 } from "lucide-react";
-import { featuredNgxEquities, ngxMarketSnapshot, type NgxEquityListing } from "./ngx-market-directory";
+import type { CommodityQuote, FeedStatus, NgxQuote } from "@/lib/market/types";
+import { CommodityTickerCell, NgxTickerCell } from "./MarketTickerItem";
 
-const naira = new Intl.NumberFormat("en-NG", {
-  style: "currency",
-  currency: "NGN",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+/**
+ * The homepage's ONE unified market strip: NGX equities and global commodities
+ * in a single continuous scrolling track.
+ *
+ * Reuses the existing `.ngx-market-*` slider CSS (continuous loop, pause on
+ * hover, reduced-motion stop) rather than adding a second animation mechanism.
+ *
+ * The track renders the item sequence TWICE. The keyframes translate by -50%,
+ * so the duplicate pass must be exactly half the track — which holds because both
+ * passes render the identical cell sequence.
+ */
 
-function formatPrice(value: number | null) {
-  return value === null ? "Quote pending" : naira.format(value);
-}
-
-function formatChange(value: number | null) {
-  if (value === null) return "Daily change pending";
-  const prefix = value > 0 ? "+" : "";
-  return `${prefix}${value.toFixed(2)}%`;
-}
-
-function MarketItems({ markets, duplicate = false }: { markets: readonly NgxEquityListing[]; duplicate?: boolean }) {
+function TrackPass({
+  markets,
+  commodities,
+  duplicate,
+}: {
+  markets: readonly NgxQuote[];
+  commodities: readonly CommodityQuote[];
+  duplicate?: boolean;
+}) {
   return (
     <ul className="ngx-market-slider-group" aria-hidden={duplicate || undefined}>
       {markets.map((market) => (
-        <li key={`${duplicate ? "copy-" : ""}${market.symbol}`} className="flex h-[58px] min-w-[230px] shrink-0 items-center gap-3 border-r border-star-200 px-4 sm:min-w-[250px]">
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-star-100 text-star-700"><BarChart3 size={15} aria-hidden="true" /></span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[0.7rem] font-extrabold tracking-wide text-star-900">{market.symbol}</span>
-            <span className="mt-0.5 block truncate text-[0.6rem] font-medium text-star-muted">{market.companyName}</span>
-          </span>
-          <span className="shrink-0 text-right">
-            <span className="block text-[0.67rem] font-extrabold tabular-nums text-star-900">{formatPrice(market.lastPriceNgn)}</span>
-            <span className={`mt-0.5 block text-[0.58rem] font-bold tabular-nums ${market.dailyChangePercent === null ? "text-star-muted" : market.dailyChangePercent > 0 ? "text-emerald-700" : market.dailyChangePercent < 0 ? "text-red-700" : "text-star-muted"}`}>{formatChange(market.dailyChangePercent)}</span>
-          </span>
-        </li>
+        <NgxTickerCell key={`${duplicate ? "copy-" : ""}${market.symbol}`} quote={market} duplicate={duplicate} />
+      ))}
+      {commodities.map((commodity) => (
+        <CommodityTickerCell
+          key={`${duplicate ? "copy-" : ""}commodity-${commodity.id}`}
+          quote={commodity}
+          duplicate={duplicate}
+        />
       ))}
     </ul>
   );
 }
 
-/** NGX ticker strip below the navbar; its display model accepts backend-supplied prices later. */
-export function NgxMarketTicker({ markets = featuredNgxEquities }: { markets?: readonly NgxEquityListing[] }) {
+type StatusBadge = {
+  /** Very short label that fits the 132px mobile marker column. */
+  short: string;
+  /** Longer wording for the desktop column and the screen-reader summary. */
+  long: string;
+  /** Drives the dot colour so the two feeds are distinguishable at a glance. */
+  tone: "live" | "delayed" | "stale" | "unavailable";
+};
+
+/**
+ * Describes ONE feed's availability on its own terms.
+ *
+ * V1 computed a single strip label from the NGX status alone, so an unavailable
+ * commodity feed was invisible whenever NGX happened to be up — the strip said
+ * "Live · NGN Market" while half its cells showed "Unavailable". Each feed now
+ * reports itself, and both reports are always rendered.
+ */
+function describeFeed(status: FeedStatus, source: string | null): StatusBadge {
+  switch (status.state) {
+    case "live":
+      return { short: "Live", long: source ? `Live · ${source}` : "Live quotes", tone: "live" };
+    case "delayed":
+      return { short: "Delayed", long: "Delayed quotes", tone: "delayed" };
+    case "stale":
+      return {
+        short: "Stale",
+        long: `${source ?? "Provider"} · last reported ${status.asOfLabel || "time unknown"}`,
+        tone: "stale",
+      };
+    default:
+      // Distinguish "the provider sent figures we refused to show" from "we never
+      // received any". Both render no prices; the wording is what differs.
+      return status.withheld
+        ? { short: "Held", long: "Prices withheld — untrustworthy timestamp", tone: "unavailable" }
+        : { short: "N/A", long: "Unavailable", tone: "unavailable" };
+  }
+}
+
+const DOT_TONE: Record<StatusBadge["tone"], string> = {
+  live: "bg-star-lime",
+  delayed: "bg-amber-300",
+  stale: "bg-amber-400",
+  unavailable: "bg-white/35",
+};
+
+function FeedLine({ label, badge }: { label: string; badge: StatusBadge }) {
   return (
-    <section aria-label="Nigerian Exchange market ticker" className="ngx-market-strip relative z-0 w-full overflow-hidden border-b border-star-200 bg-white">
+    <span className="flex items-center gap-1.5 leading-tight">
+      <span className={`inline-block size-1.5 shrink-0 rounded-full ${DOT_TONE[badge.tone]}`} aria-hidden="true" />
+      <span className="text-[0.53rem] font-extrabold uppercase tracking-[0.1em] text-star-lime">{label}</span>
+      <span className="truncate text-[0.56rem] font-semibold text-star-100" title={badge.long}>
+        {badge.short}
+      </span>
+    </span>
+  );
+}
+
+export function NgxMarketTicker({
+  markets,
+  commodities,
+  ngxStatus,
+  commodityStatus,
+}: {
+  markets: readonly NgxQuote[];
+  commodities: readonly CommodityQuote[];
+  ngxStatus: FeedStatus;
+  commodityStatus: FeedStatus;
+}) {
+  const hasAnyCell = markets.length > 0 || commodities.length > 0;
+  const ngxBadge = describeFeed(ngxStatus, ngxStatus.source);
+  const commodityBadge = describeFeed(commodityStatus, commodityStatus.source);
+
+  /**
+   * The strip is only "fully live" when BOTH feeds are. This is the single
+   * coarse signal for anyone scanning the page; the per-feed lines below carry
+   * the detail.
+   */
+  const allLive = ngxStatus.state === "live" && commodityStatus.state === "live";
+
+  return (
+    <section
+      aria-label="Nigerian Exchange and global commodity market ticker"
+      className="ngx-market-strip relative z-0 w-full overflow-hidden border-b border-star-200 bg-white"
+      data-ngx-state={ngxStatus.state}
+      data-commodity-state={commodityStatus.state}
+    >
       <div className="flex min-h-[58px] w-full">
-        <div className="z-10 flex w-[128px] shrink-0 flex-col justify-center bg-star-900 px-3 text-white shadow-[5px_0_12px_rgba(0,59,42,0.08)] sm:w-[172px] sm:px-5">
-          <span className="text-[0.58rem] font-extrabold uppercase tracking-[0.15em] text-star-lime">NGX market</span>
-          <span className="mt-0.5 text-[0.6rem] font-semibold text-star-100">{markets.some((market) => market.lastPriceNgn !== null || market.dailyChangePercent !== null) ? "17 Nov snapshot" : "Quote feed pending"}</span>
+        {/* Category marker: dark-green block listing BOTH feeds' availability. */}
+        <div className="z-10 flex w-[150px] shrink-0 flex-col justify-center gap-1 bg-star-900 px-3 py-1.5 text-white shadow-[5px_0_12px_rgba(0,59,42,0.18)] sm:w-[230px] sm:px-5">
+          <span className="text-[0.55rem] font-extrabold uppercase tracking-[0.13em] text-star-lime">
+            NGX · Commodities
+          </span>
+          <FeedLine label="NGX" badge={ngxBadge} />
+          <FeedLine label="Cmdty" badge={commodityBadge} />
         </div>
-        <div className="ngx-market-slider-viewport min-w-0 flex-1" aria-live="off">
-          {markets.length ? (
+
+        <div className="ngx-market-slider-viewport min-w-0 flex-1 bg-star-900" aria-live="off">
+          {hasAnyCell ? (
             <div className="ngx-market-slider-track">
-              <MarketItems markets={markets} />
-              <MarketItems markets={markets} duplicate />
+              <TrackPass markets={markets} commodities={commodities} />
+              <TrackPass markets={markets} commodities={commodities} duplicate />
             </div>
           ) : (
-            <div className="flex h-[58px] items-center px-5 text-sm font-semibold text-star-muted">NGX listings will appear here when supplied by the backend.</div>
+            <div className="flex h-[58px] items-center px-5 text-sm font-semibold text-star-100">
+              Market listings will appear here when the data feed is connected.
+            </div>
           )}
         </div>
       </div>
-      <p className="sr-only">This moving list shows NGX-listed equities with a dated snapshot of closing prices from {ngxMarketSnapshot.dateLabel.toLowerCase()} (source: {ngxMarketSnapshot.sourceLabel}). It is not a live feed.</p>
+
+      <p className="sr-only">
+        A single moving list of {markets.length} Nigerian Exchange equities and {commodities.length} global commodities.
+        {" "}NGX data: {ngxBadge.long}
+        {ngxStatus.state === "unavailable" && ngxStatus.note ? ` — ${ngxStatus.note}` : ""}.
+        {" "}Commodity data: {commodityBadge.long}
+        {commodityStatus.state === "unavailable" && commodityStatus.note ? ` — ${commodityStatus.note}` : ""}.
+        {" "}Overall: {allLive ? "both feeds are current" : "one or both feeds are not current"}.
+        This strip is not a live trading feed.
+      </p>
     </section>
   );
 }
