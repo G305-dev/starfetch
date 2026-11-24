@@ -1,3 +1,19 @@
+# Market data on the homepage — CURRENT STATE
+
+> **This document described the 17 November 2026 hardcoded snapshot. That
+> approach has been REPLACED and the hardcoded prices are gone.**
+>
+> Read [`MARKET_DATA_INTEGRATION.md`](MARKET_DATA_INTEGRATION.md) instead — it is
+> the current integration reference, including what David's backend must return
+> and how to connect a commodity provider.
+>
+> The sections below are kept only as a record of the values the earlier snapshot
+> contained and how they were sourced. **Do not re-add them to the code.** With a
+> backend feed in progress, a forgotten hardcoded price would silently look like
+> current market data — which is exactly what the new implementation prevents.
+
+---
+
 # Market at a Glance — Real Data Snapshot (17 November 2026)
 
 ## Summary
