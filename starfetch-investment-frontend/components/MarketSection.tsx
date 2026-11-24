@@ -58,7 +58,7 @@ async function loadNgxQuotes(): Promise<{ quotes: NgxQuote[]; status: FeedStatus
   try {
     const response = await fetch(`${base}/api/v1${MARKET_SNAPSHOT_INTEGRATION.endpoint.replace("/api/v1", "")}`, {
       headers: { Accept: "application/json" },
-      next: { revalidate: 120 },
+      next: { revalidate: 60 },
       // Never let a slow provider hold the page open. Matches the commodity
       // feed's bound so neither feed can outlast the other by much.
       signal: AbortSignal.timeout(NGX_TIMEOUT_MS),

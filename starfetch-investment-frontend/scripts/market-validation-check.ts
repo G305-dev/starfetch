@@ -804,10 +804,14 @@ async function main() {
       "unavailable/future/missing timestamp/negative rows must be withheld without poisoning valid rows");
 
     const old = parseStarfetchMarketSnapshot(backend([equity("GTCO", STALE_AFTER_MS + 10_000)]), NOW);
-    assert(old.status.state === "stale" && old.status.asOf === iso(-STALE_AFTER_MS - 10_000),
-      "old individual quotation must display stale with genuine timestamp");
+    assert(old.status.state === "delayed" && old.status.asOf === iso(-STALE_AFTER_MS - 10_000),
+      "older valid quotation must remain delayed with its genuine timestamp");
     const paused = parseStarfetchMarketSnapshot(backend([equity("GTCO")], "stale", true), NOW);
     assert(paused.status.state === "stale", "backend stale signal must override fresh quote timestamp");
+    const staleStatusOnly = parseStarfetchMarketSnapshot(backend([equity("GTCO")], "stale", false), NOW);
+    assert(staleStatusOnly.status.state === "stale", "backend stale status must be respected");
+    const staleCacheOnly = parseStarfetchMarketSnapshot(backend([equity("GTCO")], "ok", true), NOW);
+    assert(staleCacheOnly.status.state === "stale", "backend cache stale flag must be respected");
     const earliest = parseStarfetchMarketSnapshot(backend([equity("GTCO", 60_000), equity("UBA", 120_000)]), NOW);
     assert(earliest.status.asOf === iso(-120_000), "shared As of must be the oldest displayed quotation");
     const duplicate = parseStarfetchMarketSnapshot(backend([equity("GTCO"), equity("GTCO")]), NOW);

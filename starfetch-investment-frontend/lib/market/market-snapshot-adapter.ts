@@ -314,8 +314,8 @@ export function parseStarfetchMarketSnapshot(payload: unknown, now: number = Dat
   // quotation time; they record backend processing, not trading.
   const oldestQuoteMs = Math.min(...quoteTimes.values());
   const asOf = new Date(oldestQuoteMs).toISOString();
-  const cacheStale = body.status === "stale" || body.cache.isStale === true;
-  const isStale = cacheStale || now - oldestQuoteMs > STALE_AFTER_MS;
+  const isStale = body.status === "stale" || body.cache.isStale === true;
+
   const state: FeedStatus["state"] = isStale ? "stale" : "delayed";
 
   return {
@@ -326,7 +326,7 @@ export function parseStarfetchMarketSnapshot(payload: unknown, now: number = Dat
       asOfLabel: formatAsOf(asOf),
       source,
       note: isStale
-        ? "Delayed NGX data: at least one displayed quotation is old, or the backend cache is stale. The 'As of' time is the oldest displayed quote."
+        ? "Delayed NGX data: the backend cache is stale. The 'As of' time is the oldest displayed quote."
         : "Delayed NGX data. The 'As of' time is the oldest displayed quote; individual quotations may be newer.",
       ...(invalidTimes > 0 || duplicates.size > 0 ? { withheld: true } : {}),
     },

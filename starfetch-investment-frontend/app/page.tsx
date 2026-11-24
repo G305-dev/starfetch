@@ -22,7 +22,7 @@ import { MarketTickerSkeleton } from "@/components/MarketTickerSkeleton";
  * Revalidate the homepage on a short interval so the server-side market fetches
  * do not run on every request, while quotes stay reasonably current.
  */
-export const revalidate = 120;
+export const revalidate = 60;
 
 export default function Home() {
   /**
