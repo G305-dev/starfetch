@@ -142,6 +142,18 @@ export default () => {
       documentCollectionEnabled: process.env.VERIFICATION_DOCUMENT_COLLECTION_ENABLED === 'true',
       staffReviewEnabled: process.env.CORPORATE_STAFF_REVIEW_ENABLED === 'true',
     },
+    // NGN Market public market data. Disabled unless explicitly enabled AND
+    // redistribution/terms approval is recorded; missing values never break
+    // startup (the module resolves to a disabled state instead).
+    marketData: {
+      enabled: process.env.MARKET_DATA_ENABLED === 'true',
+      redistributionApproved: process.env.MARKET_DATA_REDISTRIBUTION_APPROVED === 'true',
+      ngnMarketApiKey: process.env.NGN_MARKET_API_KEY,
+      redisRestUrl: process.env.MARKET_DATA_REDIS_REST_URL,
+      redisRestToken: process.env.MARKET_DATA_REDIS_REST_TOKEN,
+      refreshIntervalSeconds: process.env.MARKET_DATA_REFRESH_INTERVAL_SECONDS,
+      monthlyCallBudget: process.env.MARKET_DATA_MONTHLY_CALL_BUDGET,
+    },
     joint: {
       invitationTtlHours: (() => {
         const n = parseFloat(process.env.JOINT_INVITATION_TTL_HOURS ?? '168'); // 7 days
