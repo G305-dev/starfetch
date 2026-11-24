@@ -100,3 +100,111 @@ describe('AuthService applicant registration', () => {
     });
   });
 });
+
+
+describe('AuthService authorized account contexts', () => {
+  const auth = new AuthService(
+    {} as any, {} as any, {} as any,
+    {} as any, {} as any, {} as any,
+  );
+
+  const baseUser = {
+    id: 'test-user',
+    email: 'test@example.invalid',
+    role: UserRole.INVESTOR,
+    emailVerifiedAt: new Date(),
+    primaryAccountType: null,
+    investorProfile: null,
+    corporateApplicantProfile: null,
+    initiatedOnboardingApplications: [],
+    jointMemberships: [],
+  };
+
+  const individual = {
+    firstName: 'Test',
+    lastName: 'Investor',
+  };
+
+  const corporate = {
+    companyName: 'Test Company',
+    companyPhoneNumber: '+2348000000000',
+  };
+
+  const cases = [
+    ['Individual', {
+      primaryAccountType: PrimaryAccountType.INDIVIDUAL,
+      investorProfile: individual,
+    }, ['INDIVIDUAL']],
+
+    ['Individual with Joint membership', {
+      primaryAccountType: PrimaryAccountType.INDIVIDUAL,
+      investorProfile: individual,
+      jointMemberships: [{ id: 'joint-1' }],
+    }, ['INDIVIDUAL', 'JOINT']],
+
+    ['Corporate applicant', {
+      primaryAccountType: PrimaryAccountType.CORPORATE,
+      corporateApplicantProfile: corporate,
+    }, ['CORPORATE']],
+
+    ['Corporate with old Individual profile and Joint membership', {
+      primaryAccountType: PrimaryAccountType.CORPORATE,
+      investorProfile: individual,
+      jointMemberships: [{ id: 'joint-1' }],
+    }, ['CORPORATE']],
+
+    ['Individual with old Corporate evidence', {
+      primaryAccountType: PrimaryAccountType.INDIVIDUAL,
+      investorProfile: individual,
+      corporateApplicantProfile: corporate,
+      initiatedOnboardingApplications: [{ id: 'application-1' }],
+    }, ['INDIVIDUAL']],
+
+    ['Legacy Individual', {
+      investorProfile: individual,
+    }, ['INDIVIDUAL']],
+
+    ['Legacy Corporate applicant', {
+      corporateApplicantProfile: corporate,
+    }, ['CORPORATE']],
+
+    ['Legacy Corporate application owner', {
+      initiatedOnboardingApplications: [{ id: 'application-1' }],
+    }, ['CORPORATE']],
+
+    ['Legacy account with both valid profiles', {
+      investorProfile: individual,
+      corporateApplicantProfile: corporate,
+    }, ['INDIVIDUAL', 'CORPORATE']],
+
+    ['Individual without profile', {
+      primaryAccountType: PrimaryAccountType.INDIVIDUAL,
+    }, []],
+
+    ['Joint membership without Individual profile', {
+      jointMemberships: [{ id: 'joint-1' }],
+    }, []],
+
+    ['Unverified Corporate applicant', {
+      primaryAccountType: PrimaryAccountType.CORPORATE,
+      emailVerifiedAt: null,
+    }, []],
+
+    ['Unclassified account without evidence', {}, []],
+
+    ['Non-investor account', {
+      role: UserRole.ADMIN,
+      investorProfile: individual,
+      corporateApplicantProfile: corporate,
+    }, []],
+  ] as const;
+
+  it.each(cases)('%s returns the correct contexts', (_name, overrides, expected) => {
+    const result = auth.safeUser({
+      ...baseUser,
+      ...overrides,
+    } as any);
+
+    expect(result.authorizedContexts).toEqual(expected);
+  });
+});
