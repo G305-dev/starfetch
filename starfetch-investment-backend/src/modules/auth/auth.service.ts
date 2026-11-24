@@ -252,10 +252,28 @@ export class AuthService {
     initiatedOnboardingApplications?: Array<{ id: string }>;
   }): SafeUser {
     const contexts: Array<'INDIVIDUAL' | 'CORPORATE' | 'JOINT'> = [];
-    if (user.primaryAccountType === PrimaryAccountType.INDIVIDUAL || user.investorProfile) contexts.push('INDIVIDUAL');
-    if (user.primaryAccountType === PrimaryAccountType.CORPORATE || user.corporateApplicantProfile || user.initiatedOnboardingApplications?.length) contexts.push('CORPORATE');
+    const isInvestor = user.role === UserRole.INVESTOR;
+    const canAccessIndividual =
+      isInvestor &&
+      user.primaryAccountType !== PrimaryAccountType.CORPORATE &&
+      Boolean(user.investorProfile);
+
+    const hasCorporateEvidence =
+      Boolean(user.corporateApplicantProfile) ||
+      (user.initiatedOnboardingApplications?.length ?? 0) > 0;
+
+    const canAccessCorporate =
+      isInvestor &&
+      Boolean(user.emailVerifiedAt) &&
+      user.primaryAccountType !== PrimaryAccountType.INDIVIDUAL &&
+      (user.primaryAccountType === PrimaryAccountType.CORPORATE ||
+        hasCorporateEvidence);
+
     const jointMembershipCount = user.jointMemberships?.length ?? 0;
-    if (jointMembershipCount > 0 && user.primaryAccountType !== PrimaryAccountType.CORPORATE) contexts.push('JOINT');
+
+    if (canAccessIndividual) contexts.push('INDIVIDUAL');
+    if (canAccessCorporate) contexts.push('CORPORATE');
+    if (canAccessIndividual && jointMembershipCount > 0) contexts.push('JOINT');
     return {
       id: user.id,
       // Corporate applicant accounts intentionally have no InvestorProfile;
