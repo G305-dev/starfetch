@@ -18,13 +18,34 @@ import {
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated" | "error";
 
+/**
+ * What `refreshSession()` actually did to the provider's own state.
+ *
+ * Callers that must act on up-to-date authorisation (a Joint membership change,
+ * for example) need to know whether `user` was really re-committed — not merely
+ * whether some HTTP request happened to succeed. Returning the committed
+ * projection keeps the provider the single source of truth and prevents a
+ * second, independent `/me` read from being mistaken for the provider's state.
+ */
+export type SessionRefreshOutcome =
+  /** The provider committed a fresh backend projection. */
+  | { status: "refreshed"; user: AuthUser }
+  /** The backend confirmed the session is gone; the provider cleared it. */
+  | { status: "unauthenticated" }
+  /** Transient failure: the previous authenticated state was deliberately kept. */
+  | { status: "unchanged" }
+  /** A newer operation owns the auth state; this refresh did not commit. */
+  | { status: "superseded" }
+  /** The initial restore failed transiently; the provider is in "error". */
+  | { status: "error" };
+
 type AuthContextValue = {
   status: AuthStatus;
   user: AuthUser | null;
   login: (input: { email: string; password: string }) => Promise<AuthUser>;
   logout: () => Promise<void>;
   invalidateSession: () => void;
-  refreshSession: () => Promise<void>;
+  refreshSession: () => Promise<SessionRefreshOutcome>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -55,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     commitUnauthenticated();
   }, [commitUnauthenticated]);
 
-  const refreshSession = useCallback(async () => {
+  const refreshSession = useCallback(async (): Promise<SessionRefreshOutcome> => {
     const operation = operationRef.current + 1;
     operationRef.current = operation;
     const wasAuthenticated = statusRef.current === "authenticated";
@@ -69,25 +90,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await refreshAccessToken();
       const currentUser = await getCurrentUser();
-      if (operation !== operationRef.current) return;
+      if (operation !== operationRef.current) return { status: "superseded" };
       setUser(currentUser);
       setStatus("authenticated");
+      // The provider's own committed projection is what callers must trust.
+      return { status: "refreshed", user: currentUser };
     } catch (error) {
-      if (operation !== operationRef.current) return;
+      if (operation !== operationRef.current) return { status: "superseded" };
       // Only a backend-confirmed UNAUTHENTICATED ends the session. Network
       // errors, 5xx and rate limits are not proof of logout.
       if (isApiError(error) && error.code === "UNAUTHENTICATED") {
         commitUnauthenticated();
-        return;
+        return { status: "unauthenticated" };
       }
       if (wasAuthenticated && hasAccessToken()) {
         setStatus("authenticated");
-        return;
+        return { status: "unchanged" };
       }
       // Initial restore failed transiently: surface a retryable error
       // instead of redirecting to login.
       setUser(null);
       setStatus("error");
+      return { status: "error" };
     }
   }, [commitUnauthenticated]);
 
