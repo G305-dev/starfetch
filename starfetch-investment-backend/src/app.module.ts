@@ -13,6 +13,7 @@ import { MonoVerificationModule } from './modules/verification-providers/mono/mo
 import { VerificationDocumentsModule } from './modules/verification-documents/verification-documents.module';
 import { IndividualKycModule } from './modules/individual-kyc/individual-kyc.module';
 import { CorporateKycDocumentsModule } from './modules/corporate-kyc-documents/corporate-kyc-documents.module';
+import { MarketDataModule } from './modules/market-data/market-data.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { CorporateKycDocumentsModule } from './modules/corporate-kyc-documents/c
     VerificationDocumentsModule,
     IndividualKycModule,
     CorporateKycDocumentsModule,
+    MarketDataModule,
   ],
 })
 export class AppModule {}

@@ -47,6 +47,8 @@ servers:
 tags:
   - name: System
     description: Service availability and operational endpoints
+  - name: Public Market Data
+    description: Public, read-only, unauthenticated delayed NGX market snapshot sourced from NGN Market (disabled by default)
   - name: Auth
     description: Phase 2B authentication & identity (client-neutral core)
   - name: Me
@@ -83,6 +85,153 @@ paths:
                   version: "0.0.1"
                 meta:
                   requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /public/market-snapshot:
+    get:
+      tags:
+        - Public Market Data
+      operationId: getPublicMarketSnapshot
+      summary: Delayed NGX market snapshot for the public website (no login)
+      security: []
+      description: |
+        Read-only, unauthenticated snapshot of the 14 homepage NGX equities and,
+        where NGN Market supplies verifiable values, NGX summary indicators.
+        Data is **delayed** (never "live"/"real-time"): NGN Market refreshes
+        prices about every 20 minutes during NGX trading hours and serves the
+        latest close outside them. Starfetch serves from a shared cache that is
+        refreshed at most every 30 minutes in the weekday 09:00–16:30 WAT window
+        and every 4 hours otherwise.
+
+        - `equities[].quoteTimestamp` is the provider quote time; `cache.refreshedAt`
+          is when Starfetch last fetched from the provider. They are different.
+        - All 14 configured symbols are always returned in homepage order. A symbol
+          missing from or invalid in the provider response has `available: false`
+          and null price/percent/timestamp. Values are never estimated.
+        - Each equity's quote timestamp must be a strict ISO-8601 instant (explicit
+          `Z`/offset, real calendar date) that is not later than the server clock
+          (zero tolerance). Each equity is served only while its own quote is at
+          most 7 days old, checked when fetched and again on every response;
+          otherwise it is `available: false` with `unavailableReason: QUOTE_EXPIRED`.
+          This is independent of cache freshness (`cache.*`). `quoteAgeSeconds`
+          (additive field) is the quote's age at `generatedAt`. Weekend/holiday
+          quotes under 7 days old remain available and are simply older; no
+          trading calendar is assumed.
+        - New `unavailableReason` values may be added; clients must treat any
+          unknown value as a generic "unavailable".
+        - `status: stale` / `cache.isStale: true` means the cache missed its refresh
+          (refresh in progress, failed or paused by budget/cooldown). Clients must
+          label such data as delayed/stale.
+        - `marketSummary` is null unless the provider supplied it. It is never
+          computed from equities. Market-capitalisation units are as supplied by the
+          provider and must be verified before display.
+        - Attribution to NGN Market is required on any public display.
+
+        Disabled by default; returns 503 `FEATURE_UNAVAILABLE` until explicitly
+        enabled and approved. Errors are `Cache-Control: no-store`; successes are
+        `public, max-age=N, s-maxage=N` with N ≤ 60, reduced so that no shared
+        cache can serve a quote past its 7-day limit (`no-store` if N would be 0).
+        A request that triggers a provider refresh completes within an overall
+        6 s server-side deadline (plus at most 0.5 s lock release). Rate-limited
+        per IP (120/minute).
+      responses:
+        "200":
+          description: Snapshot served from the shared cache (fresh or explicitly labelled stale).
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/X-Request-Id"
+            Cache-Control:
+              description: "`public, max-age=N, s-maxage=N` (N ≤ 60, never beyond the earliest quote expiry), or `no-store`."
+              schema: { type: string, example: "public, max-age=60, s-maxage=60" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicMarketSnapshotResponse"
+              example:
+                data:
+                  status: ok
+                  provider:
+                    name: NGN Market
+                    url: https://ngnmarket.com
+                    attribution: Market data provided by NGN Market (ngnmarket.com).
+                  dataType: delayed
+                  delayNotice: Delayed data. NGN Market refreshes prices approximately every 20 minutes during NGX trading hours; outside trading hours prices reflect the latest available close. Starfetch caches provider data and refreshes it periodically. Not investment advice.
+                  cache:
+                    refreshedAt: "2026-10-22T10:00:00.000Z"
+                    ageSeconds: 300
+                    refreshIntervalSeconds: 1800
+                    nextRefreshDueAt: "2026-10-22T10:30:00.000Z"
+                    isStale: false
+                    staleReason: null
+                  equities:
+                    - symbol: DANGCEM
+                      companyName: Dangote Cement Plc
+                      lastPriceNgn: 123.45
+                      dailyChangePercent: 1.01
+                      quoteTimestamp: "2026-10-22T09:40:00.000Z"
+                      available: true
+                      unavailableReason: null
+                      quoteAgeSeconds: 1500
+                    - symbol: NB
+                      companyName: Nigerian Breweries Plc
+                      lastPriceNgn: null
+                      dailyChangePercent: null
+                      quoteTimestamp: null
+                      available: false
+                      unavailableReason: NOT_IN_PROVIDER_RESPONSE
+                      quoteAgeSeconds: null
+                    - symbol: SEPLAT
+                      companyName: Seplat Energy Plc
+                      lastPriceNgn: null
+                      dailyChangePercent: null
+                      quoteTimestamp: null
+                      available: false
+                      unavailableReason: QUOTE_EXPIRED
+                      quoteAgeSeconds: null
+                  marketSummary:
+                    tradingDate: "2026-10-22"
+                    allShareIndex: 100000.5
+                    allShareIndexChange: 500.25
+                    allShareIndexChangePercent: 0.5
+                    equityMarketCapitalisation: 50000
+                    totalMarketCapitalisation: 60000
+                    providerUpdatedAt: "2026-10-22T09:40:00.000Z"
+                    refreshedAt: "2026-10-22T10:00:00.000Z"
+                    isStale: false
+                  generatedAt: "2026-10-22T10:05:00.000Z"
+                meta:
+                  requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+        "429":
+          $ref: "#/components/responses/RateLimitError"
+        "503":
+          description: |
+            `FEATURE_UNAVAILABLE` (context.status `disabled`) when the integration is
+            not enabled/configured/approved, or `SERVICE_UNAVAILABLE` (context.status
+            `unavailable`, with `reason` and `retryAfterSeconds`, plus a `Retry-After`
+            header) when no servable cached data exists. `reason` is one of
+            `REFRESH_IN_PROGRESS` (5 s), `REFRESH_FAILED` (300 s), `REFRESH_PAUSED`
+            (300 s), `CACHE_UNAVAILABLE` (60 s) or `QUOTES_EXPIRED` (300 s; every
+            cached quote is older than 7 days). Never cached.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                disabled:
+                  value:
+                    error:
+                      code: FEATURE_UNAVAILABLE
+                      message: Market data is not available.
+                      context: { status: disabled }
+                      requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
+                unavailable:
+                  value:
+                    error:
+                      code: SERVICE_UNAVAILABLE
+                      message: Market data is temporarily unavailable.
+                      context: { status: unavailable, reason: REFRESH_FAILED, retryAfterSeconds: 300 }
+                      requestId: "3f6b9f1e-2c4d-4a5b-9c8e-7d6f5a4b3c2d"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -1194,6 +1343,99 @@ components:
         - data
         - meta
 
+    PublicMarketEquity:
+      type: object
+      properties:
+        symbol: { type: string, example: DANGCEM }
+        companyName: { type: string, description: Starfetch display name for the configured symbol. }
+        lastPriceNgn: { type: number, nullable: true, description: Provider last price in NGN; null when unavailable. }
+        dailyChangePercent: { type: number, nullable: true, description: Provider-supplied daily % change; never computed. }
+        quoteTimestamp:
+          type: string
+          format: date-time
+          nullable: true
+          description: Provider quote time (last_updated), normalised to UTC; never substituted. Null when unavailable.
+        available: { type: boolean }
+        unavailableReason:
+          type: string
+          nullable: true
+          description: |
+            Why the equity is unavailable. Additive enum: treat unknown values as
+            generic "unavailable". `INVALID_PROVIDER_DATA` is retained for
+            compatibility; current code emits the specific reasons.
+          enum:
+            - NOT_IN_PROVIDER_RESPONSE
+            - INVALID_PROVIDER_DATA
+            - DUPLICATE_IN_PROVIDER_RESPONSE
+            - MISSING_QUOTE_TIMESTAMP
+            - INVALID_QUOTE_TIMESTAMP
+            - FUTURE_QUOTE_TIMESTAMP
+            - INVALID_PRICE
+            - QUOTE_EXPIRED
+            - null
+        quoteAgeSeconds:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 604800
+          description: Age of quoteTimestamp at generatedAt, in seconds (additive field). Null when unavailable.
+      required: [symbol, companyName, lastPriceNgn, dailyChangePercent, quoteTimestamp, available, unavailableReason, quoteAgeSeconds]
+
+    PublicMarketSummary:
+      type: object
+      nullable: true
+      description: Provider NGX summary (latest available trading day). Never derived from equities.
+      properties:
+        tradingDate: { type: string, format: date }
+        allShareIndex: { type: number, nullable: true }
+        allShareIndexChange: { type: number, nullable: true }
+        allShareIndexChangePercent: { type: number, nullable: true }
+        equityMarketCapitalisation: { type: number, nullable: true, description: As supplied by the provider (unit undocumented — verify before display). }
+        totalMarketCapitalisation: { type: number, nullable: true, description: As supplied by the provider (unit undocumented — verify before display). }
+        providerUpdatedAt: { type: string, format: date-time, nullable: true }
+        refreshedAt: { type: string, format: date-time, description: When Starfetch last fetched the summary. }
+        isStale: { type: boolean }
+      required: [tradingDate, allShareIndex, allShareIndexChange, allShareIndexChangePercent, equityMarketCapitalisation, totalMarketCapitalisation, providerUpdatedAt, refreshedAt, isStale]
+
+    PublicMarketSnapshot:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, stale] }
+        provider:
+          type: object
+          properties:
+            name: { type: string, example: NGN Market }
+            url: { type: string, example: "https://ngnmarket.com" }
+            attribution: { type: string }
+          required: [name, url, attribution]
+        dataType: { type: string, enum: [delayed] }
+        delayNotice: { type: string }
+        cache:
+          type: object
+          properties:
+            refreshedAt: { type: string, format: date-time, description: When Starfetch last refreshed equities from the provider (not the quote time). }
+            ageSeconds: { type: integer }
+            refreshIntervalSeconds: { type: integer }
+            nextRefreshDueAt: { type: string, format: date-time }
+            isStale: { type: boolean }
+            staleReason: { type: string, nullable: true, enum: [REFRESH_IN_PROGRESS, REFRESH_FAILED, REFRESH_PAUSED, null] }
+          required: [refreshedAt, ageSeconds, refreshIntervalSeconds, nextRefreshDueAt, isStale, staleReason]
+        equities:
+          type: array
+          description: Always the 14 configured homepage equities in homepage order (examples are abridged).
+          items: { $ref: "#/components/schemas/PublicMarketEquity" }
+        marketSummary:
+          $ref: "#/components/schemas/PublicMarketSummary"
+        generatedAt: { type: string, format: date-time }
+      required: [status, provider, dataType, delayNotice, cache, equities, marketSummary, generatedAt]
+
+    PublicMarketSnapshotResponse:
+      type: object
+      properties:
+        data: { $ref: "#/components/schemas/PublicMarketSnapshot" }
+        meta: { $ref: "#/components/schemas/Meta" }
+      required: [data, meta]
+
     RegisterRequest:
       oneOf:
         - $ref: "#/components/schemas/IndividualRegisterRequest"
@@ -1833,6 +2075,7 @@ components:
         - FILE_TOO_LARGE                    # 413 — Corporate KYC document over 4 MiB
         - UNSUPPORTED_FILE_TYPE             # 415 — Corporate KYC document signature/type/extension/PDF-structure rejected
         - FEATURE_UNAVAILABLE               # 503 — private document storage not enabled/approved in this deployment
+        - SERVICE_UNAVAILABLE               # 503 — dependency temporarily unavailable (e.g. public market data cache/provider)
         - RATE_LIMITED                      # 429 — endpoint throttled
         - INTERNAL_ERROR                    # 500 — unexpected; never leaks internals
         # Authentication (Phase 2B)
