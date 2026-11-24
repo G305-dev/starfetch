@@ -2,7 +2,7 @@ import { cache } from "react";
 import { MarketOverview } from "./MarketOverview";
 import { loadCommodityFeed } from "@/lib/market/commodity-adapter";
 import { loadMarketPulse } from "@/lib/market/market-pulse";
-import { mergeNgxQuotes, parseNgxSnapshot, MARKET_SNAPSHOT_INTEGRATION } from "@/lib/market/market-snapshot-adapter";
+import { mergeNgxQuotes, parseStarfetchMarketSnapshot, MARKET_SNAPSHOT_INTEGRATION } from "@/lib/market/market-snapshot-adapter";
 import type { CommodityQuote, FeedStatus, NgxQuote } from "@/lib/market/types";
 import { featuredNgxEquities } from "./ngx-market-directory";
 import { withholdIfUnavailable } from "@/lib/market/withhold";
@@ -26,7 +26,7 @@ import { withholdIfUnavailable } from "@/lib/market/withhold";
  */
 
 /** Upper bound on the backend market request, mirroring the commodity feed. */
-const NGX_TIMEOUT_MS = 8_000;
+const NGX_TIMEOUT_MS = 20_000;
 
 export type MarketSectionData = {
   markets: NgxQuote[];
@@ -39,11 +39,10 @@ export type MarketSectionData = {
 /**
  * Loads NGX quotations from David's backend endpoint.
  *
- * While integration is pending the route does not exist, so this resolves to an
- * explicit `unavailable` status. Every failure mode — missing origin, non-2xx,
- * timeout, malformed body — produces the same honest unavailable state: the page
- * always renders, and no price is ever invented or read from an old hardcoded
- * value.
+ * The backend contract is integrated, but the provider feature is disabled by
+ * default until NGN Market explicitly approves public redistribution. Every
+ * failure — missing origin, disabled backend (503), timeout, malformed body —
+ * resolves to an honest unavailable state without inventing quotations.
  */
 async function loadNgxQuotes(): Promise<{ quotes: NgxQuote[]; status: FeedStatus }> {
   const unavailable = (note: string) => ({
@@ -53,7 +52,7 @@ async function loadNgxQuotes(): Promise<{ quotes: NgxQuote[]; status: FeedStatus
 
   const base = process.env.BACKEND_API_ORIGIN?.replace(/\/+$/, "");
   if (!base) {
-    return unavailable("NGX quotations are waiting for the backend market-data service to be connected.");
+    return unavailable("NGX data is not enabled for this website yet.");
   }
 
   try {
@@ -67,7 +66,7 @@ async function loadNgxQuotes(): Promise<{ quotes: NgxQuote[]; status: FeedStatus
     if (!response.ok) {
       return unavailable(`The NGX market-data service is not responding right now (HTTP ${response.status}).`);
     }
-    const parsed = parseNgxSnapshot(await response.json());
+    const parsed = parseStarfetchMarketSnapshot(await response.json());
     return { quotes: mergeNgxQuotes(featuredNgxEquities, parsed.quotes), status: parsed.status };
   } catch (error) {
     const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");

@@ -1,5 +1,42 @@
 # Market data — integration requirements and current status
 
+
+> **Contract alignment (24 November 2026).** David delivered the backend
+> `GET /api/v1/public/market-snapshot` implementation. The frontend now reads
+> the real enveloped `data.equities[]` contract through
+> `parseStarfetchMarketSnapshot` and uses each equity's `quoteTimestamp` (never
+> `cache.refreshedAt` or `generatedAt`). All NGX quotes are labelled **delayed**
+> or **stale**, never real-time. The frontend gracefully handles the feature's
+> default `503 FEATURE_UNAVAILABLE` state. The older assumed `quotations[]`
+> examples and pending language below are historical V3.2 notes only.
+>
+> **NOT publicly activated:** David's backend feature stays disabled by default.
+> NGN Market public redistribution permission and live provider/Upstash checks
+> remain prerequisites. Commodities remain unavailable until an authorized
+> separate pricing provider is approved. Market Pulse remains manually curated.
+>
+> **Actual backend success response:**
+>
+> ```json
+> {
+>   "data": {
+>     "status": "ok",
+>     "provider": { "name": "NGN Market", "attribution": "Market data provided by NGN Market (ngnmarket.com)." },
+>     "dataType": "delayed",
+>     "cache": { "refreshedAt": "2026-11-24T11:00:00.000Z", "isStale": false },
+>     "equities": [
+>       { "symbol": "GTCO", "companyName": "Guaranty Trust Holding Company Plc", "lastPriceNgn": 117,
+>         "dailyChangePercent": 1.4, "quoteTimestamp": "2026-11-24T10:40:00.000Z",
+>         "available": true, "unavailableReason": null }
+>     ]
+>   },
+>   "meta": { "requestId": "..." }
+> }
+> ```
+>
+> This abbreviated response illustrates the field mapping, not the complete
+> required API payload; see the backend OpenAPI schema for all fields.
+
 > **V3.2 (17 November 2026).** A percentage change is now discarded whenever its
 > price is unusable — a change is derived from a price and cannot outlive it. See
 > `MARKET_DATA_V3_2_TEST_REPORT.md`.
@@ -31,11 +68,11 @@
 | Feed | Status | What renders today |
 |---|---|---|
 | **Market Pulse** (NBS/CBN indicators) | **DONE** — manual JSON, verified, path resolution covered by a deployment check | The three figures, each with its reporting period |
-| **NGX equities** | **PENDING** — waiting on David's endpoint | 14 listings with an explicit `Unavailable` price and a "Waiting for backend feed" label |
+| **NGX equities** | **CONTRACT-ALIGNED; NOT ACTIVATED** — David's backend is disabled pending licensing/live checks | 14 listings with unavailable prices until the approved backend is enabled |
 | **Global commodities** | **BLOCKED** — no approved provider | Gold, Brent, Silver, Cocoa with `Unavailable` prices and an explanation |
 | Unified slider | **DONE** | One continuous track; NGX and commodity availability reported **independently** |
 | Loading state | **DONE** | Matched skeleton per section behind its own Suspense boundary |
-| Market at a Glance | **DONE** | Three cards: NGX Stocks, Commodities, Market Pulse |
+| Market at a Glance | **DONE** | Two quotation cards (NGX Stocks, Commodities), followed by the separate three-card Market Pulse section |
 
 **Nothing on the homepage currently presents an invented market price.** The
 previous hardcoded 17 November 2026 NGX snapshot has been removed from the code

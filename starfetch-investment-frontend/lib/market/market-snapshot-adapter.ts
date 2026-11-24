@@ -17,37 +17,28 @@ export { readNumber, formatAsOf };
  *
  *   GET /api/v1/public/market-snapshot
  *
- * IMPORTANT — INTEGRATION IS PENDING. As of this delivery that route does not
- * exist in the backend (`grep -r "market-snapshot"` over
- * `starfetch-investment-backend/src` returns nothing), so this adapter is
- * defined against the *shape the brief specifies* and is deliberately tolerant:
- * it validates rather than trusts, and it degrades to an explicit unavailable
- * state instead of guessing.
+ * Backend contract received from David (NGN Market adapter, b7a4720 baseline).
+ * `parseStarfetchMarketSnapshot` implements the actual backend `data.equities[]`
+ * envelope with per-equity quote timestamps and delayed-only semantics.
+ * `parseNgxSnapshot` remains as a compatibility helper for the original V3.2
+ * regression fixtures, but it is not used to parse backend responses.
  *
- * The payload type below is the frontend's mirror of the agreed contract. It is
- * isolated in this one file so that when David publishes the final schema, only
- * this file changes — no component, no page, no test outside this module.
- *
- * When David confirms the contract, the checklist is:
- *   1. Replace `NgxSnapshotPayload` with the delivered type.
- *   2. Adjust `readQuotations` field names if they differ.
- *   3. Set `MARKET_SNAPSHOT_INTEGRATION.status` to "live" and delete the
- *      `INTEGRATION PENDING` note from both market panels.
+ * This is CONTRACT-INTEGRATED, not publicly active. The backend feature remains
+ * disabled pending redistribution permission and live provider verification.
  */
 
 export const MARKET_SNAPSHOT_PATH = "/public/market-snapshot";
 
 export const MARKET_SNAPSHOT_INTEGRATION = {
-  status: "pending" as "pending" | "live",
+  status: "contract-aligned" as "contract-aligned" | "enabled",
   endpoint: `/api/v1${MARKET_SNAPSHOT_PATH}`,
   owner: "David (backend)",
-  contract: "Not yet delivered — see MARKET_DATA_INTEGRATION.md",
+  contract: "David NGN Market backend v1: data.equities[]; delayed only; individual quoteTimestamp",
 } as const;
 
 /**
- * The assumed wire shape. Every field is optional in the parser because the real
- * contract is unconfirmed; a payload that does not match produces an explicit
- * unavailable status rather than fabricated quotes.
+ * Original V3.2 assumed wire shape, retained only to keep historic fixture
+ * coverage. Production market loading uses `parseStarfetchMarketSnapshot`.
  */
 export type NgxSnapshotPayload = {
   /** ISO instant the provider sampled the quotes. */
@@ -202,4 +193,142 @@ export function mergeNgxQuotes(
       direction: "unknown" as const,
     };
   });
+}
+
+
+/**
+ * David's delivered Starfetch backend contract (not the raw NGN Market API).
+ * It is served inside the standard `{data, meta}` response envelope.
+ * In particular, `cache.refreshedAt` and `generatedAt` are NOT quotation dates.
+ */
+type StarfetchEquityRow = {
+  symbol?: unknown;
+  companyName?: unknown;
+  lastPriceNgn?: unknown;
+  dailyChangePercent?: unknown;
+  quoteTimestamp?: unknown;
+  available?: unknown;
+  unavailableReason?: unknown;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Never display stock prices older than one week, even if the backend cache is new. */
+export const MAX_NGX_QUOTE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Strict parser for `GET /api/v1/public/market-snapshot` from David's backend.
+ * - Requires its actual enveloped, delayed-only contract.
+ * - Only `available:true` with a positive price and provider quotation time
+ *   can contribute a quote; an invalid row never poisons another valid row.
+ * - Rejects per-row future or unreadable timestamps, or values over 7 days old.
+ * - Duplicate symbols are withheld rather than choosing the first price.
+ * - The shared 'As of' is the OLDEST displayed quote time, never the more-recent
+ *   Starfetch cache refresh time (individual rows may have later timestamps).
+ * - If the backend marks the cache stale, the frontend cannot call it current.
+ * - The NGN Market attribution is required and forwarded to the UI.
+ */
+export function parseStarfetchMarketSnapshot(payload: unknown, now: number = Date.now()): NgxSnapshotResult {
+  const unavailable = (note: string, withheld = false): NgxSnapshotResult => ({
+    quotes: new Map<string, NgxQuote>(),
+    status: { ...UNAVAILABLE, note, ...(withheld ? { withheld: true } : {}) },
+  });
+
+  if (!isRecord(payload) || !isRecord(payload.data)) {
+    return unavailable("The NGX market service returned an unexpected response envelope.");
+  }
+  const body = payload.data;
+  if ((body.status !== "ok" && body.status !== "stale") || body.dataType !== "delayed" ||
+      !Array.isArray(body.equities) || body.equities.length > 200 ||
+      !isRecord(body.provider) || !isRecord(body.cache) ||
+      typeof body.cache.isStale !== "boolean") {
+    return unavailable("The NGX market service response does not match its published contract.");
+  }
+
+  const attribution = body.provider.attribution;
+  if (typeof attribution !== "string" || !attribution.trim() || !/NGN Market/i.test(attribution)) {
+    return unavailable("NGX data attribution is unavailable; prices cannot be published.");
+  }
+  const source = attribution.trim();
+  const quotes = new Map<string, NgxQuote>();
+  const quoteTimes = new Map<string, number>();
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  let invalidTimes = 0;
+
+  for (const candidate of body.equities) {
+    if (!isRecord(candidate) || typeof candidate.symbol !== "string") continue;
+    const row = candidate as StarfetchEquityRow;
+    const symbol = candidate.symbol.trim().toUpperCase();
+    if (!/^[A-Z0-9]{1,24}$/.test(symbol)) continue;
+    if (seen.has(symbol)) {
+      duplicates.add(symbol);
+      quotes.delete(symbol);
+      quoteTimes.delete(symbol);
+      continue;
+    }
+    seen.add(symbol);
+    if (row.available !== true || row.unavailableReason !== null) continue;
+    // The backend wire contract specifies numeric prices and changes, not
+    // arbitrarily formatted strings or display-ready currency values.
+    const priceNgn = typeof row.lastPriceNgn === "number" ? readPrice(row.lastPriceNgn) : null;
+    if (priceNgn === null) continue;
+
+    const instant = readQuoteInstant(row.quoteTimestamp, now);
+    if (!instant.ok || instant.ageMs === null || instant.iso === null || instant.ageMs > MAX_NGX_QUOTE_AGE_MS) {
+      invalidTimes++;
+      continue;
+    }
+    const changePercent = row.dailyChangePercent === null
+      ? null
+      : typeof row.dailyChangePercent === "number" ? readChangePercent(row.dailyChangePercent) : null;
+    quotes.set(symbol, {
+      symbol,
+      companyName: typeof row.companyName === "string" && row.companyName.trim() ? row.companyName.trim() : symbol,
+      priceNgn,
+      changePercent,
+      direction: directionFromChange(changePercent),
+    });
+    quoteTimes.set(symbol, now - instant.ageMs);
+  }
+
+  if (quotes.size === 0) {
+    return {
+      quotes,
+      status: {
+        ...UNAVAILABLE,
+        source,
+        note: invalidTimes > 0
+          ? "NGX quotations were withheld because their provider timestamps were invalid, in the future, or too old."
+          : duplicates.size > 0
+            ? "NGX market data contained duplicate symbols; prices were withheld."
+            : "The NGX market service returned no usable quotations.",
+        ...(invalidTimes > 0 || duplicates.size > 0 ? { withheld: true } : {}),
+      },
+    };
+  }
+
+  // Global banner must never use `generatedAt` or `cache.refreshedAt` as
+  // quotation time; they record backend processing, not trading.
+  const oldestQuoteMs = Math.min(...quoteTimes.values());
+  const asOf = new Date(oldestQuoteMs).toISOString();
+  const cacheStale = body.status === "stale" || body.cache.isStale === true;
+  const isStale = cacheStale || now - oldestQuoteMs > STALE_AFTER_MS;
+  const state: FeedStatus["state"] = isStale ? "stale" : "delayed";
+
+  return {
+    quotes,
+    status: {
+      state,
+      asOf,
+      asOfLabel: formatAsOf(asOf),
+      source,
+      note: isStale
+        ? "Delayed NGX data: at least one displayed quotation is old, or the backend cache is stale. The 'As of' time is the oldest displayed quote."
+        : "Delayed NGX data. The 'As of' time is the oldest displayed quote; individual quotations may be newer.",
+      ...(invalidTimes > 0 || duplicates.size > 0 ? { withheld: true } : {}),
+    },
+  };
 }

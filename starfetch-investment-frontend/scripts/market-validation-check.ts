@@ -15,7 +15,7 @@ import {
   parseCommodityFeed,
 } from "../lib/market/commodity-adapter";
 import { commodityDirectory, acceptedSymbols, approvedProviderIds, rejectedSymbols } from "../lib/market/commodity-directory";
-import { mergeNgxQuotes, parseNgxSnapshot, STALE_AFTER_MS } from "../lib/market/market-snapshot-adapter";
+import { mergeNgxQuotes, parseNgxSnapshot, parseStarfetchMarketSnapshot, STALE_AFTER_MS } from "../lib/market/market-snapshot-adapter";
 import {
   FUTURE_TOLERANCE_MS,
   readChangePercent,
@@ -758,6 +758,72 @@ async function main() {
       approvedProviderIds(commodity).length === 0,
       `no provider is approved for id-only identification of "${commodity.id}"`,
     );
+  }
+
+  // David's actual NestJS backend contract (synthetic, no external calls).
+  // The homepage consumes `{data: {equities, cache, status, dataType}}`, NOT
+  // the superseded `{quotations, asOf}` assumptions above.
+  {
+    const equity = (symbol: string, ageMs = 60_000) => ({
+      symbol,
+      companyName: symbol,
+      lastPriceNgn: 117,
+      dailyChangePercent: 1.4,
+      quoteTimestamp: iso(-ageMs),
+      available: true,
+      unavailableReason: null,
+    });
+    const backend = (equities: unknown[], status: "ok" | "stale" = "ok", isStale = false) => ({
+      data: {
+        status,
+        provider: { name: "NGN Market", url: "https://ngnmarket.com", attribution: "Market data provided by NGN Market (ngnmarket.com)." },
+        dataType: "delayed",
+        delayNotice: "Delayed data, not real-time.",
+        cache: { refreshedAt: iso(-1_000), ageSeconds: 1, refreshIntervalSeconds: 1800, nextRefreshDueAt: iso(1800000), isStale, staleReason: isStale ? "REFRESH_FAILED" : null },
+        equities,
+        marketSummary: null,
+        generatedAt: iso(-500),
+      },
+      meta: { requestId: "test" },
+    });
+    const valid = parseStarfetchMarketSnapshot(backend([equity("GTCO")]), NOW);
+    assert(valid.status.state === "delayed" && valid.quotes.get("GTCO")?.priceNgn === 117,
+      "real backend response must parse and remain delayed (never live)");
+    assert(valid.status.source?.includes("ngnmarket.com") === true, "backend provider attribution must survive");
+    assert(valid.status.asOf === iso(-60_000), "quoteTimestamp, never refreshedAt/generatedAt, drives displayed asOf");
+    assert(valid.quotes.get("GTCO")?.changePercent === 1.4, "dailyChangePercent must map through unchanged");
+
+    const partial = parseStarfetchMarketSnapshot(backend([
+      equity("GTCO"),
+      { ...equity("DANGCEM"), available: false, lastPriceNgn: 99 },
+      { ...equity("UBA"), quoteTimestamp: iso(1) },
+      { ...equity("MTNN"), quoteTimestamp: null },
+      { ...equity("NB"), lastPriceNgn: -1 },
+    ]), NOW);
+    assert(partial.quotes.size === 1 && partial.quotes.has("GTCO"),
+      "unavailable/future/missing timestamp/negative rows must be withheld without poisoning valid rows");
+
+    const old = parseStarfetchMarketSnapshot(backend([equity("GTCO", STALE_AFTER_MS + 10_000)]), NOW);
+    assert(old.status.state === "stale" && old.status.asOf === iso(-STALE_AFTER_MS - 10_000),
+      "old individual quotation must display stale with genuine timestamp");
+    const paused = parseStarfetchMarketSnapshot(backend([equity("GTCO")], "stale", true), NOW);
+    assert(paused.status.state === "stale", "backend stale signal must override fresh quote timestamp");
+    const earliest = parseStarfetchMarketSnapshot(backend([equity("GTCO", 60_000), equity("UBA", 120_000)]), NOW);
+    assert(earliest.status.asOf === iso(-120_000), "shared As of must be the oldest displayed quotation");
+    const duplicate = parseStarfetchMarketSnapshot(backend([equity("GTCO"), equity("GTCO")]), NOW);
+    assert(duplicate.quotes.size === 0 && duplicate.status.state === "unavailable", "duplicate symbols cannot silently win");
+    const futureOnly = parseStarfetchMarketSnapshot(backend([{ ...equity("GTCO"), quoteTimestamp: iso(1) }]), NOW);
+    assert(futureOnly.quotes.size === 0 && futureOnly.status.withheld === true,
+      "future timestamps from backend cannot leak prices");
+    const missingAttribution = backend([equity("GTCO")]);
+    missingAttribution.data.provider.attribution = "";
+    assert(parseStarfetchMarketSnapshot(missingAttribution, NOW).quotes.size === 0,
+      "no NGN Market attribution means no public prices");
+    assert(parseStarfetchMarketSnapshot({ data: { quotations: [GOOD_QUOTE] } }, NOW).quotes.size === 0,
+      "old assumed contract must not be accepted on the production endpoint");
+    assert(parseStarfetchMarketSnapshot(backend([equity("GTCO", 8 * 24 * 60 * 60 * 1000)]), NOW).quotes.size === 0,
+      "quotes older than seven days must not be served");
+    console.log("PASS — David NGN Market backend v1 contract: envelope, field mapping, quote timestamps, delayed/stale, withheld rows, attribution, duplicates and seven-day cutoff");
   }
 
   console.log(

@@ -34,7 +34,7 @@ export function MarketPulseSection({ pulse }: { pulse: MarketPulseResult }) {
           The numbers shaping Nigerian investing
         </h2>
         <p className="mt-5 max-w-4xl text-base leading-7 text-star-100">
-          Policy figures we verify against official NBS and CBN publications before publishing.
+          Policy figures we verify against official NBS and CBN publications before publishing. These indicators are not live or real-time data; each figure reflects its stated reporting period.
         </p>
 
         {pulse.status === "ready" ? (
