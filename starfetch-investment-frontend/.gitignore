@@ -4,3 +4,5 @@ out
 *.log
 .env*
 !.env.example
+# compiled output of the access-control runtime harness
+.acl-runtime-out

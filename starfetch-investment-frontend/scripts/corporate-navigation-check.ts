@@ -43,7 +43,10 @@ assert(authProvider.includes("hasAccessToken()"), "Transient re-refresh failures
 assert(guard.includes('status === "unauthenticated"') && guard.includes("router.replace"), "Guard must redirect only when unauthenticated");
 assert(guard.includes('status === "loading"') && guard.includes("Restoring your secure session"), "Guard must show loading while restoring, never redirect early");
 assert(guard.includes('status === "error"') && guard.includes("refreshSession"), "Guard must offer retry on transient restore failure");
-assert(corporateLayout.includes("RequireInvestorAuth"), "Corporate layout must keep the authentication guard");
+assert(
+  corporateLayout.includes("RequireAccountContext") && corporateLayout.includes('context="CORPORATE"'),
+  "Corporate layout must guard the CORPORATE context (authenticated session + backend-proven Corporate access)",
+);
 
 // --- Joint entry treats restore error as wait (never continue/explain) ---
 assert(getJointRegistrationEntryAction("error") === "wait", "Joint entry must wait on session restore error");

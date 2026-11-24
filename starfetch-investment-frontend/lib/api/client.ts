@@ -165,6 +165,12 @@ export type AuthUser = {
    */
   primaryAccountType?: AuthPrimaryAccountType | null;
   authorizedContexts?: AuthAccountContext[];
+  /**
+   * Server-derived count of active Joint memberships. JOINT appears in
+   * `authorizedContexts` only when this is greater than zero. Read-only; it is
+   * never sent back to the backend and is not used to grant access.
+   */
+  jointMembershipCount?: number;
 };
 
 export type IndividualAccountProfile = {
@@ -650,6 +656,8 @@ function normaliseUser(payload: unknown): AuthUser {
   const authorizedContexts = Array.isArray(user.authorizedContexts)
     ? user.authorizedContexts.filter((value): value is AuthAccountContext => value === "INDIVIDUAL" || value === "CORPORATE" || value === "JOINT")
     : undefined;
+  const jointMembershipCountValue = user.jointMembershipCount;
+  const jointMembershipCount = typeof jointMembershipCountValue === "number" && Number.isInteger(jointMembershipCountValue) && jointMembershipCountValue >= 0 ? jointMembershipCountValue : undefined;
   if (!id || firstName === undefined || lastName === undefined || !email || (role !== "INVESTOR" && role !== "STAFF" && role !== "ADMIN")) throw new ApiError("UNEXPECTED_RESPONSE");
   return {
     id,
@@ -662,6 +670,7 @@ function normaliseUser(payload: unknown): AuthUser {
     role,
     ...(primaryAccountType !== undefined ? { primaryAccountType } : {}),
     ...(authorizedContexts ? { authorizedContexts } : {}),
+    ...(jointMembershipCount !== undefined ? { jointMembershipCount } : {}),
   };
 }
 

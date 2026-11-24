@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { CheckCircle2, CircleAlert, Clock3, LoaderCircle, Mail, RefreshCw, X } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { acceptJointInvitation, declineJointInvitation, type JointInvitation } from "@/lib/api/client";
+import {
+  canEnterJointPortal,
+  refreshContextsAfterMembershipChange,
+  STALE_CONTEXT_MESSAGE,
+  UNAUTHENTICATED_CONTEXT_MESSAGE,
+  type MembershipContextRefresh,
+} from "@/lib/auth/membership-context-refresh";
 import { formatJointDate, getJointActionErrorMessage } from "./joint-api-messages";
 import { useJointAccounts } from "./JointAccountProvider";
 
@@ -25,11 +33,15 @@ function InvitationCard({ invitation, onRespond }: { invitation: JointInvitation
 
 export function JointInvitationsContent() {
   const router = useRouter();
+  const { refreshSession } = useAuth();
   const { invitations, invitationsStatus, invitationsError, refresh, selectAccount } = useJointAccounts();
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  // Set when accepting succeeded but the provider could not be refreshed. The
+  // acceptance is NOT repeated; only the permission re-read is retried.
+  const [contextAccess, setContextAccess] = useState<MembershipContextRefresh | null>(null);
 
   async function confirm() {
     if (!confirmation || pending) return;
@@ -40,9 +52,25 @@ export function JointInvitationsContent() {
     try {
       if (current.action === "accept") {
         const response = await acceptJointInvitation(current.invitation.invitationId);
-        const accounts = await refresh();
+        // Accepting created a membership, so the provider's projection is
+        // stale. Re-read it through AuthProvider BEFORE navigating, otherwise
+        // the Joint guard would refuse the dashboard the applicant just earned.
+        const contextRefresh = await refreshContextsAfterMembershipChange(refreshSession);
         setConfirmation(null);
-        if (accounts.some((account) => account.jointAccountId === response.jointAccountId) && selectAccount(response.jointAccountId)) {
+        setContextAccess(contextRefresh);
+        const accounts = await refresh();
+        const selected = accounts.some((account) => account.jointAccountId === response.jointAccountId) && selectAccount(response.jointAccountId);
+        if (contextRefresh.status === "unauthenticated") {
+          // The acceptance succeeded; only the session ended.
+          setError(UNAUTHENTICATED_CONTEXT_MESSAGE);
+          return;
+        }
+        if (contextRefresh.status === "stale") {
+          // Never repeat the acceptance: it already succeeded.
+          setMessage(STALE_CONTEXT_MESSAGE);
+          return;
+        }
+        if (selected) {
           router.push("/joint/dashboard");
           return;
         }
@@ -62,8 +90,37 @@ export function JointInvitationsContent() {
     }
   }
 
+  /**
+   * Retries ONLY the permission re-read. The invitation has already been
+   * accepted, so no mutation is repeated here.
+   */
+  async function retryContextRefresh() {
+    if (pending) return;
+    setPending(true);
+    setError("");
+    try {
+      const contextRefresh = await refreshContextsAfterMembershipChange(refreshSession);
+      setContextAccess(contextRefresh);
+      if (contextRefresh.status === "unauthenticated") {
+        setMessage("");
+        setError(UNAUTHENTICATED_CONTEXT_MESSAGE);
+        return;
+      }
+      if (contextRefresh.status === "stale") {
+        setMessage(STALE_CONTEXT_MESSAGE);
+        return;
+      }
+      setMessage("");
+      setError("");
+      await refresh();
+      if (canEnterJointPortal(contextRefresh)) router.push("/joint/dashboard");
+    } finally {
+      setPending(false);
+    }
+  }
+
   if (invitationsStatus === "loading") return <LoadingState />;
   if (invitationsStatus === "error") return <section className="grid min-h-[320px] place-items-center rounded-xl border border-red-200 bg-white px-5 text-center"><div className="max-w-md"><CircleAlert size={28} className="mx-auto text-red-700" aria-hidden="true" /><h1 className="mt-4 text-xl font-extrabold text-star-900">Invitations are unavailable</h1><p className="mt-2 text-sm leading-6 text-star-muted">{getJointActionErrorMessage(invitationsError)}</p><button type="button" onClick={() => { void refresh(); }} className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-md bg-star-700 px-4 text-sm font-extrabold text-white"><RefreshCw size={16} aria-hidden="true" />Try again</button></div></section>;
 
-  return <main><section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-extrabold uppercase tracking-[0.16em] text-star-700">Joint account access</p><h1 className="mt-2 font-display text-[clamp(2rem,3.5vw,3rem)] font-extrabold tracking-[-0.045em] text-star-900">Invitation inbox</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-star-muted sm:text-base">Review your pending Joint Account invitations and choose whether to accept.</p></div><button type="button" onClick={() => { void refresh(); }} className="inline-flex min-h-10 w-fit items-center gap-2 rounded-md border border-star-200 bg-white px-4 text-sm font-extrabold text-star-700 hover:bg-star-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700"><RefreshCw size={16} aria-hidden="true" />Refresh</button></section>{error ? <p role="alert" className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{error}</p> : null}{message ? <p role="status" className="mt-5 rounded-lg border border-[#cce7d0] bg-[#eff8f0] px-4 py-3 text-sm leading-6 text-star-900">{message}</p> : null}{invitations.length ? <section className="mt-7 grid gap-5 lg:grid-cols-2">{invitations.map((invitation) => <InvitationCard key={invitation.invitationId} invitation={invitation} onRespond={(action, item) => { setError(""); setMessage(""); setConfirmation({ action, invitation: item }); }} />)}</section> : <section className="mt-7 grid min-h-[300px] place-items-center rounded-xl border border-dashed border-star-300 bg-star-50/65 px-5 py-10 text-center"><div className="max-w-md"><span className="mx-auto grid size-12 place-items-center rounded-full bg-white text-star-700 shadow-sm"><Mail size={23} aria-hidden="true" /></span><h2 className="mt-4 text-xl font-extrabold text-star-900">No pending invitations</h2><p className="mt-2 text-sm leading-6 text-star-muted">New Joint Account invitations will appear here.</p></div></section>}{confirmation ? <ConfirmationDialog confirmation={confirmation} pending={pending} onClose={() => { if (!pending) setConfirmation(null); }} onConfirm={() => { void confirm(); }} /> : null}</main>;
+  return <main><section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-extrabold uppercase tracking-[0.16em] text-star-700">Joint account access</p><h1 className="mt-2 font-display text-[clamp(2rem,3.5vw,3rem)] font-extrabold tracking-[-0.045em] text-star-900">Invitation inbox</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-star-muted sm:text-base">Review your pending Joint Account invitations and choose whether to accept.</p></div><button type="button" onClick={() => { void refresh(); }} className="inline-flex min-h-10 w-fit items-center gap-2 rounded-md border border-star-200 bg-white px-4 text-sm font-extrabold text-star-700 hover:bg-star-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700"><RefreshCw size={16} aria-hidden="true" />Refresh</button></section>{error ? <p role="alert" className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{error}</p> : null}{message ? <div role="status" className="mt-5 rounded-lg border border-[#cce7d0] bg-[#eff8f0] px-4 py-3 text-sm leading-6 text-star-900"><p>{message}</p>{contextAccess && contextAccess.status === "stale" ? <button type="button" onClick={() => { void retryContextRefresh(); }} disabled={pending} className="mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-star-700 px-4 text-sm font-extrabold text-white transition hover:bg-star-800 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">{pending ? <LoaderCircle size={16} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={16} aria-hidden="true" />}{pending ? "Refreshing access…" : "Refresh access"}</button> : null}</div> : null}{invitations.length ? <section className="mt-7 grid gap-5 lg:grid-cols-2">{invitations.map((invitation) => <InvitationCard key={invitation.invitationId} invitation={invitation} onRespond={(action, item) => { setError(""); setMessage(""); setConfirmation({ action, invitation: item }); }} />)}</section> : <section className="mt-7 grid min-h-[300px] place-items-center rounded-xl border border-dashed border-star-300 bg-star-50/65 px-5 py-10 text-center"><div className="max-w-md"><span className="mx-auto grid size-12 place-items-center rounded-full bg-white text-star-700 shadow-sm"><Mail size={23} aria-hidden="true" /></span><h2 className="mt-4 text-xl font-extrabold text-star-900">No pending invitations</h2><p className="mt-2 text-sm leading-6 text-star-muted">New Joint Account invitations will appear here.</p></div></section>}{confirmation ? <ConfirmationDialog confirmation={confirmation} pending={pending} onClose={() => { if (!pending) setConfirmation(null); }} onConfirm={() => { void confirm(); }} /> : null}</main>;
 }
