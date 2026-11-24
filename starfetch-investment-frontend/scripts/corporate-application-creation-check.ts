@@ -96,7 +96,7 @@ async function run() {
   assert(existsSync(resolve(root, pagePath)), "The protected creation route must exist under app/corporate");
   const page = read(pagePath);
   const layout = read("app/corporate/layout.tsx");
-  assert(layout.includes("RequireInvestorAuth"), "All /corporate routes, including creation, must stay behind RequireInvestorAuth");
+  assert(layout.includes("RequireAccountContext") && layout.includes('context="CORPORATE"'), "All /corporate routes, including creation, must stay behind the authenticated CORPORATE context guard");
   assert(page.includes("CorporatePortalLayout") && page.includes("CorporateApplicationStart"), "The creation page must use Emmanuel's Corporate portal layout");
 
   const start = read("components/corporate/CorporateApplicationStart.tsx");

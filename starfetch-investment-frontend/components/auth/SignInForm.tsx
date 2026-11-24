@@ -5,6 +5,13 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useId, useState } from "react";
 import { getSafeErrorMessage, isApiError } from "@/lib/api/client";
+import {
+  authorizedPortals,
+  loginTypeToPortal,
+  portalDashboards,
+  portalLabels,
+  resolveLoginDestination,
+} from "@/lib/auth/account-context-access";
 import { getSafeReturnPath } from "@/lib/auth/safe-return-path";
 import { setPendingVerification } from "@/lib/auth/verification-flow";
 import { useAuth } from "./AuthProvider";
@@ -40,6 +47,9 @@ export function SignInForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<SignInErrors>({});
   const [serverError, setServerError] = useState("");
+  // Set only after a genuine successful login that the backend does not
+  // authorise for the selected portal. The session stays valid.
+  const [accessNotice, setAccessNotice] = useState<{ message: string; portal: "INDIVIDUAL" | "JOINT" | "CORPORATE" | null } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const availableAccountTypes = corporateApplicantLogin ? [corporateApplicantLoginType] : accountTypes;
 
@@ -47,6 +57,7 @@ export function SignInForm() {
     setAccountType(type);
     setErrors((current) => ({ ...current, accountType: undefined }));
     setServerError("");
+    setAccessNotice(null);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -65,6 +76,7 @@ export function SignInForm() {
 
     setErrors(nextErrors);
     setServerError("");
+    setAccessNotice(null);
     if (Object.keys(nextErrors).length > 0 || !accountType) return;
 
     setSubmitting(true);
@@ -72,13 +84,17 @@ export function SignInForm() {
       // Individual, Joint, and Corporate applicants use the same verified
       // INVESTOR authentication endpoint. Account-type selection only chooses
       // safe frontend navigation; it is not backend role verification.
-      await login({ email, password });
-      const defaultDestination = accountType === "joint" ? "/joint/dashboard" : accountType === "corporate" ? "/corporate/dashboard" : "/dashboard";
-      // Preserve protected Corporate destinations when a guard supplied one;
-      // the legacy registration return path is normalised to the dashboard so
-      // unavailable O2 cannot open after authentication.
-      const corporateDestination = safeNextPath?.startsWith("/corporate/") ? safeNextPath : "/corporate/dashboard";
-      router.replace(accountType === "corporate" ? corporateDestination : safeNextPath ?? defaultDestination);
+      const authenticatedUser = await login({ email, password });
+      // The account-type button only expresses intent. Authorisation comes from
+      // the backend projection, so navigate only when it proves the context.
+      // A protected return path is likewise honoured only inside that context.
+      const { destination, authorization } = resolveLoginDestination(authenticatedUser, loginTypeToPortal[accountType], safeNextPath);
+      if (!destination) {
+        // Preserve the valid session; refuse entry to the selected portal.
+        setAccessNotice({ message: authorization.reason, portal: authorizedPortals(authenticatedUser)[0] ?? null });
+        return;
+      }
+      router.replace(destination);
     } catch (requestError) {
       if (isApiError(requestError) && requestError.code === "EMAIL_NOT_VERIFIED" && requestError.verificationId) {
         const registrationType = accountType === "corporate" ? "CORPORATE" : "INDIVIDUAL";
@@ -133,6 +149,17 @@ export function SignInForm() {
         <div className="flex justify-end"><span className="text-sm text-star-muted">Password reset is not available yet.</span></div>
         <button type="submit" disabled={disabled} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-star-lime px-5 text-sm font-extrabold text-star-900 transition duration-200 hover:-translate-y-px hover:bg-[#c7f238] hover:shadow-[0_6px_16px_rgba(0,59,42,0.15)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60">{submitting ? <><LoaderCircle size={18} className="animate-spin" aria-hidden="true" />Logging in…</> : accountType === "corporate" ? "Log In to Corporate Applicant Dashboard" : accountType === "joint" ? "Log In to Joint Accounts" : "Log In"}</button>
         {serverError ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-center text-xs leading-5 text-red-700">{serverError}</p> : null}
+        {accessNotice ? <div role="alert" className="rounded-lg border border-[#f2d89d] bg-[#fff9e8] px-3.5 py-3 text-left">
+          <p className="text-xs font-extrabold uppercase tracking-[0.08em] text-star-700">Account access</p>
+          <p className="mt-1 text-xs leading-5 text-star-900">{accessNotice.message}</p>
+          <p className="mt-1 text-xs leading-5 text-star-muted">You are still signed in. Open the portal that matches this account, or sign in with a different account.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {accessNotice.portal ? <button type="button" onClick={() => router.replace(portalDashboards[accessNotice.portal!])} className="inline-flex min-h-9 items-center justify-center rounded-md bg-star-700 px-3 text-xs font-extrabold text-white transition hover:bg-star-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Go to my {portalLabels[accessNotice.portal]} dashboard</button> : null}
+            {corporateApplicantLogin
+              ? <Link href="/login" className="inline-flex min-h-9 items-center justify-center rounded-md border border-star-300 px-3 text-xs font-extrabold text-star-700 no-underline transition hover:bg-star-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Use the standard portal login</Link>
+              : <button type="button" onClick={() => setAccessNotice(null)} className="inline-flex min-h-9 items-center justify-center rounded-md border border-star-300 px-3 text-xs font-extrabold text-star-700 transition hover:bg-star-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Choose another account type</button>}
+          </div>
+        </div> : null}
       </form>
 
       <p className="mt-7 text-center text-sm text-star-muted lg:hidden">Don&apos;t have an account? <Link href="/open-account" className="font-bold text-star-700 underline decoration-star-lime decoration-2 underline-offset-4 transition hover:text-star-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-star-700 focus-visible:ring-offset-2">Open an account</Link></p>

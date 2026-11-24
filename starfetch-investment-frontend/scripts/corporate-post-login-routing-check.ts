@@ -27,10 +27,10 @@ assert(
 
 assert(
   signIn.includes('safeNextPath?.startsWith("/corporate/") || safeNextPath === "/register/corporate"')
-    && signIn.includes('const corporateDestination = safeNextPath?.startsWith("/corporate/") ? safeNextPath : "/corporate/dashboard";')
-    && signIn.includes('router.replace(accountType === "corporate" ? corporateDestination : safeNextPath ?? defaultDestination);')
+    // Destination now comes from the backend-proven context, not the raw selection.
+    && signIn.includes("resolveLoginDestination(authenticatedUser, loginTypeToPortal[accountType], safeNextPath)")
     && !signIn.includes('accountType === "corporate" ? "/register/corporate"'),
-  "Corporate sign-in must default to /corporate/dashboard, preserve protected Corporate return routes, and normalise the legacy registration path without a redirect loop",
+  "Corporate sign-in must default to /corporate/dashboard for an authorised Corporate account, preserve protected Corporate return routes, normalise the legacy registration path, and never navigate from the raw selection alone",
 );
 
 assert(

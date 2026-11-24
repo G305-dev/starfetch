@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "baseUrl": "../..",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    },
+    "outDir": "../../.acl-runtime-out",
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "account-context-runtime-check.tsx",
+    "login-flow-runtime-check.tsx",
+    "joint-regression-runtime-check.tsx",
+    "membership-refresh-runtime-check.tsx",
+    "membership-refresh-runtime-check.ts",
+    "runtime-support.tsx",
+    "provider-sync-runtime-check.tsx",
+    "login-return-path-runtime-check.tsx"
+  ],
+  "exclude": []
+}

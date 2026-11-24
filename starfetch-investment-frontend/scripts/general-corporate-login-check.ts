@@ -23,9 +23,8 @@ assert(
   "Corporate login must use only the registered email and password; RC number must not be a login credential",
 );
 assert(
-  signIn.includes("await login({ email, password });")
-    && signIn.includes('accountType === "corporate" ? corporateDestination : safeNextPath ?? defaultDestination')
-    && signIn.includes('const corporateDestination = safeNextPath?.startsWith("/corporate/") ? safeNextPath : "/corporate/dashboard";'),
+  signIn.includes("const authenticatedUser = await login({ email, password })")
+    && signIn.includes("resolveLoginDestination(authenticatedUser, loginTypeToPortal[accountType], safeNextPath)"),
   "The general Corporate choice must use the shared Investor login and route a successful applicant to the protected Corporate destination",
 );
 assert(

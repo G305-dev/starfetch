@@ -41,7 +41,12 @@
     "test:individual-kyc-api-contract": "node scripts/run-typescript-check.cjs scripts/individual-kyc-api-contract-check.ts",
     "test:individual-kyc-api-mapping": "node scripts/run-typescript-check.cjs scripts/individual-kyc-api-mapping-check.ts",
     "test:individual-kyc-integration": "npm run test:individual-kyc-api-contract && npm run test:individual-kyc-api-mapping && npm run test:individual-profile-local-kyc && npm run test:individual-profile-section-progression && npm run test:investment-objective-risk-profile && npm run test:individual-profile-source-of-funds && npm run test:individual-profile-bank-details && npm run test:individual-profile-pep-declaration",
-    "test:corporate-products": "node scripts/run-typescript-check.cjs scripts/corporate-products-check.ts"
+    "test:corporate-products": "node scripts/run-typescript-check.cjs scripts/corporate-products-check.ts",
+    "test:account-context-access": "node scripts/run-typescript-check.cjs scripts/account-context-access-check.ts",
+    "test:account-context-access:runtime": "node scripts/harness/run-runtime-check.cjs",
+    "test:access-control:provider": "node scripts/harness/run-provider-sync-check.cjs",
+    "test:backend-parity": "node scripts/run-typescript-check.cjs scripts/backend-parity-check.ts",
+    "test:access-control": "npm run test:account-context-access && npm run test:account-context-access:runtime && npm run test:access-control:provider && npm run test:backend-parity"
   },
   "dependencies": {
     "@types/node": "22.13.10",
@@ -54,8 +59,10 @@
     "typescript": "5.7.3"
   },
   "devDependencies": {
+    "@types/react-test-renderer": "^19.3.1",
     "autoprefixer": "10.4.20",
     "postcss": "8.5.2",
+    "react-test-renderer": "^19.0.0",
     "tailwindcss": "3.4.17"
   }
 }
