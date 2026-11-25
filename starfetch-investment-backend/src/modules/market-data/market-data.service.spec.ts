@@ -292,6 +292,73 @@ describe('MarketDataService', () => {
     });
   });
 
+  describe('market summary with the provider UTC-midnight trading date', () => {
+    it('a provider snapshot whose date is UTC midnight populates the summary (normalised, cached, updated_at kept separate)', async () => {
+      const body = syntheticSnapshotBody(QUOTE_TIME) as { data: Record<string, unknown> };
+      expect(body.data.date).toBe('2026-10-22T00:00:00.000Z'); // fixture mirrors the observed provider format
+      const result = await instance(redis, provider, clock).service.getPublicSnapshot();
+      expect(result.status).toBe('ok');
+      expect(result.marketSummary).toEqual({
+        tradingDate: '2026-10-22',
+        allShareIndex: 100_000.5,
+        allShareIndexChange: 500.25,
+        allShareIndexChangePercent: 0.5,
+        equityMarketCapitalisation: 50_000,
+        totalMarketCapitalisation: 60_000,
+        providerUpdatedAt: QUOTE_TIME,
+        refreshedAt: new Date(TRADING_NOW).toISOString(),
+        isStale: false,
+      });
+      const cached = JSON.parse(redis.peek(REDIS_KEYS.snapshot) as string) as CachedMarketSnapshot;
+      expect(cached.summary?.data.tradingDate).toBe('2026-10-22');
+      expect(provider.calls).toEqual(['companies', 'snapshot']);
+    });
+
+    it('a summary rejected for its date leaves marketSummary null while all equities stay available (no cooldown, no extra call)', async () => {
+      provider.snapshotDefault = () => {
+        const body = syntheticSnapshotBody(QUOTE_TIME) as { data: Record<string, unknown> };
+        body.data.date = '2026-10-22T09:40:00.000Z'; // not midnight: never truncated into a date
+        return jsonResponse(200, body);
+      };
+      const result = await instance(redis, provider, clock).service.getPublicSnapshot();
+      expect(result.status).toBe('ok');
+      expect(result.marketSummary).toBeNull();
+      expect(result.equities.every((e) => e.available)).toBe(true);
+      expect(provider.calls).toEqual(['companies', 'snapshot']);
+      expect(redis.peek(REDIS_KEYS.budgetMonth('2026-10'))).toBe('2');
+      expect(redis.peek(REDIS_KEYS.cooldown)).toBeNull();
+      const logged = JSON.stringify(warn.mock.calls);
+      expect(logged).toContain('MALFORMED_SUMMARY');
+      expect(logged).not.toContain('2026-10-22T09:40:00.000Z'); // reason code only, never the provider value
+    });
+
+    it('a cached summary expires after 7 days even when newer equities keep being refreshed', async () => {
+      await instance(redis, provider, clock).service.getPublicSnapshot();
+      clock.t = TRADING_NOW + 7 * 86_400_000 + 3_600_000; // the following Thursday, 11:00Z
+      const laterQuote = new Date(clock.t - 20 * 60_000).toISOString();
+      provider.companiesDefault = () => jsonResponse(200, syntheticCompaniesBody(ALL, laterQuote));
+      provider.snapshotDefault = () => jsonResponse(500, { success: false, error: { code: 'SERVER_ERROR' } });
+      const result = await instance(redis, provider, clock).service.getPublicSnapshot();
+      expect(result.status).toBe('ok');
+      expect(result.equities.every((e) => e.available && e.quoteTimestamp === laterQuote)).toBe(true);
+      expect(result.marketSummary).toBeNull(); // the 22 Oct summary is kept in the cache but never served as current
+    });
+
+    it('after deployment: a fresh cached snapshot with a null summary is not refetched early; the next scheduled refresh fills it', async () => {
+      redis.seed(REDIS_KEYS.snapshot, JSON.stringify(cachedDoc(TRADING_NOW - 600_000, false)));
+      redis.seed(REDIS_KEYS.budgetMonth('2026-10'), '57');
+      const { service } = instance(redis, provider, clock);
+      const before = await service.getPublicSnapshot();
+      expect(before.marketSummary).toBeNull();
+      expect(provider.calls).toEqual([]); // no early provider call, no cache flush needed
+      clock.advanceSeconds(1_800 - 600);
+      const after = await service.getPublicSnapshot();
+      expect(provider.calls).toEqual(['companies', 'snapshot']);
+      expect(after.marketSummary).toMatchObject({ tradingDate: '2026-10-22', isStale: false });
+      expect(redis.peek(REDIS_KEYS.budgetMonth('2026-10'))).toBe('59'); // existing counters continue, never reset
+    });
+  });
+
   describe('distributed lock / multi-instance concurrency', () => {
     it('cold cache: 12 concurrent requests across 3 instances cause exactly one upstream refresh', async () => {
       const gate = deferred<void>();

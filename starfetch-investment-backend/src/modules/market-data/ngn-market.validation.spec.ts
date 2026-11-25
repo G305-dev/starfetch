@@ -7,6 +7,7 @@ import {
   parseProviderErrorCode,
   parseQuotaMeta,
   parseSnapshotResponse,
+  parseTradingDate,
   parseStrictInstant,
   validResetAtMs,
 } from './ngn-market.validation';
@@ -283,6 +284,157 @@ describe('NGN Market response validation & normalization', () => {
     expect(withData({ updated_at: '2026-10-22T11:00:00.001Z' })).toMatchObject({ ok: true, value: { providerUpdatedAt: null } });
     expect(withData({ updated_at: '2026-10-22 10:00:00' })).toMatchObject({ ok: true, value: { providerUpdatedAt: null } });
     expect(isSummaryCurrent({ tradingDate: '2026-10-22', providerUpdatedAt: null }, NOW.getTime())).toBe(true);
+  });
+
+  describe('market summary trading date (date-only and the observed provider UTC-midnight form)', () => {
+    // Synthetic values in the exact structure of a live /v1/market/snapshot body.
+    const OBSERVED_NOW = new Date('2026-11-24T17:00:00.000Z');
+    const observedShapeBody = (date: unknown) => ({
+      success: true,
+      data: {
+        date,
+        asi: 123_456.78,
+        asi_change: -321.09,
+        asi_change_percent: -0.26,
+        ytd_asi_change_percent: 12.34,
+        deals: 1_234,
+        volume: 5_678_901,
+        value_traded: 9_876_543.21,
+        turnover_rate: 0.0123,
+        market_cap: { equity: 100_000_000_000_000, bonds: 50_000_000_000_000, etfs: 40_000_000_000, total: 150_040_000_000_000 },
+        breadth: { advancers: 10, decliners: 20, unchanged: 30, total: 60, adv_dec_ratio: 0.5 },
+        total_listed_securities: 60,
+        session: { open_time: '10:00', close_time: '14:30', timezone: 'Africa/Lagos' },
+        updated_at: '2026-11-24T16:00:12.000Z',
+      },
+      meta: { plan: 'free', calls_used: 3, calls_remaining: 2_997, reset_at: '2026-12-01T00:00:00.000Z' },
+    });
+
+    it('accepts a valid date-only trading date unchanged', () => {
+      expect(parseTradingDate('2026-11-24')).toBe('2026-11-24');
+      expect(parseTradingDate('2024-02-29')).toBe('2024-02-29'); // leap day
+    });
+
+    it('accepts ISO UTC midnight and normalises it to the same calendar date (no timezone shift)', () => {
+      expect(parseTradingDate('2026-11-24T00:00:00.000Z')).toBe('2026-11-24');
+      expect(parseTradingDate('2026-11-24T00:00:00Z')).toBe('2026-11-24');
+      expect(parseTradingDate('2026-12-31T00:00:00.000Z')).toBe('2026-12-31'); // year end stays in its year
+      expect(parseTradingDate('2026-01-01T00:00:00.000Z')).toBe('2026-01-01');
+    });
+
+    it('normalises the observed provider response format into a populated summary', () => {
+      expect(parseSnapshotResponse(observedShapeBody('2026-11-24T00:00:00.000Z'), OBSERVED_NOW)).toEqual({
+        ok: true,
+        value: {
+          tradingDate: '2026-11-24',
+          allShareIndex: 123_456.78,
+          allShareIndexChange: -321.09,
+          allShareIndexChangePercent: -0.26,
+          equityMarketCapitalisation: 100_000_000_000_000,
+          totalMarketCapitalisation: 150_040_000_000_000,
+          providerUpdatedAt: '2026-11-24T16:00:12.000Z', // updated_at stays distinct from the trading date
+        },
+      });
+    });
+
+    it.each([
+      ['31 April', '2026-04-31'],
+      ['31 April (ISO midnight)', '2026-04-31T00:00:00.000Z'],
+      ['29 February in a non-leap year', '2026-02-29T00:00:00.000Z'],
+      ['month 13', '2026-13-01T00:00:00.000Z'],
+      ['month 00', '2026-00-10'],
+      ['day 00', '2026-11-00T00:00:00.000Z'],
+      ['day 32', '2026-12-32'],
+      ['year before 1970', '1969-12-31T00:00:00.000Z'],
+    ])('rejects an impossible calendar date (%s)', (_label, value) => {
+      expect(parseTradingDate(value)).toBeNull();
+      expect(parseSnapshotResponse(observedShapeBody(value), OBSERVED_NOW)).toEqual({ ok: false, error: 'MALFORMED_SUMMARY' });
+    });
+
+    it.each([
+      ['empty string', ''],
+      ['garbage', 'not-a-date'],
+      ['compact date', '20261124'],
+      ['day-first date', '24/11/2026'],
+      ['US date', '11/24/2026'],
+      ['two-digit year', '26-11-24'],
+      ['trailing text', '2026-11-24T00:00:00.000Zjunk'],
+      ['leading space', ' 2026-11-24'],
+      ['truncated time', '2026-11-24T'],
+      ['epoch number', 1_795_478_400_000],
+      ['Date object', new Date('2026-11-24T00:00:00.000Z')],
+      ['object', { date: '2026-11-24' }],
+    ])('rejects a malformed trading date (%s)', (_label, value) => {
+      expect(parseTradingDate(value)).toBeNull();
+      expect(parseSnapshotResponse(observedShapeBody(value), OBSERVED_NOW)).toEqual({ ok: false, error: 'MALFORMED_SUMMARY' });
+    });
+
+    it.each([
+      ['missing', undefined],
+      ['null', null],
+    ])('rejects a missing trading date (%s)', (_label, value) => {
+      const body = observedShapeBody(value);
+      if (value === undefined) delete (body.data as Record<string, unknown>).date;
+      expect(parseSnapshotResponse(body, OBSERVED_NOW)).toEqual({ ok: false, error: 'MALFORMED_SUMMARY' });
+    });
+
+    it.each([
+      ['1 ms after midnight', '2026-11-24T00:00:00.001Z'],
+      ['one hour after midnight', '2026-11-24T01:00:00.000Z'],
+      ['end of day (would be truncated by a naive slice)', '2026-11-24T23:59:59.999Z'],
+      ['Lagos midnight written with an offset', '2026-11-24T00:00:00.000+01:00'],
+      ['explicit +00:00 offset (unverified form)', '2026-11-24T00:00:00.000+00:00'],
+      ['negative offset', '2026-11-23T00:00:00-05:00'],
+      ['no zone designator', '2026-11-24T00:00:00.000'],
+      ['lowercase z', '2026-11-24T00:00:00.000z'],
+      ['space separator', '2026-11-24 00:00:00.000Z'],
+      ['no seconds', '2026-11-24T00:00Z'],
+      ['other fraction length', '2026-11-24T00:00:00.0Z'],
+      ['microsecond fraction', '2026-11-24T00:00:00.000000Z'],
+    ])('rejects a non-midnight or ambiguous timestamp instead of truncating it (%s)', (_label, value) => {
+      expect(parseTradingDate(value)).toBeNull();
+      expect(parseSnapshotResponse(observedShapeBody(value), OBSERVED_NOW)).toEqual({ ok: false, error: 'MALFORMED_SUMMARY' });
+    });
+
+    it('rejects a future trading date in either form, judged against the Lagos calendar date', () => {
+      expect(parseSnapshotResponse(observedShapeBody('2026-11-25T00:00:00.000Z'), OBSERVED_NOW)).toEqual({ ok: false, error: 'SUMMARY_NOT_CURRENT' });
+      expect(parseSnapshotResponse(observedShapeBody('2026-11-25'), OBSERVED_NOW)).toEqual({ ok: false, error: 'SUMMARY_NOT_CURRENT' });
+      // 22:59:59Z is still 24 Nov in Lagos (UTC+1): 25 Nov is in the future there.
+      const lateEvening = new Date('2026-11-24T22:59:59.999Z');
+      expect(parseSnapshotResponse(observedShapeBody('2026-11-25T00:00:00.000Z'), lateEvening)).toEqual({ ok: false, error: 'SUMMARY_NOT_CURRENT' });
+      // 23:00Z is already 25 Nov in Lagos, so a 25 Nov trading date is today, not the future.
+      const lagosMidnight = new Date('2026-11-24T23:00:00.000Z');
+      expect(parseSnapshotResponse(observedShapeBody('2026-11-25T00:00:00.000Z'), lagosMidnight)).toMatchObject({
+        ok: true,
+        value: { tradingDate: '2026-11-25' },
+      });
+    });
+
+    it('applies the existing 7-day rule to the normalised trading date and to updated_at', () => {
+      const withDate = (date: string, updatedAt: string) => {
+        const body = observedShapeBody(date);
+        (body.data as Record<string, unknown>).updated_at = updatedAt;
+        return parseSnapshotResponse(body, OBSERVED_NOW);
+      };
+      // Exactly 7 Lagos calendar days earlier: still current.
+      expect(withDate('2026-11-17T00:00:00.000Z', '2026-11-17T17:00:00.000Z')).toMatchObject({ ok: true, value: { tradingDate: '2026-11-17' } });
+      // 8 days earlier: expired.
+      expect(withDate('2026-11-16T00:00:00.000Z', '2026-11-17T17:00:00.000Z')).toEqual({ ok: false, error: 'SUMMARY_NOT_CURRENT' });
+      // Trading date within 7 days but updated_at older than 7 days: expired.
+      expect(withDate('2026-11-17T00:00:00.000Z', '2026-11-17T16:59:59.999Z')).toEqual({ ok: false, error: 'SUMMARY_NOT_CURRENT' });
+    });
+
+    it('leaves strict equity timestamp validation unchanged (a UTC-midnight date is still not an equity timestamp)', () => {
+      const result = parseCompaniesResponse(
+        syntheticCompaniesBody(['GTCO', 'MTNN', 'UBA'], QUOTE_TIME, { MTNN: { last_updated: '2026-10-22' }, UBA: { last_updated: '2026-10-22T11:00:00.001Z' } }),
+        NOW,
+      );
+      expect(result.ok).toBe(true);
+      const bySymbol = Object.fromEntries((result.ok ? result.value : []).map((quote) => [quote.symbol, quote]));
+      expect(bySymbol.GTCO).toMatchObject({ available: true, quoteTimestamp: QUOTE_TIME });
+      expect(bySymbol.MTNN).toMatchObject({ available: false, unavailableReason: 'INVALID_QUOTE_TIMESTAMP' });
+      expect(bySymbol.UBA).toMatchObject({ available: false, unavailableReason: 'FUTURE_QUOTE_TIMESTAMP' });
+    });
   });
 
   it('parses quota metadata defensively and sanitizes provider error codes', () => {
