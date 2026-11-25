@@ -6,20 +6,22 @@ Production testing on November 24, 2026 confirmed HTTP 200 and all 14 approved N
 
 The market summary date correction is pending deployment.
 
-Public redistribution must remain disabled until the required NGN Market permission is confirmed. Both activation safeguards remain in place.
+Public redistribution must remain disabled until the required NGN Market permission is confirmed. Both `MARKET_DATA_ENABLED` and `MARKET_DATA_REDISTRIBUTION_APPROVED` must be true to enable the endpoint; keep both false until approval. The homepage must continue handling the disabled 503 response and all other failures.
 
-## Update â€” `fix/market-data-summary-date` (base `b876df5`)
+## Update — `fix/market-data-summary-date` (base `b876df5`)
 
 Backend-only fix; **no contract change and nothing for you to change.**
 - Production returned `marketSummary: null` even though all 14 equities were OK. NGN Market sends the summary
   trading date as UTC midnight (`"2026-11-24T00:00:00.000Z"`), but the backend accepted only `"2026-11-24"`.
 - The backend now accepts both forms and always returns `marketSummary.tradingDate` as `YYYY-MM-DD` (`"2026-11-24"`),
   taken exactly as written with no timezone shift. Other times or offsets are still rejected, so
-  `marketSummary` can still be `null`; keep the "â€”" fallback.
+  `marketSummary` can still be `null`; keep the "—" fallback.
 - Field names, types, `isStale`, the 7-day rule and the equities are unchanged. Keep `equityMarketCapitalisation`
   hidden (unit still unconfirmed).
-- After deployment, `marketSummary` fills in at the next scheduled refresh (â‰¤30 min during weekday trading
-  hours, â‰¤4 h otherwise, plus up to 60 s CDN cache).
+- Once the correction is deployed and public activation is authorized, the next successful eligible request-driven
+  refresh should populate `marketSummary` if the provider supplies a valid current summary. The configured cache
+  intervals remain 30 min during weekday trading-window hours and 4 h otherwise, plus up to 60 s CDN cache.
+  Do not flush Redis or reset quota counters.
 
 ## 1. Endpoint and auth
 
@@ -40,14 +42,14 @@ All v1 field names, the 14-symbol order, the envelope and the error codes are un
 | New field `quoteAgeSeconds: number \| null` | each `equities[]` item | Optional to use: the quote's age at `generatedAt`. Null when unavailable. |
 | New `unavailableReason` values: `MISSING_QUOTE_TIMESTAMP`, `INVALID_QUOTE_TIMESTAMP`, `FUTURE_QUOTE_TIMESTAMP`, `INVALID_PRICE`, `QUOTE_EXPIRED` | `equities[].unavailableReason` | Treat **any** unknown/new value as generic "unavailable". The reason is informational only. |
 | New 503 reason `QUOTES_EXPIRED` | `error.context.reason` | Same handling as other 503s. |
-| Success `Cache-Control` max-age is now **â‰¤ 60 s** (shorter only when a quote is close to its 7-day limit) | header | Nothing; just don't assume exactly 60. |
+| Success `Cache-Control` max-age is now **≤ 60 s** (shorter only when a quote is close to its 7-day limit) | header | Nothing; just don't assume exactly 60. |
 | Each quote is checked against a **7-day maximum from its own `quoteTimestamp`** | backend | Old quotes arrive as `available: false` (`QUOTE_EXPIRED`), never as current values. |
 | Strict timestamp validation: a quote with a missing, malformed or future timestamp is unavailable | backend | Nothing; only that row is affected. |
 
-Your `validation.ts` already uses `FUTURE_TOLERANCE_MS = 0` and rejects prices â‰¤ 0. The backend now matches
+Your `validation.ts` already uses `FUTURE_TOLERANCE_MS = 0` and rejects prices ≤ 0. The backend now matches
 that (zero future tolerance, positive prices). Two differences:
-- The backend caps prices at â‚¦10,000,000 (yours at 1e9).
-- The backend nulls `dailyChangePercent` outside Â±100 % (yours allows âˆ’100â€¦1000). A nulled percent arrives as
+- The backend caps prices at ₦10,000,000 (yours at 1e9).
+- The backend nulls `dailyChangePercent` outside ±100 % (yours allows −100…1000). A nulled percent arrives as
   `null`, which your validator should accept.
 
 ## 3. Field mapping to the existing display model (no redesign)
@@ -56,11 +58,11 @@ that (zero future tolerance, positive prices). Two differences:
 |---|---|---|
 | `NgxEquityListing.symbol` | `data.equities[].symbol` | Always all 14 homepage symbols, same order as `featuredNgxEquities`. |
 | `NgxEquityListing.companyName` | `data.equities[].companyName` | Same display names as the directory. |
-| `NgxEquityListing.lastPriceNgn` | `data.equities[].lastPriceNgn` | NGN. `null` â†’ keep the existing "Quote pending" / "â€”". |
-| `NgxEquityListing.dailyChangePercent` | `data.equities[].dailyChangePercent` | Percent (e.g. `1.01` = +1.01 %). `null` â†’ "â€”". Provider value, never computed. |
-| `ngxMarketSnapshot.allShareIndex` | `data.marketSummary.allShareIndex` | `marketSummary` may be `null` â†’ keep "â€”". |
+| `NgxEquityListing.lastPriceNgn` | `data.equities[].lastPriceNgn` | NGN. `null` → keep the existing "Quote pending" / "—". |
+| `NgxEquityListing.dailyChangePercent` | `data.equities[].dailyChangePercent` | Percent (e.g. `1.01` = +1.01 %). `null` → "—". Provider value, never computed. |
+| `ngxMarketSnapshot.allShareIndex` | `data.marketSummary.allShareIndex` | `marketSummary` may be `null` → keep "—". |
 | `ngxMarketSnapshot.allShareIndexChangePercent` | `data.marketSummary.allShareIndexChangePercent` | |
-| `ngxMarketSnapshot.marketCapitalisationNgn` | `data.marketSummary.equityMarketCapitalisation` | **Do not display.** The provider does not document the unit. Keep "â€”". |
+| `ngxMarketSnapshot.marketCapitalisationNgn` | `data.marketSummary.equityMarketCapitalisation` | **Do not display.** The provider does not document the unit. Keep "—". |
 | `ngxMarketSnapshot.dateLabel` | `data.marketSummary.tradingDate` | Provider trading date, always `YYYY-MM-DD` (calendar date; do not parse it as an instant or shift it). |
 | `ngxMarketSnapshot.sourceLabel` | `data.provider.attribution` + "Delayed" | Attribution to NGN Market is **required** on any public display. |
 
@@ -70,8 +72,8 @@ There are **three different timestamps**. They are not interchangeable:
 
 | Field | Meaning | Use it for |
 |---|---|---|
-| `equities[].quoteTimestamp` | When NGN Market last updated that equity's price (per equity, may differ between equities). | "As of â€¦" next to prices. |
-| `cache.refreshedAt` | When Starfetch last fetched from NGN Market. | Stale banner ("last refreshed â€¦"). Never as the quote time. |
+| `equities[].quoteTimestamp` | When NGN Market last updated that equity's price (per equity, may differ between equities). | "As of …" next to prices. |
+| `cache.refreshedAt` | When Starfetch last fetched from NGN Market. | Stale banner ("last refreshed …"). Never as the quote time. |
 | `generatedAt` | When the backend produced this response. | Debugging; ages are computed against it. |
 
 `marketSummary` has its own `providerUpdatedAt`, `refreshedAt` and `isStale`.
@@ -80,7 +82,7 @@ There are **three different timestamps**. They are not interchangeable:
 - *Cache freshness*:
   - `status: "stale"` / `cache.isStale: true` means Starfetch missed a scheduled refresh (in progress, failed or
     paused); `cache.staleReason` says which.
-  - Refreshes run every 30 min on weekdays 09:00â€“16:30 WAT and every 4 h otherwise.
+  - Refreshes run every 30 min on weekdays 09:00–16:30 WAT and every 4 h otherwise.
   - Stale data is still real, labelled data.
 - *Quote freshness* (the 7-day rule):
   - Each equity is served only while its own `quoteTimestamp` is at most 7 days old. This is checked when
@@ -168,28 +170,28 @@ is abridged; the API always returns 14 rows. The constant fields are elided afte
     "marketSummary": null,
     "generatedAt": "2026-10-22T10:05:00.000Z"
   },
-  "meta": { "requestId": "â€¦" }
+  "meta": { "requestId": "…" }
 }
 ```
 
 ### 5.4 Disabled (`503`, the default until approved). Headers: `Cache-Control: no-store`, no `Retry-After`
 
 ```json
-{ "error": { "code": "FEATURE_UNAVAILABLE", "message": "Market data is not available.", "context": { "status": "disabled" }, "requestId": "â€¦" } }
+{ "error": { "code": "FEATURE_UNAVAILABLE", "message": "Market data is not available.", "context": { "status": "disabled" }, "requestId": "…" } }
 ```
 
 ### 5.5 Provider unavailable (`503`, nothing servable). Headers: `Cache-Control: no-store`, `Retry-After: 300`
 
 ```json
 { "error": { "code": "SERVICE_UNAVAILABLE", "message": "Market data is temporarily unavailable.",
-  "context": { "status": "unavailable", "reason": "REFRESH_FAILED", "retryAfterSeconds": 300 }, "requestId": "â€¦" } }
+  "context": { "status": "unavailable", "reason": "REFRESH_FAILED", "retryAfterSeconds": 300 }, "requestId": "…" } }
 ```
 
 ### 5.6 Redis unavailable (`503`). Headers: `Cache-Control: no-store`, `Retry-After: 60`
 
 ```json
 { "error": { "code": "SERVICE_UNAVAILABLE", "message": "Market data is temporarily unavailable.",
-  "context": { "status": "unavailable", "reason": "CACHE_UNAVAILABLE", "retryAfterSeconds": 60 }, "requestId": "â€¦" } }
+  "context": { "status": "unavailable", "reason": "CACHE_UNAVAILABLE", "retryAfterSeconds": 60 }, "requestId": "…" } }
 ```
 
 All 503 reasons and their `Retry-After` values (seconds):
@@ -207,7 +209,7 @@ All 503 reasons and their `Retry-After` values (seconds):
 | Code | When | Frontend action |
 |---|---|---|
 | 200 `status: ok` | Fresh cache | Render values; show "Delayed" + attribution + "as of {quoteTimestamp}". |
-| 200 `status: stale` | Cache missed its refresh, last good data served | Render values + visible "Delayed â€” last refreshed {cache.refreshedAt}". |
+| 200 `status: stale` | Cache missed its refresh, last good data served | Render values + visible "Delayed — last refreshed {cache.refreshedAt}". |
 | 503 `FEATURE_UNAVAILABLE` | Disabled (default) | Static directory, null prices ("Quote pending"). Don't retry in a loop. |
 | 503 `SERVICE_UNAVAILABLE` | No servable data (see reasons) | Same fallback; optionally retry once after `Retry-After`. |
 | 429 `RATE_LIMITED` | > 120/min per IP | Same fallback. |
@@ -216,29 +218,30 @@ All 503 reasons and their `Retry-After` values (seconds):
 ## 7. UI guidance
 
 - **Ticker / slider:**
-  - Show only rows with `available: true`. Hide unavailable rows, or render "â€”"; don't show a stale number.
+  - Show only rows with `available: true`. Hide unavailable rows, or render "—"; don't show a stale number.
   - If no row is available or the response is non-200, hide the ticker or show the static list with "Quote
     pending". **Never** show mock prices.
 - **Market at a Glance:**
-  - Use `marketSummary.allShareIndex` / `allShareIndexChangePercent` and `tradingDate` as the date label.
-  - `marketSummary: null` â†’ "â€”".
+  - Keep the current NGX equities and commodity layout unchanged. No summary UI change is required by this fix.
+  - If a separate NGX summary display is approved later, use `marketSummary.allShareIndex`,
+    `allShareIndexChangePercent` and `tradingDate` as the date label; `marketSummary: null` → "—".
   - Do not show market capitalisation until the unit is confirmed.
-  - If `marketSummary.isStale`, add the stale label.
+  - If an approved summary is displayed and `marketSummary.isStale`, add the stale label.
 - **Market Pulse:** Preserve Emmanuel's existing manually curated indicators. Do not replace them with NGX market summary data.
-- **Unavailable / stale / disabled / failure:** see Â§6. All failure states fall back to today's static
+- **Unavailable / stale / disabled / failure:** see §6. All failure states fall back to today's static
   directory with null prices.
 - **Labels:** always "Delayed". Never "Live" or "Real-time". Always show `provider.attribution` (NGN Market
-  Terms Â§8) and keep `delayNotice` available (tooltip or footnote is fine).
+  Terms §8) and keep `delayNotice` available (tooltip or footnote is fine).
 - **Timeouts:**
   - The backend answers a cache hit in milliseconds.
-  - A request that triggers a provider refresh is bounded by a **6 s server-side deadline** (+ â‰¤0.5 s lock
-    release). Measured worst cases: â‰ˆ5.0 s when the provider hangs, â‰ˆ6.5 s when Redis hangs.
-  - **Recommended client timeout: 10 s.** Your current 8 s works for the backend bound, but leaves only â‰ˆ1.5 s
-    for network and a Vercel cold start.
+  - A request that triggers a provider refresh is bounded by a **6 s server-side deadline** (+ ≤0.5 s lock
+    release). Measured worst cases: ≈5.0 s when the provider hangs, ≈6.5 s when Redis hangs.
+  - **Previously recommended client timeout: 10 s.** The frontend's current NGX request timeout is 20 s.
+    No timeout change is required by this fix.
   - On timeout, use the fallback. The next request is normally a fast cache hit.
 - **Retry / cooldown:**
   - Don't retry more than once per page view, and respect `Retry-After`.
-  - Polling faster than every 60 s yields nothing new (CDN `max-age â‰¤ 60`).
+  - Polling faster than every 60 s yields nothing new (CDN `max-age ≤ 60`).
   - The backend pauses provider calls itself after failures: 10 min after errors, 1 h after auth errors, and
     until the provider reset when quota is low. During a pause you get stale data or 503s, not errors.
 - **Quota exhaustion:** the backend stops calling the provider and serves cached data as `stale`
@@ -247,7 +250,7 @@ All 503 reasons and their `Retry-After` values (seconds):
 
 ## 8. Test configuration
 
-- Against a running backend with defaults, you get the disabled 503 (Â§5.4). That is the expected state today.
+- Against a running backend with defaults, you get the disabled 503 (§5.4). That is the expected state today.
 - The backend e2e suite (`test/market-data.e2e-spec.ts`) boots the real app with synthetic Redis and provider.
   Use the examples above as fixtures for your adapter tests: success, partial, stale, disabled, provider
   unavailable, Redis unavailable.
@@ -307,5 +310,5 @@ type MarketSnapshotResponse = {
 //   requestId: string } }
 ```
 
-Full contract: `docs/api/openapi.yaml` â†’ `/public/market-snapshot`. Operations runbook:
+Full contract: `docs/api/openapi.yaml` → `/public/market-snapshot`. Operations runbook:
 `docs/operations/MARKET-DATA-NGN-MARKET-INTEGRATION.md`.
