@@ -59,9 +59,7 @@ export function parseSnapshotResponse(body: unknown, now: Date): ParseResult<Mar
     return { ok: false, error: 'MALFORMED_ENVELOPE' };
   }
   const data = body.data;
-  const tradingDate = typeof data.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.date) && isValidDate(data.date)
-    ? data.date
-    : undefined;
+  const tradingDate = parseTradingDate(data.date);
   if (!tradingDate) return { ok: false, error: 'MALFORMED_SUMMARY' };
 
   const marketCap = isRecord(data.market_cap) ? data.market_cap : {};
@@ -264,6 +262,29 @@ export function validResetAtMs(resetAt: string | null, nowMs: number): number | 
   const parsed = parseStrictInstant(resetAt);
   if (!parsed || parsed.ms <= nowMs || parsed.ms - nowMs > MAX_RESET_AT_HORIZON_MS) return null;
   return parsed.ms;
+}
+
+const TRADING_DATE_RE = /^(\d{4}-\d{2}-\d{2})(?:T00:00:00(?:\.000)?Z)?$/;
+
+/**
+ * Provider trading date (`/v1/market/snapshot` `data.date`) normalised to
+ * `YYYY-MM-DD`. Two forms are accepted:
+ *  - a plain calendar date, `2026-11-24`;
+ *  - the form the live provider was observed to return, UTC midnight of that
+ *    calendar date: `2026-11-24T00:00:00.000Z` (or without the `.000`).
+ * The date part must be a real calendar date and the time part must be exactly
+ * midnight with a `Z` designator. The calendar date is taken from the validated
+ * components as written (no timezone conversion), so the trading day is never
+ * shifted. Anything else — non-midnight times, offsets (`+01:00`, `+00:00`),
+ * missing `Z`, space separators, other fractions, epoch numbers — is rejected
+ * rather than truncated. Future and 7-day checks are applied by `isSummaryCurrent`.
+ */
+export function parseTradingDate(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const match = TRADING_DATE_RE.exec(value);
+  if (!match) return null;
+  const date = match[1];
+  return isValidDate(date) && Number(date.slice(0, 4)) >= 1970 ? date : null;
 }
 
 function isValidDate(value: string): boolean {

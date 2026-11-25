@@ -178,6 +178,9 @@ describe('Market data — real bootstrap (e2e)', () => {
         ['cache', 'dataType', 'delayNotice', 'equities', 'generatedAt', 'marketSummary', 'provider', 'status'].sort(),
       );
       expect(data.marketSummary.allShareIndex).toBe(100_000.5);
+      // Provider sends the trading date as UTC midnight; the public contract carries the calendar date only.
+      expect(data.marketSummary.tradingDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(data.marketSummary.tradingDate).toBe(data.marketSummary.providerUpdatedAt.slice(0, 10));
       expect(JSON.stringify(res.body)).not.toContain(SYNTHETIC_KEY);
       expect(providerCalls).toHaveLength(2);
 

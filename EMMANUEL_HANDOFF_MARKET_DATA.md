@@ -1,12 +1,27 @@
-# Emmanuel handoff — public market snapshot API (v2, base `357f8fd`)
+# Emmanuel handoff — public market snapshot API
 
-Backend branch: `feat/market-data-provider-backend`, based on `main` @ `357f8fd` (after your V5 PR #74).
-**No frontend files were changed.** Your branch `feat/market-data-provider` (`lib/market/*`) is untouched; the
-adapter there still expects `quotations`/`asOf`/`source` and needs adapting to this contract.
+Backend PR #76 and frontend PR #75 have been merged into main.
 
-The endpoint is **disabled by default**. It stays disabled until NGN Market redistribution approval exists
-(both `MARKET_DATA_ENABLED` and `MARKET_DATA_REDISTRIBUTION_APPROVED` are unset). Until then it returns the
-*disabled* response (§5.3), so the homepage must keep working exactly as today on any non-200.
+Production testing on November 24, 2026 confirmed HTTP 200 and all 14 approved NGX equities. The frontend integration is complete, and the NGX prices have been displayed on the website.
+
+The market summary date correction is pending deployment.
+
+Public redistribution must remain disabled until the required NGN Market permission is confirmed. Both `MARKET_DATA_ENABLED` and `MARKET_DATA_REDISTRIBUTION_APPROVED` must be true to enable the endpoint; keep both false until approval. The homepage must continue handling the disabled 503 response and all other failures.
+
+## Update — `fix/market-data-summary-date` (base `b876df5`)
+
+Backend-only fix; **no contract change and nothing for you to change.**
+- Production returned `marketSummary: null` even though all 14 equities were OK. NGN Market sends the summary
+  trading date as UTC midnight (`"2026-11-24T00:00:00.000Z"`), but the backend accepted only `"2026-11-24"`.
+- The backend now accepts both forms and always returns `marketSummary.tradingDate` as `YYYY-MM-DD` (`"2026-11-24"`),
+  taken exactly as written with no timezone shift. Other times or offsets are still rejected, so
+  `marketSummary` can still be `null`; keep the "—" fallback.
+- Field names, types, `isStale`, the 7-day rule and the equities are unchanged. Keep `equityMarketCapitalisation`
+  hidden (unit still unconfirmed).
+- Once the correction is deployed and public activation is authorized, the next successful eligible request-driven
+  refresh should populate `marketSummary` if the provider supplies a valid current summary. The configured cache
+  intervals remain 30 min during weekday trading-window hours and 4 h otherwise, plus up to 60 s CDN cache.
+  Do not flush Redis or reset quota counters.
 
 ## 1. Endpoint and auth
 
@@ -48,7 +63,7 @@ that (zero future tolerance, positive prices). Two differences:
 | `ngxMarketSnapshot.allShareIndex` | `data.marketSummary.allShareIndex` | `marketSummary` may be `null` → keep "—". |
 | `ngxMarketSnapshot.allShareIndexChangePercent` | `data.marketSummary.allShareIndexChangePercent` | |
 | `ngxMarketSnapshot.marketCapitalisationNgn` | `data.marketSummary.equityMarketCapitalisation` | **Do not display.** The provider does not document the unit. Keep "—". |
-| `ngxMarketSnapshot.dateLabel` | `data.marketSummary.tradingDate` | Provider trading date (YYYY-MM-DD). |
+| `ngxMarketSnapshot.dateLabel` | `data.marketSummary.tradingDate` | Provider trading date, always `YYYY-MM-DD` (calendar date; do not parse it as an instant or shift it). |
 | `ngxMarketSnapshot.sourceLabel` | `data.provider.attribution` + "Delayed" | Attribution to NGN Market is **required** on any public display. |
 
 ## 4. Timestamps and freshness (read this before the UI work)
@@ -207,12 +222,12 @@ All 503 reasons and their `Retry-After` values (seconds):
   - If no row is available or the response is non-200, hide the ticker or show the static list with "Quote
     pending". **Never** show mock prices.
 - **Market at a Glance:**
-  - Use `marketSummary.allShareIndex` / `allShareIndexChangePercent` and `tradingDate` as the date label.
-  - `marketSummary: null` → "—".
+  - Keep the current NGX equities and commodity layout unchanged. No summary UI change is required by this fix.
+  - If a separate NGX summary display is approved later, use `marketSummary.allShareIndex`,
+    `allShareIndexChangePercent` and `tradingDate` as the date label; `marketSummary: null` → "—".
   - Do not show market capitalisation until the unit is confirmed.
-  - If `marketSummary.isStale`, add the stale label.
-- **Market Pulse:** use only provider-supplied fields (`dailyChangePercent`, ASI change). Do not compute
-  gainers/losers aggregates or summaries from equities unless product signs off, and never fill gaps.
+  - If an approved summary is displayed and `marketSummary.isStale`, add the stale label.
+- **Market Pulse:** Preserve Emmanuel's existing manually curated indicators. Do not replace them with NGX market summary data.
 - **Unavailable / stale / disabled / failure:** see §6. All failure states fall back to today's static
   directory with null prices.
 - **Labels:** always "Delayed". Never "Live" or "Real-time". Always show `provider.attribution` (NGN Market
@@ -221,8 +236,8 @@ All 503 reasons and their `Retry-After` values (seconds):
   - The backend answers a cache hit in milliseconds.
   - A request that triggers a provider refresh is bounded by a **6 s server-side deadline** (+ ≤0.5 s lock
     release). Measured worst cases: ≈5.0 s when the provider hangs, ≈6.5 s when Redis hangs.
-  - **Recommended client timeout: 10 s.** Your current 8 s works for the backend bound, but leaves only ≈1.5 s
-    for network and a Vercel cold start.
+  - **Previously recommended client timeout: 10 s.** The frontend's current NGX request timeout is 20 s.
+    No timeout change is required by this fix.
   - On timeout, use the fallback. The next request is normally a fast cache hit.
 - **Retry / cooldown:**
   - Don't retry more than once per page view, and respect `Retry-After`.

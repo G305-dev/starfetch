@@ -256,10 +256,14 @@ export function syntheticSnapshotBody(
   updatedAt: string,
   meta: Record<string, unknown> = { plan: 'free', calls_used: 11, calls_remaining: 2_989, reset_at: '2099-01-01T00:00:00.000Z' },
 ): Record<string, unknown> {
+  // `date` uses the encoding observed from the live /v1/market/snapshot (UTC
+  // midnight of the trading day). Every value is synthetic; the extra fields
+  // (turnover_rate, breadth, total_listed_securities, session) are placeholder
+  // shapes only, and the parser ignores them.
   return {
     success: true,
     data: {
-      date: updatedAt.slice(0, 10),
+      date: `${updatedAt.slice(0, 10)}T00:00:00.000Z`,
       asi: 100_000.5,
       asi_change: 500.25,
       asi_change_percent: 0.5,
@@ -267,7 +271,11 @@ export function syntheticSnapshotBody(
       deals: 1,
       volume: 2,
       value_traded: 3,
+      turnover_rate: 0.01,
       market_cap: { equity: 50_000, bonds: 1, etfs: 1, total: 60_000 },
+      breadth: { advancers: 1, decliners: 1, unchanged: 1, total: 3, adv_dec_ratio: 1 },
+      total_listed_securities: 3,
+      session: { open_time: '10:00', close_time: '14:30', timezone: 'Africa/Lagos' },
       updated_at: updatedAt,
     },
     meta,

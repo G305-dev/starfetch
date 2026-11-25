@@ -130,6 +130,12 @@ labelled live.
 The market summary is withheld when its trading date is later than today (Lagos) or more than 7 days earlier,
 or when its `updated_at` is older than 7 days.
 
+**Summary trading date format:** `/v1/market/snapshot` returns `date` as UTC midnight of the trading day
+(`2026-11-24T00:00:00.000Z`, observed in a private provider test). The backend also accepts a plain `2026-11-24`.
+Both are normalised to `tradingDate: "2026-11-24"`; the calendar date is taken as written, with no timezone
+conversion. Any other time or offset (e.g. `T09:40:00.000Z`, `T00:00:00+01:00`) is rejected, never truncated;
+the summary is then `null` while the equities are unaffected.
+
 ## 6. Budget strategy (Free plan: 3,000 calls per quota period, 30/min, shared by all keys)
 
 - **Every attempt is reserved before it is made** in one atomic Lua `EVAL`. The order is: lock ownership,
