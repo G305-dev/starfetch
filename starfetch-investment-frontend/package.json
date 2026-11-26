@@ -51,7 +51,15 @@
                     "test:account-context-access:runtime":  "node scripts/harness/run-runtime-check.cjs",
                     "test:access-control:provider":  "node scripts/harness/run-provider-sync-check.cjs",
                     "test:backend-parity":  "node scripts/run-typescript-check.cjs scripts/backend-parity-check.ts",
-                    "test:access-control":  "npm run test:account-context-access \u0026\u0026 npm run test:account-context-access:runtime \u0026\u0026 npm run test:access-control:provider \u0026\u0026 npm run test:backend-parity"
+                    "test:access-control":  "npm run test:account-context-access \u0026\u0026 npm run test:account-context-access:runtime \u0026\u0026 npm run test:access-control:provider \u0026\u0026 npm run test:backend-parity",
+                    "test:admin-host":  "node scripts/run-typescript-check.cjs scripts/admin-host-policy-check.ts",
+                    "test:admin-consolidation":  "node scripts/run-typescript-check.cjs scripts/admin-consolidation-check.ts",
+                    "test:admin-notifications":  "node scripts/run-typescript-check.cjs scripts/admin-notifications-check.ts",
+                    "test:admin-maker-checker":  "node scripts/run-typescript-check.cjs scripts/admin-maker-checker-check.ts",
+                    "test:admin-prepared-logic":  "node scripts/run-typescript-check.cjs scripts/admin-prepared-logic-check.ts",
+                    "test:admin-prepared-ui":  "node scripts/run-tsx-check.cjs scripts/admin-prepared-ui-check.tsx",
+                    "test:admin-security":  "node scripts/run-typescript-check.cjs scripts/admin-security-corrections-check.ts",
+                    "test:admin":  "npm run test:admin-host \u0026\u0026 npm run test:admin-consolidation \u0026\u0026 npm run test:admin-notifications \u0026\u0026 npm run test:admin-maker-checker \u0026\u0026 npm run test:admin-prepared-logic \u0026\u0026 npm run test:admin-prepared-ui \u0026\u0026 npm run test:admin-security"
                 },
     "dependencies":  {
                          "@types/node":  "22.13.10",

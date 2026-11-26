@@ -6,3 +6,7 @@ out
 !.env.example
 # compiled output of the access-control runtime harness
 .acl-runtime-out
+
+# TypeScript incremental build cache (previously committed by mistake; it
+# silently masks compiler errors when tsconfig changes).
+*.tsbuildinfo
