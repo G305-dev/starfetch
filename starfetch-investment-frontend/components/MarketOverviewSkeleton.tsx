@@ -2,10 +2,14 @@
  * Loading state for Market at a Glance.
  *
  * Used as the Suspense fallback around the market section. It reproduces the
- * two-card equities/commodities grid and the separate three-card Market Pulse section so the section does not shift
- * when the real content arrives — the brief asks for a loading state "without
- * disrupting the homepage layout", which means matching the final geometry, not
- * showing a spinner that collapses to nothing.
+ * single full-width equities card and the separate three-card Market Pulse
+ * section so the section does not shift when the real content arrives — a
+ * loading state "without disrupting the homepage layout" means matching the final
+ * geometry, not showing a spinner that collapses to nothing.
+ *
+ * V4: the commodities card was removed from the landing page, so the skeleton now
+ * reserves ONE card rather than two. Leaving the second block in place would have
+ * reproduced exactly the empty gap the removal was meant to eliminate.
  *
  * Deliberately contains NO numbers and no percentages: a placeholder that looks
  * like a price is the exact failure this delivery is guarding against.
@@ -35,8 +39,8 @@ export function MarketOverviewSkeleton() {
           <span className="mt-3 block h-3 w-full max-w-xl rounded-full bg-star-100" />
         </div>
 
-        <div className="mt-10 grid items-start gap-5 lg:grid-cols-2">
-          {[0, 1].map((card) => (
+        <div className="mt-10">
+          {[0].map((card) => (
             <CardShell key={card}>
               {/* Header matches the real card's icon + two-line title block. */}
               <div className="flex items-center gap-3 border-b border-star-200 px-5 py-4">
@@ -60,7 +64,6 @@ export function MarketOverviewSkeleton() {
               </div>
             </CardShell>
           ))}
-
         </div>
 
         <p className="sr-only" role="status">Loading market data.</p>

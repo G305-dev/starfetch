@@ -24,6 +24,15 @@ import { MARKET_PULSE_FILE, MARKET_PULSE_ORDER, formatPulseValue, validateMarket
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
+/**
+ * Strips comments before structural assertions.
+ *
+ * Asserting "this file must not import X" against raw source is unreliable: the
+ * removal is documented IN a comment that names X, so the assertion fails on its
+ * own explanation. Strip comments, then assert on code only.
+ */
+const code = (source: string) =>
+  source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -57,19 +66,49 @@ assert(home.includes("<Suspense fallback={<MarketOverviewSkeleton />}>"), "Marke
 assert(!/export default async function Home/.test(home), "The page must not await market data itself, or the Suspense fallbacks are unreachable dead markup");
 assert(home.includes('className="overflow-x-hidden"'), "Main must clip horizontal overflow so a wide table cannot widen the page");
 
-// --- one continuous track carrying BOTH asset classes ----------------------
-const trackBody = ticker.slice(ticker.indexOf("function TrackPass"), ticker.indexOf("/** Short, honest label"));
-assert(trackBody.includes("markets.map") && trackBody.includes("commodities.map"), "The scrolling track must render NGX and commodity cells inside the SAME list");
+// --- one continuous track of equities --------------------------------------
+const trackBody = ticker.slice(ticker.indexOf("function TrackPass"));
+assert(trackBody.includes("markets.map"), "The scrolling track must render the NGX cells");
 assert(!/ngx-market-slider-track[\s\S]{0,400}ngx-market-slider-track/.test(ticker), "There must not be two separate slider tracks");
-assert(ticker.includes("<TrackPass markets={markets} commodities={commodities} />") && ticker.includes("duplicate"), "The track must render exactly two identical passes for a seamless -50% loop");
+assert(ticker.includes("<TrackPass markets={markets} />") && ticker.includes("duplicate"), "The track must render exactly two identical passes for a seamless -50% loop");
 
-// --- category markers ------------------------------------------------------
-assert(ticker.includes("NGX · Commodities"), "The strip must carry the combined category marker");
-assert(tickerItem.includes(">\n        NGX\n      </span>") || /NGX\s*<\/span>/.test(tickerItem), "The NGX category marker must be rendered on each equity cell");
-assert(/Commodity\s*<\/span>/.test(tickerItem), "The gold-themed Commodity category marker must be rendered on each commodity cell");
-assert(tickerItem.includes("#e8c979") || tickerItem.includes("d9b45a"), "The commodity marker must use the gold theme");
-assert(ticker.includes("bg-star-900") && (ticker.includes("border-star-lime") || tickerItem.includes("border-star-lime")), "The strip must keep the dark-green background with a bright-green accent");
-assert(ticker.includes("bg-star-900"), "The strip must use the dark-green background");
+// --- commodity content is GONE from the landing page (V4) -----------------
+// These are the regression guards for the removal itself. Each one names the
+// exact construct that would reappear if the section were restored piecemeal.
+assert(!ticker.includes("commodities.map"), "The ticker must not render commodity cells");
+assert(!/Commodity\s*<\/span>/.test(tickerItem), "The commodity cell must be gone from the ticker items");
+assert(!tickerItem.includes("#e8c979") && !tickerItem.includes("d9b45a"), "The gold commodity theme must be gone");
+assert(!/Commodit/i.test(ticker) && !/Commodit/i.test(tickerItem), "Neither the ticker nor its cells may mention commodities");
+assert(!/Commodit/i.test(overview), "Market at a Glance must not render a commodities card");
+assert(!overview.includes("commodityDirectory") && !overview.includes("unquotedCommodities"), "Market at a Glance must not import commodity data");
+assert(!code(marketSection).includes("loadCommodityFeed"), "The landing page must not request the commodity feed any more");
+assert(!/\bcommodities\b|\bcommodityStatus\b/.test(home), "The homepage must not pass commodity props");
+
+// --- V4 white redesign: white strip, dark-green text, colour only on change -
+assert(/className="[^"]*\bbg-white\b/.test(ticker), "The strip must use a white background");
+assert(/ngx-market-slider-viewport[^"]*bg-white/.test(ticker), "The scrolling viewport itself must be white, not dark green");
+
+// --- V5: the fixed marker block is removed outright ----------------------
+// Removing the container, not just its colour. Each assertion names the exact
+// construct that would reappear if it were only restyled.
+assert(!/NGX\s*·\s*Stocks/i.test(code(ticker)), "The NGX · Stocks marker block must not render");
+assert(!code(ticker).includes("bg-star-900"), "The dark-green marker container must be gone from the ticker");
+assert(!/w-\[124px\]|w-\[190px\]|sm:w-\[190px\]/.test(code(ticker)), "The marker's fixed widths must be gone");
+assert(!code(ticker).includes("z-10"), "The marker's z-10 stacking must be gone");
+assert(!/shadow-\[5px_0_12px/.test(code(ticker)), "The marker's directional shadow must be gone");
+assert(!/flex min-h-\[58px\] w-full"/.test(code(ticker)), "The flex wrapper that offset the track must be gone");
+// The track must now be the full-width element, not a flex-1 remainder.
+assert(/ngx-market-slider-viewport[^"]*\bw-full\b/.test(code(ticker)), "The viewport must span the full width");
+assert(!/ngx-market-slider-viewport[^"]*\bflex-1\b/.test(code(ticker)), "The viewport must not be sized as a flex remainder");
+assert(tickerItem.includes("text-star-900"), "Stock names and prices must use the dark-green brand colour");
+assert(/text-emerald-700/.test(tickerItem), "Positive changes must stay green");
+assert(/text-red-700/.test(tickerItem), "Negative changes must stay red");
+// The old dark-strip shades are unreadable on white (~1.6:1), so they must not
+// survive the redesign.
+assert(!/text-emerald-300/.test(tickerItem), "The light emerald used on the dark strip is illegible on white");
+assert(!/text-red-300/.test(tickerItem), "The light red used on the dark strip is illegible on white");
+assert(!/text-white/.test(tickerItem), "Ticker text must not be white on a white background");
+assert(tickerItem.includes("text-star-muted"), "Secondary text must use the muted tone that is legible on white");
 
 // --- prohibited data sources ----------------------------------------------
 for (const [name, source] of Object.entries({ home, ticker, overview, directory })) {
@@ -91,10 +130,11 @@ assert(pulseUi.includes("not live or real-time data"), "Market Pulse must state 
 assert(!overview.includes("All-Share") && !overview.includes("market capitalisation") && !overview.includes("Market breadth"), "Market Pulse must not be replaced with ASI, market cap or breadth");
 assert(!overview.includes("source badge") && !/Official source integration pending/.test(overview), "Market Pulse must not carry decorative source badges");
 
-// --- Market at a Glance has the three required cards ----------------------
-for (const heading of ["NGX Stocks", "Commodities"]) {
-  assert(overview.includes(heading), `Market at a Glance must contain a "${heading}" card`);
-}
+// --- Market at a Glance has the one required card -------------------------
+assert(overview.includes("NGX Stocks"), 'Market at a Glance must contain the "NGX Stocks" card');
+// No leftover empty container where the commodities card used to be.
+assert(!/lg:grid-cols-2/.test(overview), "The two-card grid must be gone, or the single card leaves an empty half-row");
+assert(overview.includes('<div className="mt-10">'), "The single card must span the full width rather than leaving a gap");
 assert(pulseUi.includes("Market Pulse"), "Market Pulse must appear in its own full-width section");
 assert(pulseUi.includes('lg:grid-cols-3'), "Market Pulse must show three white cards on desktop");
 assert(pulseUi.includes('bg-star-900') && pulseUi.includes('bg-white'), "Market Pulse must have a dark green section and white cards");
@@ -103,10 +143,10 @@ assert(!/href="#ngx-markets"/.test(overview) && !/href="#ngx-markets"/.test(pric
 assert(priceTable.includes("aria-expanded"), "View All must expose its expanded state");
 assert(marketSection.includes("AbortSignal.timeout"), "The backend market request must be bounded by a timeout");
 assert(priceTable.includes("Price (₦)") && priceTable.includes("Daily"), "The NGX table must keep Price (₦) and Daily columns");
-assert(overview.includes("unitLongLabel"), "The commodity table must show each instrument's currency and unit");
+assert(!overview.includes("unitLongLabel"), "The commodity table and its currency/unit column must be gone");
 
 // --- loading/error/stale affordances exist -------------------------------
-assert(overview.includes('data-feed-state={status.state}'), "Both quote cards must expose the feed state so unavailable/stale states are visible");
+assert(overview.includes('data-feed-state={status.state}'), "The quote card must expose the feed state so unavailable/stale states are visible");
 assert(overview.includes("stale"), "A stale state must be represented");
 
 // --- slider behaviour (existing CSS, reused) -----------------------------
@@ -195,7 +235,11 @@ async function main() {
     }
   }
 
-  // --- Commodities: no provider configured => honest unavailable -----------
+  // --- Commodities: the LIBRARY still works, only the landing page changed --
+  // V4 removed commodity sections from the landing page but explicitly kept the
+  // backend implementation. These assertions are therefore retained on purpose:
+  // they are now the regression guard that proves the implementation was left
+  // intact and can be re-mounted without repair.
   {
     assert(readCommodityFeedConfig({} as NodeJS.ProcessEnv) === null, "With no environment configuration the commodity feed must be absent");
     assert(readCommodityFeedConfig({ COMMODITY_FEED_URL: "http://insecure.example", COMMODITY_FEED_TOKEN: "t" } as never) === null, "A non-HTTPS commodity endpoint must be rejected so a credential is never sent in clear");
@@ -326,7 +370,11 @@ async function main() {
     assert(validateMarketPulse({ indicators: "nope" }).status === "unavailable", "A non-array indicators field must resolve to unavailable");
   }
 
-  console.log("PASS — Homepage market data (static wiring + executed adapters): one unified NGX+commodity track reusing the existing slider CSS; 14 NGX listings preserved in order with no hardcoded prices; four commodities with exchange-verified symbols and units; NGX and commodity feeds both fail closed to an explicit unavailable state on every malformed input; Market Pulse is read and validated from public/data/market-pulse.json with exactly three indicators, reporting periods, sources and verification dates; no TradingView reference and no provider credential anywhere in the bundle");
+  const tickerSkeleton = read("components/MarketTickerSkeleton.tsx");
+assert(!code(tickerSkeleton).includes("NGX · Stocks"), "The skeleton must not reserve the removed marker column");
+assert(!code(tickerSkeleton).includes("bg-star-900"), "The skeleton must not render the dark marker block");
+
+console.log("PASS — Homepage market data (static wiring + executed adapters): V5 equities-only strip on a white background spanning the full screen width with the fixed NGX marker block removed outright — container, fixed widths, z-10 and directional shadow all gone, and the skeleton follows so nothing shifts at hydration with dark-green symbol/price text and green/red reserved for the daily change, reusing the existing 52s slider CSS; 14 NGX listings preserved in order with no hardcoded prices; NO commodity content, card or feed request remains on the landing page and no empty container is left behind, while the commodity library itself is verified intact for future reuse; the NGX feed fails closed to an explicit unavailable state on every malformed input; Market Pulse is read and validated from public/data/market-pulse.json with exactly three indicators, reporting periods, sources and verification dates; no TradingView reference and no provider credential anywhere in the bundle");
 }
 
 main().catch((error) => {
