@@ -45,7 +45,10 @@ const jointRegistrationPage = read("app/register/joint/page.tsx");
 // ------------------------------------------------------- package.json integrity
 const pkg = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
 for (const [name, command] of Object.entries(pkg.scripts)) {
-  for (const referenced of command.match(/scripts\/[\w./-]+\.(ts|tsx|cjs|js)/g) ?? []) {
+  // Alternation is ordered longest-first. With `ts` before `tsx` the engine stops
+  // at `…check.ts` and reports a `.tsx` script as missing — a latent bug that only
+  // surfaces once a script file uses the `.tsx` extension.
+  for (const referenced of command.match(/scripts\/[\w./-]+\.(tsx|ts|cjs|js)/g) ?? []) {
     assert(existsSync(join(root, referenced)), `package.json script "${name}" references a missing file: ${referenced}`);
   }
 }

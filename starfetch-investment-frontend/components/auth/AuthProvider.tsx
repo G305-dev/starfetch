@@ -55,7 +55,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Public calculators are deliberately self-contained: opening either one
   // must not initialize a session or make an authentication request. Existing
   // auth state is left intact for a user who navigates there from another route.
-  const skipInitialSessionRefresh = pathname === "/tools/budget" || pathname === "/tools/returns";
+  //
+  // Admin routes are added to this list for the same reason, and a stronger one.
+  // Staff and investors are separate security principals with separate session
+  // models: the admin portal authenticates against the staff backend with a
+  // host-only staff cookie, never an investor token. If this provider ran on an
+  // admin page it would issue an investor `/me` request from a staff session —
+  // mixing the two boundaries for no benefit, and putting an investor-session
+  // code path on the staff surface. Skipping is the correct behaviour, not a
+  // workaround: no investor state is needed to render an admin page.
+  const skipInitialSessionRefresh =
+    pathname === "/tools/budget" ||
+    pathname === "/tools/returns" ||
+    pathname === "/admin" ||
+    pathname.startsWith("/admin/");
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
   const operationRef = useRef(0);

@@ -1,0 +1,4 @@
+"use client";
+import {Card,Load,State,useRemote} from './UI';
+import type {SettingsSummary} from '@/lib/admin-api/contracts';
+export function SettingsPage(){const result=useRemote<SettingsSummary>('/settings/summary');return <div><Load status={result.status} error={result.error} retry={result.retry}/>{result.status==='success'&&(!Array.isArray(result.value?.cards)||result.value.cards.length!==4?<State status="unavailable" message="The backend must supply exactly four approved summary cards. Missing or extra cards are not fabricated."/>:<section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Settings summary">{result.value.cards.map((c,i)=><Card key={i}><h2 className="text-xs font-bold text-star-muted">{c.title}</h2><p className="mt-3 break-words text-xl font-extrabold text-star-900">{c.value==null?'Not available':c.value}</p>{c.description&&<p className="mt-2 text-xs text-star-muted">{c.description}</p>}</Card>)}</section>)}</div>}
