@@ -1,12 +1,17 @@
-import type { CommodityQuote, FeedStatus, NgxQuote } from "@/lib/market/types";
-import { CommodityTickerCell, NgxTickerCell } from "./MarketTickerItem";
+import type { FeedStatus, NgxQuote } from "@/lib/market/types";
+import { NgxTickerCell } from "./MarketTickerItem";
 
 /**
- * The homepage's ONE unified market strip: NGX equities and global commodities
- * in a single continuous scrolling track.
+ * The homepage's scrolling market strip: Nigerian and international equities
+ * quoted on the NGX, in one continuous track.
+ *
+ * DESIGN (V4): pure white background, Starfetch dark green for symbol and price,
+ * green/red reserved for the daily change. The old strip was a dark-green band;
+ * the redesign keeps the same motion and geometry so nothing below it moves.
  *
  * Reuses the existing `.ngx-market-*` slider CSS (continuous loop, pause on
- * hover, reduced-motion stop) rather than adding a second animation mechanism.
+ * hover, reduced-motion stop) rather than adding a second animation mechanism —
+ * the animation, its 52s duration and the `-50%` keyframe are untouched.
  *
  * The track renders the item sequence TWICE. The keyframes translate by -50%,
  * so the duplicate pass must be exactly half the track — which holds because both
@@ -15,11 +20,9 @@ import { CommodityTickerCell, NgxTickerCell } from "./MarketTickerItem";
 
 function TrackPass({
   markets,
-  commodities,
   duplicate,
 }: {
   markets: readonly NgxQuote[];
-  commodities: readonly CommodityQuote[];
   duplicate?: boolean;
 }) {
   return (
@@ -27,134 +30,95 @@ function TrackPass({
       {markets.map((market) => (
         <NgxTickerCell key={`${duplicate ? "copy-" : ""}${market.symbol}`} quote={market} duplicate={duplicate} />
       ))}
-      {commodities.map((commodity) => (
-        <CommodityTickerCell
-          key={`${duplicate ? "copy-" : ""}commodity-${commodity.id}`}
-          quote={commodity}
-          duplicate={duplicate}
-        />
-      ))}
     </ul>
   );
 }
 
-type StatusBadge = {
-  /** Very short label that fits the 132px mobile marker column. */
-  short: string;
-  /** Longer wording for the desktop column and the screen-reader summary. */
-  long: string;
-  /** Drives the dot colour so the two feeds are distinguishable at a glance. */
-  tone: "live" | "delayed" | "stale" | "unavailable";
-};
-
 /**
- * Describes ONE feed's availability on its own terms.
+ * The feed's state as words only.
  *
- * V1 computed a single strip label from the NGX status alone, so an unavailable
- * commodity feed was invisible whenever NGX happened to be up — the strip said
- * "Live · NGN Market" while half its cells showed "Unavailable". Each feed now
- * reports itself, and both reports are always rendered.
+ * The V4 marker showed a coloured dot and a short word ("Live", "N/A", "Held") in
+ * the dark block. V5 removed the block, so the visual badge has no home — but the
+ * information must not vanish with it, because "are these prices current?" is the
+ * first thing anyone reading a quote strip needs to know. The wording now goes
+ * into the screen-reader summary, and the visible state lives in the data
+ * attribute plus the per-card footnote further down the page.
+ *
+ * `short` is kept as the honest one-word verdict, since "Held" (we received prices
+ * and refused them) and "N/A" (we never received any) are materially different.
  */
-function describeFeed(status: FeedStatus, source: string | null): StatusBadge {
+function describeFeed(status: FeedStatus, source: string | null): { short: string; long: string } {
   switch (status.state) {
     case "live":
-      return { short: "Live", long: source ? `Live · ${source}` : "Live quotes", tone: "live" };
+      return { short: "Live", long: source ? `Live · ${source}` : "Live quotes" };
     case "delayed":
-      return { short: "Delayed", long: "Delayed quotes", tone: "delayed" };
+      return { short: "Delayed", long: "Delayed quotes" };
     case "stale":
       return {
         short: "Stale",
         long: `${source ?? "Provider"} · last reported ${status.asOfLabel || "time unknown"}`,
-        tone: "stale",
       };
     default:
       // Distinguish "the provider sent figures we refused to show" from "we never
       // received any". Both render no prices; the wording is what differs.
       return status.withheld
-        ? { short: "Held", long: "Prices withheld — untrustworthy timestamp", tone: "unavailable" }
-        : { short: "N/A", long: "Unavailable", tone: "unavailable" };
+        ? { short: "Held", long: "Prices withheld — untrustworthy timestamp" }
+        : { short: "N/A", long: "Unavailable" };
   }
-}
-
-const DOT_TONE: Record<StatusBadge["tone"], string> = {
-  live: "bg-star-lime",
-  delayed: "bg-amber-300",
-  stale: "bg-amber-400",
-  unavailable: "bg-white/35",
-};
-
-function FeedLine({ label, badge }: { label: string; badge: StatusBadge }) {
-  return (
-    <span className="flex items-center gap-1.5 leading-tight">
-      <span className={`inline-block size-1.5 shrink-0 rounded-full ${DOT_TONE[badge.tone]}`} aria-hidden="true" />
-      <span className="text-[0.53rem] font-extrabold uppercase tracking-[0.1em] text-star-lime">{label}</span>
-      <span className="truncate text-[0.56rem] font-semibold text-star-100" title={badge.long}>
-        {badge.short}
-      </span>
-    </span>
-  );
 }
 
 export function NgxMarketTicker({
   markets,
-  commodities,
   ngxStatus,
-  commodityStatus,
 }: {
   markets: readonly NgxQuote[];
-  commodities: readonly CommodityQuote[];
   ngxStatus: FeedStatus;
-  commodityStatus: FeedStatus;
 }) {
-  const hasAnyCell = markets.length > 0 || commodities.length > 0;
+  const hasAnyCell = markets.length > 0;
   const ngxBadge = describeFeed(ngxStatus, ngxStatus.source);
-  const commodityBadge = describeFeed(commodityStatus, commodityStatus.source);
-
-  /**
-   * The strip is only "fully live" when BOTH feeds are. This is the single
-   * coarse signal for anyone scanning the page; the per-feed lines below carry
-   * the detail.
-   */
-  const allLive = ngxStatus.state === "live" && commodityStatus.state === "live";
 
   return (
     <section
-      aria-label="Nigerian Exchange and global commodity market ticker"
+      aria-label="Nigerian and international stock market ticker"
       className="ngx-market-strip relative z-0 w-full overflow-hidden border-b border-star-200 bg-white"
       data-ngx-state={ngxStatus.state}
-      data-commodity-state={commodityStatus.state}
     >
-      <div className="flex min-h-[58px] w-full">
-        {/* Category marker: dark-green block listing BOTH feeds' availability. */}
-        <div className="z-10 flex w-[150px] shrink-0 flex-col justify-center gap-1 bg-star-900 px-3 py-1.5 text-white shadow-[5px_0_12px_rgba(0,59,42,0.18)] sm:w-[230px] sm:px-5">
-          <span className="text-[0.55rem] font-extrabold uppercase tracking-[0.13em] text-star-lime">
-            NGX · Commodities
-          </span>
-          <FeedLine label="NGX" badge={ngxBadge} />
-          <FeedLine label="Cmdty" badge={commodityBadge} />
-        </div>
+      {/*
+        FULL-WIDTH TRACK (V5). The fixed dark-green marker block that used to sit
+        here — the "NGX · STOCKS" label and its per-feed status word — has been
+        removed outright, not merely recoloured. It also took its shadow, its
+        fixed 124px/190px width, its z-10 stacking and its inner padding with it,
+        so nothing is left offsetting the track.
 
-        <div className="ngx-market-slider-viewport min-w-0 flex-1 bg-star-900" aria-live="off">
-          {hasAnyCell ? (
-            <div className="ngx-market-slider-track">
-              <TrackPass markets={markets} commodities={commodities} />
-              <TrackPass markets={markets} commodities={commodities} duplicate />
-            </div>
-          ) : (
-            <div className="flex h-[58px] items-center px-5 text-sm font-semibold text-star-100">
-              Market listings will appear here when the data feed is connected.
-            </div>
-          )}
-        </div>
+        The viewport now starts at the left edge of the screen and the cells run
+        the entire width. The strip's own bottom border stays: it separates the
+        ticker from the hero rather than belonging to the removed block.
+      */}
+      <div className="ngx-market-slider-viewport min-h-[58px] w-full bg-white" aria-live="off">
+        {hasAnyCell ? (
+          <div className="ngx-market-slider-track">
+            <TrackPass markets={markets} />
+            <TrackPass markets={markets} duplicate />
+          </div>
+        ) : (
+          <div className="flex h-[58px] items-center justify-center px-5 text-sm font-semibold text-star-muted">
+            Market listings will appear here when the data feed is connected.
+          </div>
+        )}
       </div>
 
+      {/*
+        The visible badge is gone, so the state has to be stated here in words.
+        `short` is the one-word verdict — "Live", "Delayed", "Stale", "N/A", "Held"
+        — and it is genuinely load-bearing rather than decorative: without it a
+        screen-reader user gets "NGX data: NGN Market · last reported 10:00 WAT"
+        with no indication that those prices are stale, and "Held" (we received
+        prices and refused them) would be indistinguishable from having none.
+      */}
       <p className="sr-only">
-        A single moving list of {markets.length} Nigerian Exchange equities and {commodities.length} global commodities.
-        {" "}NGX data: {ngxBadge.long}
+        A single moving list of {markets.length} Nigerian and international equities quoted on the Nigerian Exchange.
+        {" "}NGX data: {ngxBadge.short} — {ngxBadge.long}
         {ngxStatus.state === "unavailable" && ngxStatus.note ? ` — ${ngxStatus.note}` : ""}.
-        {" "}Commodity data: {commodityBadge.long}
-        {commodityStatus.state === "unavailable" && commodityStatus.note ? ` — ${commodityStatus.note}` : ""}.
-        {" "}Overall: {allLive ? "both feeds are current" : "one or both feeds are not current"}.
         This strip is not a live trading feed.
       </p>
     </section>

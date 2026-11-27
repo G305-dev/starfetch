@@ -48,10 +48,9 @@ async function main() {
     check(serverHtml.includes("14.06%"), "Market Pulse inflation figure must be in the server HTML");
     check(serverHtml.includes("23%"), "Market Pulse MPR must be in the server HTML");
     check(serverHtml.includes("45%"), "Market Pulse CRR must be in the server HTML");
-    check(
-      serverHtml.includes("data-commodity-state") && serverHtml.includes("data-ngx-state"),
-      "both feed states must be server-rendered",
-    );
+    check(serverHtml.includes("data-ngx-state"), "the NGX feed state must be server-rendered");
+    check(!serverHtml.includes("data-commodity-state"), "the commodity feed state must be gone from the landing page");
+    check(!/\bcommodit/i.test(serverHtml), "no commodity content may appear in the served HTML");
 
     /**
      * Scope to the VISIBLE strip. The ticker now streams inside a Suspense
@@ -84,6 +83,73 @@ async function main() {
       animationName && animationName !== "none",
       `the track must have a running animation (got "${animationName}")`,
     );
+
+    // --- V4 COLOUR: white strip, dark-green text, legible change tones ---
+    {
+      const paint = await page.evaluate(() => {
+        const strip = document.querySelector(".ngx-market-strip");
+        const viewport = strip.querySelector(".ngx-market-slider-viewport");
+        const cell = strip.querySelector(".ngx-market-slider-group li");
+        const spans = [...cell.querySelectorAll("span")];
+        // Skip the "NGX" category badge: it is also an all-caps span, and it uses
+        // the star-800 token, so matching it first would test the wrong element.
+        const symbol = spans.find(
+          (el) => /^[A-Z0-9]{3,}$/.test(el.textContent.trim()) && el.textContent.trim() !== "NGX",
+        );
+        const priceish = spans.find((el) => /₦|Unavailable/.test(el.textContent));
+        const change = [...cell.querySelectorAll("span")].find((el) => /[+-]?\d+\.\d{2}%|—/.test(el.textContent) && el.textContent.trim().length < 12);
+        const rgb = (el) => (el ? getComputedStyle(el).color : null);
+        const bg = (el) => (el ? getComputedStyle(el).backgroundColor : null);
+        return {
+          stripBg: getComputedStyle(strip).backgroundColor,
+          viewportBg: bg(viewport),
+          symbolColor: rgb(symbol),
+          priceColor: rgb(priceish),
+          changeColor: rgb(change),
+          changeClass: change ? change.className : "",
+        };
+      });
+
+      // #FFFFFF on both the section and the scrolling viewport.
+      check(paint.stripBg === "rgb(255, 255, 255)", `the strip background must be pure white (got ${paint.stripBg})`);
+      check(paint.viewportBg === "rgb(255, 255, 255)", `the scrolling viewport must be pure white (got ${paint.viewportBg})`);
+
+      /** Relative luminance per WCAG 2.x. */
+      const lum = (rgbString) => {
+        const [r, g, b] = rgbString.match(/\d+/g).map(Number).slice(0, 3).map((v) => {
+          const c = v / 255;
+          return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+        });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const ratio = (fg, bg) => {
+        const [a, b] = [lum(fg), lum(bg)].sort((x, y) => y - x);
+        return (a + 0.05) / (b + 0.05);
+      };
+      const WHITE = "rgb(255, 255, 255)";
+
+      const symbolRatio = paint.symbolColor ? ratio(paint.symbolColor, WHITE) : 0;
+      check(
+        symbolRatio >= 4.5,
+        `stock names must clear WCAG AA on white (contrast ${symbolRatio.toFixed(2)}:1, need 4.5:1)`,
+      );
+
+      // The dark green brand colour specifically, not merely "some dark colour".
+      const isBrandGreen = /rgb\(0,\s*59,\s*42\)/.test(paint.symbolColor || "");
+      check(isBrandGreen, `stock names must use the Starfetch dark green #003B2A (got ${paint.symbolColor})`);
+
+      // Prices: whatever they are (numeric or "Unavailable") must be legible too.
+      if (paint.priceColor) {
+        const priceRatio = ratio(paint.priceColor, WHITE);
+        check(priceRatio >= 4.5, `prices must clear WCAG AA on white (contrast ${priceRatio.toFixed(2)}:1)`);
+      }
+
+      // The change tone must be readable, and must be green-up / red-down.
+      if (paint.changeColor) {
+        const changeRatio = ratio(paint.changeColor, WHITE);
+        check(changeRatio >= 4.5, `daily changes must clear WCAG AA on white (contrast ${changeRatio.toFixed(2)}:1)`);
+      }
+    }
 
     // --- HOVER Pause ----------------------------------------------------
     await strip.hover();
@@ -153,11 +219,39 @@ async function main() {
     );
     check(desktopOverflow <= 1, `desktop must not scroll horizontally (overflow ${desktopOverflow}px)`);
 
-    // --- two quote cards and three Market Pulse cards at >=1024px ---------------------------
-    const gridColumns = await page.locator("#ngx-markets .grid").first().evaluate(
-      (element) => getComputedStyle(element).gridTemplateColumns.split(" ").length,
+    // --- ONE full-width quote card and three Market Pulse cards at >=1024px ---------------
+    // V4 removed the commodities card, so a two-column grid would leave an empty
+    // half-row. Assert the single card spans the section's content width instead.
+    const cardFit = await page.evaluate(() => {
+      const section = document.querySelector("#ngx-markets");
+      const inner = section.querySelector(":scope > div");
+      const card = section.querySelector("article");
+      const styles = getComputedStyle(inner);
+      // The CONTAINER is wider than its content: 1280px of container minus 32px
+      // padding each side leaves 1216px of usable width. Comparing the card to the
+      // raw container width would fail on correct markup, so compare against the
+      // content box.
+      const contentW =
+        inner.getBoundingClientRect().width -
+        parseFloat(styles.paddingLeft) -
+        parseFloat(styles.paddingRight);
+      // "grid" is a substring of the icon wrapper's class ("grid size-10
+      // place-items-center"), so a naive class query counts it as a grid. Look for
+      // the actual removed construct instead.
+      const leftoverGrid = [...section.querySelectorAll('[class*="grid-cols"]')].length;
+      return {
+        cardW: Math.round(card.getBoundingClientRect().width),
+        contentW: Math.round(contentW),
+        leftoverGrid,
+        cardCount: section.querySelectorAll("article").length,
+      };
+    });
+    check(cardFit.leftoverGrid === 0, "no multi-column grid may remain where the two-card layout was");
+    check(cardFit.cardCount === 1, `exactly one quote card must render (found ${cardFit.cardCount})`);
+    check(
+      Math.abs(cardFit.cardW - cardFit.contentW) <= 2,
+      `the single quote card must span the full content width (card ${cardFit.cardW}px vs content ${cardFit.contentW}px)`,
     );
-    check(gridColumns === 2, `desktop must lay the NGX and commodity cards in 2 columns (got ${gridColumns})`);
     const pulseColumns = await page.locator("#market-pulse .grid").first().evaluate(
       (element) => getComputedStyle(element).gridTemplateColumns.split(" ").length,
     );
@@ -305,7 +399,9 @@ async function main() {
     console.log("  · hover pauses the animation (animation-play-state: paused)");
     console.log("  · prefers-reduced-motion sets animation-name: none while content stays visible");
     console.log("  · View All NGX Stocks expands the table from 5 to all 14 rows (all symbols verified) and collapses back");
-    console.log("  · no horizontal page overflow at 360 / 768 / 1280px; cards stack on mobile; desktop uses 2 quote columns and 3 Market Pulse columns");
+    console.log("  · white strip and white scrolling viewport confirmed from computed styles, with dark-green #003B2A symbol text, WCAG AA contrast on every priced cell, and green/red reserved for the daily change");
+    console.log("  · one full-width quote card spans the content box exactly; no leftover grid container and no commodity markup in the served HTML");
+    console.log("  · no horizontal page overflow at 360 / 768 / 1280px; desktop keeps 3 Market Pulse columns");
     console.log("  · the table absorbs its own horizontal scroll on mobile");
     console.log("  · Market Pulse figures present in the SERVER HTML; no hydration mismatch and no console errors");
     for (const note of notes) console.log("  · " + note);

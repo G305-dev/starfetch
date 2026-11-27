@@ -1,9 +1,8 @@
 import { cache } from "react";
 import { MarketOverview } from "./MarketOverview";
-import { loadCommodityFeed } from "@/lib/market/commodity-adapter";
 import { loadMarketPulse } from "@/lib/market/market-pulse";
 import { mergeNgxQuotes, parseStarfetchMarketSnapshot, MARKET_SNAPSHOT_INTEGRATION } from "@/lib/market/market-snapshot-adapter";
-import type { CommodityQuote, FeedStatus, NgxQuote } from "@/lib/market/types";
+import type { FeedStatus, NgxQuote } from "@/lib/market/types";
 import { featuredNgxEquities } from "./ngx-market-directory";
 import { withholdIfUnavailable } from "@/lib/market/withhold";
 
@@ -25,14 +24,12 @@ import { withholdIfUnavailable } from "@/lib/market/withhold";
  * rendering React.
  */
 
-/** Upper bound on the backend market request, mirroring the commodity feed. */
+/** Upper bound on the backend market request. */
 const NGX_TIMEOUT_MS = 20_000;
 
 export type MarketSectionData = {
   markets: NgxQuote[];
-  commodities: CommodityQuote[];
   ngxStatus: FeedStatus;
-  commodityStatus: FeedStatus;
   pulse: Awaited<ReturnType<typeof loadMarketPulse>>;
 };
 
@@ -59,8 +56,7 @@ async function loadNgxQuotes(): Promise<{ quotes: NgxQuote[]; status: FeedStatus
     const response = await fetch(`${base}/api/v1${MARKET_SNAPSHOT_INTEGRATION.endpoint.replace("/api/v1", "")}`, {
       headers: { Accept: "application/json" },
       next: { revalidate: 60 },
-      // Never let a slow provider hold the page open. Matches the commodity
-      // feed's bound so neither feed can outlast the other by much.
+      // Never let a slow provider hold the page open.
       signal: AbortSignal.timeout(NGX_TIMEOUT_MS),
     });
     if (!response.ok) {
@@ -79,25 +75,25 @@ async function loadNgxQuotes(): Promise<{ quotes: NgxQuote[]; status: FeedStatus
 }
 
 /**
- * Loads all three feeds. None can reject: each returns an explicit unavailable
- * result, so the market section can never break the homepage.
+ * Loads the two feeds the landing page still renders: NGX quotations and Market
+ * Pulse. Neither can reject — each returns an explicit unavailable result, so the
+ * market section can never break the homepage.
  *
- * Wrapped in React's `cache()` because the ticker and the at-a-glance section
- * are separate Suspense boundaries that each need the same data. Without this
- * the page would issue two identical NGX requests and two identical provider
- * requests per render.
+ * THE COMMODITY FEED IS NO LONGER LOADED HERE. The landing page no longer shows
+ * commodity prices (V4 brief), so requesting them was a network call whose result
+ * was thrown away — a slower homepage for data nobody saw. `loadCommodityFeed`
+ * and the whole commodities implementation remain in `lib/market/` untouched, so
+ * restoring the section is a matter of adding the call back.
+ *
+ * Wrapped in React's `cache()` because the ticker and the at-a-glance section are
+ * separate Suspense boundaries that each need the same data. Without this the
+ * page would issue two identical NGX requests per render.
  */
 export const loadMarketSection = cache(async (): Promise<MarketSectionData> => {
-  const [ngx, commodityFeed, pulse] = await Promise.all([
-    loadNgxQuotes(),
-    loadCommodityFeed(),
-    loadMarketPulse(),
-  ]);
+  const [ngx, pulse] = await Promise.all([loadNgxQuotes(), loadMarketPulse()]);
   return {
     markets: ngx.quotes,
-    commodities: commodityFeed.quotes,
     ngxStatus: ngx.status,
-    commodityStatus: commodityFeed.status,
     pulse,
   };
 });
@@ -105,12 +101,6 @@ export const loadMarketSection = cache(async (): Promise<MarketSectionData> => {
 export async function MarketSection() {
   const data = await loadMarketSection();
   return (
-    <MarketOverview
-      markets={data.markets}
-      commodities={data.commodities}
-      ngxStatus={data.ngxStatus}
-      commodityStatus={data.commodityStatus}
-      pulse={data.pulse}
-    />
+    <MarketOverview markets={data.markets} ngxStatus={data.ngxStatus} pulse={data.pulse} />
   );
 }
