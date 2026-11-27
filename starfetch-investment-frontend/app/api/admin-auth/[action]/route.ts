@@ -13,7 +13,7 @@ import {
   type BffAuthAction,
 } from "@/lib/admin/mfa";
 import { randomUUID } from "crypto";
-import { readCsrfHeader } from "@/lib/admin/host-policy";
+import { readCsrfHeader, adminBffHostDenial, denyHeaders } from "@/lib/admin/host-policy";
 import { validateStaffSession, type SessionRejection } from "@/lib/admin-api/session";
 import type { StaffSession } from "@/lib/admin-api/contracts";
 
@@ -154,6 +154,14 @@ async function confirmStaffSession(
 }
 
 export async function GET(req: NextRequest, context: { params: Promise<{ action: string }> }) {
+  const deniedStatus = adminBffHostDenial(req.headers.get("host"), req.nextUrl.pathname);
+  if (deniedStatus !== null) {
+    return new NextResponse(null, {
+      status: deniedStatus,
+      headers: denyHeaders(),
+    });
+  }
+
   const { action } = await context.params;
   if (!isBffAuthAction(action) || BFF_AUTH_ROUTES[action].method !== "GET") {
     return deny(405, "METHOD_NOT_ALLOWED", "Unsupported auth operation");
@@ -186,6 +194,14 @@ export async function GET(req: NextRequest, context: { params: Promise<{ action:
 }
 
 export async function POST(req: NextRequest, context: { params: Promise<{ action: string }> }) {
+  const deniedStatus = adminBffHostDenial(req.headers.get("host"), req.nextUrl.pathname);
+  if (deniedStatus !== null) {
+    return new NextResponse(null, {
+      status: deniedStatus,
+      headers: denyHeaders(),
+    });
+  }
+
   const { action } = await context.params;
   const cfg = liveConfig();
   if (!cfg) return deny(503, "FEATURE_UNAVAILABLE", "Staff authentication is not connected");

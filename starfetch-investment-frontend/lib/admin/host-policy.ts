@@ -569,3 +569,18 @@ export const STAFF_CSRF_COOKIE = "__Host-sf_admin_csrf";
 export function readCsrfHeader(headers: { get(name: string): string | null }): string | null {
   return headers.get(STAFF_CSRF_HEADER) ?? headers.get("x-sf-csrf") ?? null;
 }
+
+/** Independently enforce the existing hostname policy inside admin BFF handlers. */
+export function adminBffHostDenial(
+  host: string | null,
+  pathname: string,
+  env: NodeJS.ProcessEnv = process.env,
+): 404 | 503 | null {
+  const { config } = readHostPolicyConfig(env);
+  const decision = resolveHostPolicy(config, host, pathname);
+
+  if (decision.action === "deny") return decision.status;
+  if (decision.action === "allow" && decision.host === "admin") return null;
+
+  return 404;
+}

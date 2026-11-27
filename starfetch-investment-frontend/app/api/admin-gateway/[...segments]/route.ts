@@ -5,7 +5,7 @@ export const dynamic='force-dynamic';
 const headers={'Cache-Control':'private, no-store, max-age=0','Pragma':'no-cache','X-Content-Type-Options':'nosniff'};
 function fail(status:number,code:string,message:string){return NextResponse.json({error:{code,message}},{status,headers});}
 import {matchProposedRoute} from '@/lib/admin/proposed-routes';
-import {readCsrfHeader} from '@/lib/admin/host-policy';
+import {readCsrfHeader,adminBffHostDenial,denyHeaders} from '@/lib/admin/host-policy';
 
 type RouteDef={method:'GET'|'POST'|'PATCH';pattern:RegExp;permission:Permission};
 
@@ -35,6 +35,14 @@ const routes:RouteDef[]=[
 function matchRoute(method:string,path:string):RouteDef|undefined{return routes.find(r=>r.method===method&&r.pattern.test(path));}
 
 async function processRequest(req:NextRequest,params:Promise<{segments:string[]}>,method:'GET'|'POST'|'PATCH') {
+  const deniedStatus = adminBffHostDenial(req.headers.get("host"), req.nextUrl.pathname);
+  if (deniedStatus !== null) {
+    return new NextResponse(null, {
+      status: deniedStatus,
+      headers: denyHeaders(),
+    });
+  }
+
  const cfg=liveConfig();if(!cfg)return fail(503,'FEATURE_UNAVAILABLE','Admin API integration is disabled pending approval');
  const {segments}=await params;
  if(!segments?.length||segments.some(x=>!x||!/^[-a-zA-Z0-9_]+$/.test(x)))return fail(404,'RESOURCE_NOT_FOUND','Unknown operation');
