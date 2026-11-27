@@ -13,6 +13,9 @@ import {
   type BffAuthAction,
 } from "@/lib/admin/mfa";
 import { randomUUID } from "crypto";
+import { readCsrfHeader } from "@/lib/admin/host-policy";
+import { validateStaffSession, type SessionRejection } from "@/lib/admin-api/session";
+import type { StaffSession } from "@/lib/admin-api/contracts";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +64,7 @@ function sameOrigin(req: NextRequest): boolean {
 /** Double-submit CSRF: the header must equal the cookie, and the cookie must exist. */
 function csrfValid(req: NextRequest): boolean {
   const token = req.cookies.get("__Host-sf_admin_csrf")?.value;
-  const header = req.headers.get("x-csrf-token");
+  const header = readCsrfHeader(req.headers);
   return !!token && !!header && token === header;
 }
 
@@ -109,23 +112,45 @@ function upstreamCode(payload: unknown): string {
 }
 
 /** The staff session, verified against the backend. Used only after MFA. */
-async function confirmStaffSession(cookie: string): Promise<{ ok: true; session: Record<string, unknown> } | { ok: false }> {
+/**
+ * Confirms, BEFORE the session cookie is handed to the browser, that the backend
+ * really did establish a staff session.
+ *
+ * This function is the last thing standing between a completed second factor and
+ * a cookie in a browser, so its checks must be the SAME checks the rest of the app
+ * applies — not a second, weaker opinion. It previously re-implemented validation
+ * by hand and drifted:
+ *
+ *   - it never checked `displayName`, so a staff session with no identity was
+ *     confirmed and the UI rendered an empty name;
+ *   - it accepted ANY array for `permissions`, including `[null, {}, ""]` and an
+ *     empty array, so a malformed permission response was confirmed;
+ *   - it accepted any role-shaped string without validating the permission
+ *     ELEMENTS, which is what `can()` actually iterates;
+ *   - it had no plausibility ceiling, so an expiry years out was confirmed;
+ *   - it ignored MFA assurance entirely — a backend returning
+ *     `mfaVerified: false` at this point was still allowed to mint a cookie.
+ *
+ * It now delegates to `validateStaffSession`, the single implementation used by
+ * `getSession()` and therefore by the page wrapper and the gateway. One rule set:
+ * malformed identity, malformed or empty permissions, unparseable/expired/
+ * implausible expiry and explicitly invalid MFA assurance are all rejected here,
+ * before the cookie is issued.
+ *
+ * The rejection reason is returned for server-side logging and tests. It is never
+ * sent to the client — the caller answers with a single generic 403, so a prober
+ * cannot learn which field was wrong.
+ */
+async function confirmStaffSession(
+  cookie: string,
+): Promise<{ ok: true; session: StaffSession } | { ok: false; reason: SessionRejection | "upstream" }> {
   const res = await upstream("/auth/session", { cookie });
   const payload: unknown = await res.json().catch(() => null);
-  const data =
-    payload && typeof payload === "object" && "data" in payload
-      ? (payload as { data?: unknown }).data
-      : null;
-  if (!res.ok || !data || typeof data !== "object") return { ok: false };
-  const staff = data as Record<string, unknown>;
-  const expires = typeof staff.sessionExpiresAt === "string" ? new Date(staff.sessionExpiresAt).getTime() : NaN;
-  const valid =
-    (staff.role === "ADMIN" || staff.role === "STAFF") &&
-    typeof staff.staffId === "string" &&
-    Array.isArray(staff.permissions) &&
-    Number.isFinite(expires) &&
-    expires > Date.now();
-  return valid ? { ok: true, session: staff } : { ok: false };
+  if (!res.ok) return { ok: false, reason: "upstream" };
+
+  const verdict = validateStaffSession(payload);
+  if (!verdict.ok) return { ok: false, reason: verdict.reason };
+  return { ok: true, session: verdict.session };
 }
 
 export async function GET(req: NextRequest, context: { params: Promise<{ action: string }> }) {
@@ -428,8 +453,12 @@ export async function POST(req: NextRequest, context: { params: Promise<{ action
     if (!encoded || encoded.length > 4096) return deny(503, "INVALID_STAFF_SESSION", "Invalid staff cookie");
 
     const confirmed = await confirmStaffSession(`${cfg.cookie}=${encoded}`);
+    // Generic on purpose: the specific reason stays server-side so a prober cannot
+    // narrow down which field the backend got wrong.
     if (!confirmed.ok) return deny(403, "NOT_STAFF", "Staff authorization not confirmed");
 
+    // `session` is now a validated StaffSession built by the shared validator, so
+    // only known fields exist on it — an upstream field cannot ride along.
     const session = confirmed.session;
     const result = NextResponse.json(
       {

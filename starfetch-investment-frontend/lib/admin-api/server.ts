@@ -1,6 +1,7 @@
 import {cookies} from 'next/headers';
 import {randomUUID} from 'crypto';
 import type {StaffSession,Permission} from './contracts';
+import {validateStaffSession} from './session';
 /** The integration is deliberately off by default. Flip only after David's APIs, cookie
  * contract, security testing, operational sign-off and data-location approval. */
 export function liveConfig():{base:string;cookie:string}|null {
@@ -26,10 +27,15 @@ export async function getSession():Promise<StaffSession|null> {
  const cfg=liveConfig();if(!cfg)return null;
  const cookieValue=(await cookies()).get(cfg.cookie)?.value;if(!cookieValue)return null;
  try{const result=await upstream('/auth/session',{cookie:adminCookie(cfg.cookie,cookieValue)});
- if(!result.ok)return null;const payload:unknown=await result.json();if(!payload||typeof payload!=='object'||!('data' in payload))return null;
- const d=(payload as {data:Record<string,unknown>}).data;
- if(!d||typeof d.staffId!=='string'||typeof d.displayName!=='string'||(d.role!=='STAFF'&&d.role!=='ADMIN')||!Array.isArray(d.permissions)||!d.permissions.every(v=>typeof v==='string')||typeof d.sessionExpiresAt!=='string'||new Date(d.sessionExpiresAt).getTime()<=Date.now())return null;
- return d as unknown as StaffSession;
+ if(!result.ok)return null;
+ const payload:unknown=await result.json().catch(()=>null);
+ // Validation lives in ./session so every caller shares one implementation.
+ // The previous inline check treated `new Date(x).getTime()` as a number even
+ // when it was NaN, so an unparseable expiry PASSED the guard instead of
+ // rejecting the session. See lib/admin-api/session.ts.
+ const verdict=validateStaffSession(payload);
+ if(!verdict.ok)return null;
+ return verdict.session;
  }catch{return null;}
 }
 export function can(session:StaffSession|null,permission:Permission):boolean {return !!session&&session.permissions.includes(permission);}

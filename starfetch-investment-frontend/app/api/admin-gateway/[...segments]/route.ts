@@ -5,6 +5,7 @@ export const dynamic='force-dynamic';
 const headers={'Cache-Control':'private, no-store, max-age=0','Pragma':'no-cache','X-Content-Type-Options':'nosniff'};
 function fail(status:number,code:string,message:string){return NextResponse.json({error:{code,message}},{status,headers});}
 import {matchProposedRoute} from '@/lib/admin/proposed-routes';
+import {readCsrfHeader} from '@/lib/admin/host-policy';
 
 type RouteDef={method:'GET'|'POST'|'PATCH';pattern:RegExp;permission:Permission};
 
@@ -54,7 +55,7 @@ async function processRequest(req:NextRequest,params:Promise<{segments:string[]}
  if(method!=='GET') {
   if(req.headers.get('origin')!==req.nextUrl.origin||req.headers.get('sec-fetch-site')==='cross-site')return fail(403,'ORIGIN_REJECTED','Invalid origin');
   const csrf=req.cookies.get('__Host-sf_admin_csrf')?.value;
-  if(!csrf||csrf!==req.headers.get('x-csrf-token'))return fail(403,'CSRF_REJECTED','Security token required');
+  if(!csrf||csrf!==readCsrfHeader(req.headers))return fail(403,'CSRF_REJECTED','Security token required');
   if(!/^[0-9a-f-]{36}$/i.test(req.headers.get('idempotency-key')??''))return fail(422,'IDEMPOTENCY_KEY_REQUIRED','Idempotency key required');
   if(method==='PATCH'&&!/^\d+$/.test(req.headers.get('if-match')??''))return fail(409,'VERSION_REQUIRED','Current record version required');
  }
@@ -73,7 +74,7 @@ async function processRequest(req:NextRequest,params:Promise<{segments:string[]}
   }
  }
  const query=req.nextUrl.search;
- try{const response=await upstream(path,{method,body,query,cookie:`${cfg.cookie}=${encodeURIComponent(cookieValue)}`,requestId:crypto.randomUUID(),csrf:req.headers.get('x-csrf-token')??undefined,idempotency:req.headers.get('idempotency-key')??undefined,match:req.headers.get('if-match')??undefined});
+ try{const response=await upstream(path,{method,body,query,cookie:`${cfg.cookie}=${encodeURIComponent(cookieValue)}`,requestId:crypto.randomUUID(),csrf:readCsrfHeader(req.headers)??undefined,idempotency:req.headers.get('idempotency-key')??undefined,match:req.headers.get('if-match')??undefined});
   if(response.status>=300&&response.status<400)return fail(502,'INVALID_UPSTREAM_REDIRECT','Unexpected backend redirect');
   const text=await response.text();if(text.length>2000000)return fail(502,'RESPONSE_TOO_LARGE','Unexpected response size');
   // Only JSON responses from the trusted backend. Never relay Set-Cookie from business APIs.

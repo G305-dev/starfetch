@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { denyHeaders, readHostPolicyConfig, resolveHostPolicy } from "@/lib/admin/host-policy";
+import { denyHeaders, isRawAdminApiPath, readHostPolicyConfig, resolveHostPolicy } from "@/lib/admin/host-policy";
 
 /**
  * CONSOLIDATED FRONTEND MIDDLEWARE — hostname isolation.
@@ -23,19 +23,42 @@ import { denyHeaders, readHostPolicyConfig, resolveHostPolicy } from "@/lib/admi
  *    `readHostPolicyConfig`, and it only ever adds the LOCAL hostname to the
  *    admin allowlist — it does not skip any check.
  *
- * Fail-closed: if the hostname configuration is missing or invalid, every request
- * on any host gets a 503. A deployment that forgets to set the variables serves
- * an error, not an open portal.
+ * ---------------------------------------------------------------------------
+ * AVAILABILITY (the correction that made this file change)
+ * ---------------------------------------------------------------------------
+ * The previous version was fail-closed for the ENTIRE application: a missing or
+ * malformed ADMIN_HOSTNAMES returned 503 on every host, so a staff-portal typo
+ * could take the public website and the investor portal offline. That is an
+ * availability fault with a security shape it does not need.
+ *
+ * The two sides are now separated by severity:
+ *
+ *   PUBLIC_HOSTNAMES missing or invalid  -> 503 everywhere. Fatal, and correctly
+ *                                            so: we cannot distinguish an
+ *                                            approved hostname from an arbitrary
+ *                                            one, so we serve nobody.
+ *   ADMIN_HOSTNAMES missing or invalid   -> admin unreachable, public site
+ *                                            unaffected. The admin list is
+ *                                            emptied, so no request can ever be
+ *                                            classified as admin.
+ *
+ * A missing admin hostname is therefore a NORMAL, SAFE state — it is the state
+ * production is in today, before the staff portal is released. It must not be an
+ * outage.
  */
 export function middleware(request: NextRequest) {
-  const { config, problem } = readHostPolicyConfig();
+  const { config, problem, fatal } = readHostPolicyConfig();
 
   const hostHeader = request.headers.get("host");
   const decision = resolveHostPolicy(config, hostHeader, request.nextUrl.pathname);
 
   if (decision.action === "deny") {
+    // 503 only for the fatal configuration faults. An admin-only fault now leaves
+    // the public site serving normally and shows up as a 404 on the staff
+    // hostname, because with no admin host in the allowlist the request is simply
+    // "unknown host" — the same answer a stranger gets.
     const message =
-      decision.status === 503
+      decision.status === 503 && fatal
         ? "This Starfetch deployment is not configured for this hostname."
         : "Not found";
     // Never echo the reason or the received Host value back to the client: that
@@ -51,6 +74,20 @@ export function middleware(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = decision.to;
     return NextResponse.redirect(url);
+  }
+
+  // --- Generic API rewrite guard -------------------------------------------
+  // next.config.ts forwards /api/v1/:path* to the NestJS backend. That rewrite is
+  // browser-facing and hostname-agnostic, so on its own it would carry
+  // /api/v1/admin/* (once David builds it) straight through on ANY hostname —
+  // including the public one. The hostname policy already classifies
+  // /api/v1/admin as staff-only, and next.config.ts has a matching rewrite-level
+  // guard; this is the third, independent refusal in the same chain.
+  if (isRawAdminApiPath(request.nextUrl.pathname)) {
+    return new NextResponse("Not found", {
+      status: 404,
+      headers: { ...denyHeaders(), "Content-Type": "text/plain; charset=utf-8" },
+    });
   }
 
   // --- Admin host: portal-specific fail-closed gate -------------------------

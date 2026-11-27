@@ -13,8 +13,11 @@ import {
   classifyPath,
   denyHeaders,
   normaliseHost,
+  isRawAdminApiPath,
   readHostPolicyConfig,
   resolveHostPolicy,
+  STAFF_CSRF_COOKIE,
+  STAFF_CSRF_HEADER,
   type HostPolicyConfig,
 } from "../lib/admin/host-policy";
 
@@ -219,28 +222,114 @@ function main(): void {
     assert(decide("anything.starfetch.ng", "/", wildcard).action === "deny", "wildcard host entries must be invalid");
   }
 
-  // === 8. Environment reading fails closed and ignores prod localhost ====
+  // === 8. AVAILABILITY: admin config faults must not take the site down ====
+  // This is the correction David raised. The old reader returned a null config
+  // for ANY admin-side problem, and a null config denied every request on every
+  // host with 503 — so a staff-portal typo took the public website and the
+  // investor portal offline. Severity now separates the two sides.
   {
-    // Nothing configured.
+    // --- Fatal: PUBLIC_HOSTNAMES missing or invalid ----------------------
     const empty = readHostPolicyConfig({} as NodeJS.ProcessEnv);
     assert(empty.config === null, "an empty environment must not produce a config");
+    assert(empty.fatal === true, "no public hostname must be FATAL");
     assert(empty.problem?.includes("missing") === true, "the problem must say what is missing");
 
-    // Only admin configured: no public hosts, but admin alone is still usable
-    // for the staff host... except validateConfig requires a public host.
+    // Admin configured but no public host: still fatal, because we cannot tell an
+    // approved public host from an arbitrary one.
     const adminOnly = readHostPolicyConfig({
       ADMIN_HOSTNAMES: ADMIN,
       NODE_ENV: "production",
     } as unknown as NodeJS.ProcessEnv);
     assert(adminOnly.config === null, "admin-only configuration must be rejected (publicHosts required)");
+    assert(adminOnly.fatal === true, "a missing public host must be fatal");
 
-    // A complete configuration parses.
+    const badPublic = readHostPolicyConfig({
+      PUBLIC_HOSTNAMES: "not a hostname!",
+      ADMIN_HOSTNAMES: ADMIN,
+      NODE_ENV: "production",
+    } as unknown as NodeJS.ProcessEnv);
+    assert(badPublic.config === null, "an invalid public hostname must not produce a config");
+    assert(badPublic.fatal === true, "an invalid public hostname must be fatal");
+
+    // --- Admin-only: the public site KEEPS WORKING -----------------------
+    // This is the headline requirement. Each case below must leave the public
+    // host serving normally while making the admin portal unreachable.
+
+    const adminMissing = readHostPolicyConfig({
+      PUBLIC_HOSTNAMES: PUBLIC,
+      NODE_ENV: "production",
+    } as unknown as NodeJS.ProcessEnv);
+    assert(adminMissing.config !== null, "ADMIN_HOSTNAMES missing must NOT null the public config");
+    assert(adminMissing.fatal === false, "a missing admin hostname must not be fatal");
+    assert(
+      decide(PUBLIC, "/", adminMissing.config).action === "allow",
+      "the public homepage MUST still serve when ADMIN_HOSTNAMES is missing",
+    );
+    assert(
+      decide(PUBLIC, "/login", adminMissing.config).action === "allow",
+      "investor login MUST still serve when ADMIN_HOSTNAMES is missing",
+    );
+    assert(
+      decide(PUBLIC, "/api/v1/auth/login", adminMissing.config).action === "allow",
+      "investor API forwarding MUST still work when ADMIN_HOSTNAMES is missing",
+    );
+    // The staff hostname must be unreachable, not merely gated.
+    assert(
+      decide(ADMIN, "/admin/login", adminMissing.config).action === "deny",
+      "the admin hostname must be unreachable when it is not configured",
+    );
+    // And the public host must still refuse staff paths, as always.
+    assert(
+      decide(PUBLIC, "/admin/dashboard", adminMissing.config).action === "deny",
+      "the public host must never serve admin pages",
+    );
+
+    const adminInvalid = readHostPolicyConfig({
+      PUBLIC_HOSTNAMES: PUBLIC,
+      ADMIN_HOSTNAMES: "admin.starfetchinvestltd.com.ng:notaport",
+      NODE_ENV: "production",
+    } as unknown as NodeJS.ProcessEnv);
+    assert(adminInvalid.config !== null, "an invalid ADMIN hostname must not null the public config");
+    assert(adminInvalid.fatal === false, "an invalid admin hostname must not be fatal");
+    assert(
+      decide(PUBLIC, "/", adminInvalid.config).action === "allow",
+      "the public homepage MUST still serve when ADMIN_HOSTNAMES is invalid",
+    );
+    assert(
+      decide(ADMIN, "/admin/login", adminInvalid.config).action === "deny",
+      "an invalid admin hostname must leave the portal unreachable",
+    );
+
+    // Conflicting configuration: one hostname claimed by BOTH sides. Ambiguous,
+    // so it must fail safe — admin closed, public intact. We refuse the admin
+    // reading rather than the public one because a public outage is the harm we
+    // were asked to eliminate.
+    const conflicting = readHostPolicyConfig({
+      PUBLIC_HOSTNAMES: PUBLIC,
+      ADMIN_HOSTNAMES: PUBLIC,
+      NODE_ENV: "production",
+    } as unknown as NodeJS.ProcessEnv);
+    assert(conflicting.config !== null, "a conflict must not null the public config");
+    assert(conflicting.fatal === false, "a public/admin conflict must not be fatal");
+    assert(conflicting.config!.adminHosts.length === 0, "a conflicting admin list must be emptied");
+    assert(
+      decide(PUBLIC, "/", conflicting.config).action === "allow",
+      "the public site MUST still serve on a conflicting configuration",
+    );
+    assert(
+      decide(PUBLIC, "/admin/dashboard", conflicting.config).action === "deny",
+      "a conflict must never open the admin surface",
+    );
+
+    // --- A complete, correct configuration -------------------------------
     const good = readHostPolicyConfig({
-      PUBLIC_HOSTNAMES: `${PUBLIC}, www.starfetch.ng`,
+      PUBLIC_HOSTNAMES: `${PUBLIC}, www.${PUBLIC}`,
       ADMIN_HOSTNAMES: ADMIN,
       NODE_ENV: "production",
     } as unknown as NodeJS.ProcessEnv);
     assert(good.config !== null, `a complete configuration must parse (${good.problem})`);
+    assert(good.fatal === false, "a complete configuration is not fatal");
+    assert(good.problem === null, "a complete configuration has no problem");
     assert(good.config!.publicHosts.length === 2, "commas and whitespace must be split correctly");
 
     // localhost is NOT an admin host in production, even if requested.
@@ -281,6 +370,173 @@ function main(): void {
     );
   }
 
+  // === 8b. RAW STAFF API AND INVESTOR API ISOLATION =======================
+  // David's Task 3. The generic `/api/v1/:path*` rewrite is hostname-agnostic,
+  // so classification must refuse the raw staff API on the public host and
+  // refuse investor API on the staff host — otherwise the rewrite becomes the
+  // bypass both directions.
+  {
+    const cfg = readHostPolicyConfig({
+      PUBLIC_HOSTNAMES: PUBLIC,
+      ADMIN_HOSTNAMES: ADMIN,
+      NODE_ENV: "production",
+    } as unknown as NodeJS.ProcessEnv).config!;
+
+    // --- The raw staff API family, in every spelling --------------------
+    const rawAdminPaths = [
+      "/api/v1/admin",
+      "/api/v1/admin/",
+      "/api/v1/admin/investors",
+      "/api/v1/admin/investors/123/kyc",
+      "/API/V1/ADMIN/users",
+      "//api//v1//admin//users",
+      "/api/v1/Admin/Users",
+      "/api/v1/admin/users/",
+      "/api/%76%31/admin/users",   // encoded "v1"
+    ];
+    for (const path of rawAdminPaths) {
+      assert(classifyPath(path) === "admin", `${path} must classify as admin`);
+      assert(isRawAdminApiPath(path) === true, `${path} must be caught by the rewrite guard`);
+      assert(
+        decide(PUBLIC, path, cfg).action === "deny",
+        `the PUBLIC host must refuse the raw staff API at ${path}`,
+      );
+    }
+
+    // Traversal attempts must be caught, not shrugged off.
+    for (const path of ["/api/v1/x/../admin/users", "/api/v1/./admin/users", "/api/v1\\admin"]) {
+      assert(isRawAdminApiPath(path) === true, `traversal ${path} must be refused by the rewrite guard`);
+    }
+
+    // --- Investor API must NOT forward on the admin host -----------------
+    const investorApiPaths = [
+      "/api/v1/auth/login",
+      "/api/v1/investors",
+      "/api/v1/accounts",
+      "/api/v1/kyc",
+      "/api/v1/investments",
+      "/api/v1/transactions",
+      "/api/v1/portfolios",
+      "/api/v1/products",
+      "/api/v1/corporate/kyc",
+      "/api/v1/joint",
+    ];
+    for (const path of investorApiPaths) {
+      assert(classifyPath(path) === "investor-api", `${path} must classify as investor-api`);
+      assert(
+        decide(ADMIN, path, cfg).action === "deny",
+        `the ADMIN host must refuse investor API at ${path}`,
+      );
+      // The same paths must still work on the public host — this is the
+      // regression the correction must not cause.
+      assert(
+        decide(PUBLIC, path, cfg).action === "allow",
+        `the PUBLIC host must still forward investor API at ${path}`,
+      );
+    }
+
+    // --- EVERY /api/v1 path is refused on the admin host ----------------
+    // The bug this replaces: only fifteen prefixes were listed, so
+    // `/api/v1/me/profile` and `/api/v1/corporate-accounts/*` fell through to
+    // "other" and "other" was served on the staff origin. Adding two more strings
+    // would have moved the hole; the rule is inverted instead.
+    const everyApiPath = [
+      "/api/v1/me/profile",                  // named in review — was NOT covered
+      "/api/v1/me",                          // the bare parent
+      "/api/v1/corporate-accounts",          // named in review — was NOT covered
+      "/api/v1/corporate-accounts/123",
+      "/api/v1/corporate-accounts/123/kyc/documents",
+      "/api/v1/individual-accounts/abc",
+      "/api/v1/joint-accounts/abc",
+      "/api/v1/wallet",
+      "/api/v1/statements/2026-11",
+      "/api/v1/notifications",
+      "/api/v1/support/tickets",
+      "/api/v1/referrals",
+      "/api/v1/requests",
+      "/api/v1/me/preferences",
+      "/api/v1/",                            // bare root
+      "/API/V1/ME/PROFILE",                  // cased
+      "//api//v1//me//profile",              // doubled slashes
+      "/api/v1/me/profile/",                 // trailing slash
+      "/api/%76%31/me/profile",              // encoded segment
+      "/api/v1/some-route-invented-next-year", // unknown / future
+    ];
+    for (const path of everyApiPath) {
+      assert(
+        classifyPath(path) === "investor-api",
+        `${path} must classify as investor-api, not fall through to "other"`,
+      );
+      assert(
+        decide(ADMIN, path, cfg).action === "deny",
+        `the ADMIN host must refuse ${path}`,
+      );
+      // ...while the public host keeps serving it. This is the half that must not
+      // regress: blanket-blocking the admin host is only acceptable if the
+      // investor API on the public host is untouched.
+      assert(
+        decide(PUBLIC, path, cfg).action === "allow",
+        `the PUBLIC host must still forward ${path}`,
+      );
+    }
+
+    // Traversal paths are classified "public" by the older dot-segment rule rather
+    // than "investor-api". That is still a DENY on the admin host, which is the
+    // property that matters — assert the outcome, not the internal label.
+    for (const path of ["/api/v1/x/../me/profile", "/api/v1/./me/profile", "/api/v1\\me\\profile"]) {
+      assert(
+        decide(ADMIN, path, cfg).action === "deny",
+        `the ADMIN host must refuse traversal path ${path}`,
+      );
+    }
+
+    // --- The raw staff API stays blocked on BOTH hosts ------------------
+    for (const path of ["/api/v1/admin", "/api/v1/admin/me", "/api/v1/admin/corporate-accounts"]) {
+      assert(
+        decide(PUBLIC, path, cfg).action === "deny",
+        `the PUBLIC host must refuse the raw staff API at ${path}`,
+      );
+      assert(
+        decide(ADMIN, path, cfg).action === "deny",
+        `the ADMIN host must refuse the raw staff API at ${path}`,
+      );
+      assert(isRawAdminApiPath(path) === true, `${path} must be caught by the rewrite guard`);
+    }
+
+    // --- Unclassified paths are refused on the admin host ---------------
+    // "other" is whatever has not been classified yet. On the staff origin that is
+    // not a safe default.
+    for (const path of ["/some-unknown-page", "/internal/thing", "/api/v2/x", "/api", "/apix"]) {
+      assert(
+        decide(ADMIN, path, cfg).action === "deny",
+        `the ADMIN host must refuse unclassified path ${path}`,
+      );
+    }
+
+    // --- The BFF endpoints stay staff-only ------------------------------
+    for (const path of ["/api/admin-auth/login", "/api/admin-gateway/investors"]) {
+      assert(decide(PUBLIC, path, cfg).action === "deny", `public host must refuse ${path}`);
+      assert(classifyPath(path) === "admin", `${path} must classify as admin`);
+    }
+
+    // --- The NGX market feed must keep working --------------------------
+    // Market data is public read-only data; blocking it on either host would be a
+    // functional regression David explicitly ruled out.
+    assert(classifyPath("/api/v1/market/ngx") === "investor-api", "market data classifies as public API");
+    assert(
+      decide(PUBLIC, "/api/v1/market/ngx", cfg).action === "allow",
+      "the NGX market feed must still work on the public host",
+    );
+
+    // --- CSRF header naming is a single constant -------------------------
+    assert(STAFF_CSRF_HEADER === "x-csrf-token", "the canonical CSRF header is X-CSRF-Token");
+    assert(STAFF_CSRF_COOKIE === "__Host-sf_admin_csrf", "the CSRF cookie keeps its __Host- prefix");
+    assert(
+      STAFF_CSRF_COOKIE.startsWith("__Host-"),
+      "a __Host- cookie is host-only by definition, so it cannot leak to sibling subdomains",
+    );
+  }
+
   // === 9. Headers on a denied response reveal nothing ====================
   {
     const headers = denyHeaders();
@@ -312,7 +568,7 @@ function main(): void {
       "public host cannot render admin pages, admin auth or the admin gateway and is never redirected to the staff portal; " +
       "admin host serves only staff routes and redirects its root to the staff entry point; " +
       "unknown, preview and malformed hosts fail closed; ports, userinfo, IPv6 literals and wildcards are rejected; " +
-      "missing or contradictory configuration denies everything with 503; " +
+      "a missing or invalid public hostname denies everything with 503 while a missing or invalid admin hostname closes only the admin portal and leaves the website and investor API serving; the raw /api/v1/admin family is refused on the public host and investor API is refused on the staff host; " +
       "localhost can never reach the admin portal in production; " +
       "and encoded, cased, doubled-slash and traversal paths cannot impersonate an admin route.",
   );
